@@ -1,0 +1,33 @@
+# Build outputs
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# Binaries
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.obj
+
+# Local dependency installs
+vcpkg_installed/
+.conan/
+
+# Qt Creator / VS / VS Code local state
+*.user
+*.user.*
+.vs/
+.vscode/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
