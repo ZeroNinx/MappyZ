@@ -192,7 +192,7 @@ source/
       WindowsError.h
       WindowsError.cpp
 
-  Ui/
+  UI/
     Bridge/
       AppController.h
       AppController.cpp
@@ -959,7 +959,7 @@ Input
 Mapping
 Output
 Profile
-Ui
+UI
 System
 ```
 
