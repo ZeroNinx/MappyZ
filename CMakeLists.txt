@@ -10,9 +10,34 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# MSVC 默认使用系统代码页读取源文件，项目统一使用 UTF-8 编码
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
+# ── 第三方依赖 ──
+
+add_subdirectory(third_party/ZeroStyle)
+
 find_package(Qt6 REQUIRED COMPONENTS Quick)
 
 qt_standard_project_setup(REQUIRES 6.5)
+
+# ── Core 模块（header-only） ──
+
+add_library(MappyZCore INTERFACE)
+
+target_include_directories(MappyZCore
+    INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/source
+)
+
+target_link_libraries(MappyZCore
+    INTERFACE
+        Zero::ZeroStyle
+)
+
+# ── 主应用 ──
 
 qt_add_executable(MappyZ
     source/App/Main.cpp
@@ -39,6 +64,7 @@ target_compile_features(MappyZ PRIVATE cxx_std_20)
 
 target_link_libraries(MappyZ
     PRIVATE
+        MappyZCore
         Qt6::Quick
 )
 
@@ -70,4 +96,44 @@ if(MSVC)
     target_compile_options(MappyZ PRIVATE /W4)
 else()
     target_compile_options(MappyZ PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+endif()
+
+# ── 测试 ──
+
+include(CTest)
+
+if(BUILD_TESTING)
+    # 优先使用 vcpkg 安装的 Catch2，找不到则通过 FetchContent 拉取
+    find_package(Catch2 3 CONFIG QUIET)
+
+    if(NOT Catch2_FOUND)
+        include(FetchContent)
+        FetchContent_Declare(
+            Catch2
+            GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+            GIT_TAG        v3.7.1
+        )
+        FetchContent_MakeAvailable(Catch2)
+        list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+    endif()
+
+    include(Catch)
+
+    add_executable(MappyZCoreTests
+        tests/Core/CoreTypesTests.cpp
+    )
+
+    target_link_libraries(MappyZCoreTests
+        PRIVATE
+            MappyZCore
+            Catch2::Catch2WithMain
+    )
+
+    if(MSVC)
+        target_compile_options(MappyZCoreTests PRIVATE /W4)
+    else()
+        target_compile_options(MappyZCoreTests PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+    endif()
+
+    catch_discover_tests(MappyZCoreTests)
 endif()
