@@ -1,138 +1,161 @@
-# TODO: Runtime Input State Module
+# TODO: Core Mapping Profile Contract Module
 
 ## Next Step
 
-下一步实现 `Runtime/InputRuntime` 的最小版本。这个模块消费 `IInputBackend::OnInputEvent`，维护最近输入事件和当前控件状态，为后续 `ZMappingEngine`、输入调试 UI 和热插拔清理提供稳定入口。
+下一步实现 `Core/MappingRule.h` 和 `Core/MappingProfile.h` 的最小版本。这个模块只定义映射规则和 profile 快照的数据契约，为后续 `ZMappingEngine`、JSON profile loader、绑定 UI 和 `ZMappingSession` 提供稳定输入。
 
 优先做这个模块的理由：
 
-- `ZDeviceManager` 已经负责设备生命周期，输入事件需要一个独立 Runtime 归口。
-- 参考 AntiMicro 系列项目的架构，输入采集后会先沉淀成设备/控件运行时状态，再驱动映射和输出。
-- MappyZ 不应把 SDL 事件、QML 状态和映射执行混在一起；先补输入状态层可以保持 Core/Runtime/Backend 边界清晰。
-- `ZFakeInputBackend` 已经能注入输入事件，适合先用测试锁定行为。
+- `SInputEvent`、`SAction`、`ZInputRuntime` 已经存在，但中间缺少“输入如何匹配到动作”的数据结构。
+- `ZMappingEngine` 不应该直接读 JSON 或 UI 状态，它应该只消费 `SMappingProfile` 快照。
+- Profile schema、绑定 UI、保存加载和映射执行都会依赖同一组 Core 类型，先稳定契约可以减少后续破坏性修改。
+- 这是纯 Core 模块，不依赖 Qt、SDL、Win32，适合用单元测试快速锁定默认值和字段语义。
 
-## Reference Architecture Notes
+## AntiMicroX Architecture Reference
 
-AntiMicro 系列项目的方案可以概括为：
+AntiMicroX 的整体思路里，设备对象下挂多个 set，每个 set 内包含按钮、轴、摇杆、方向键等控件对象，控件对象再持有各自的映射 slot。这种结构的优点是功能表达直接，复杂绑定和 set 切换容易挂在控件对象上。
 
-- SDL 事件读取器负责初始化 SDL、轮询事件和刷新设备。
-- 输入调度层把 SDL 事件分发到设备对象和控件对象。
-- 设备模型包含手柄、按钮、轴、方向键、摇杆、传感器和多个可切换 set。
-- 控件对象自身持有映射配置，并通过 Qt signal/slot 向上冒泡状态变化。
-- 输出侧通过 event handler factory 选择平台后端，例如 SendInput、XTest 或 uinput。
-- 配置通过 XML 读写和迁移模块落盘，另有自动 profile watcher 做应用切换。
+MappyZ 本轮只借鉴其中的架构意图，不照搬对象图：
 
-MappyZ 可以借鉴：
-
-- [x] 输入读取、设备生命周期、输入状态、映射执行、输出注入分层，不让 UI 直接消费底层事件。
-- [x] 为输入状态保留当前快照，而不只是最近事件日志；后续断线、释放按键和调试 UI 都需要它。
-- [x] 输出侧后续使用工厂或注册表选择平台后端，但接口保持 Core 类型，不暴露平台 API。
-- [x] profile 匹配需要设备 GUID、厂商、产品、实例 ID 等字段，后续 SDL 后端接入时补齐。
-- [x] 借鉴 fake backend / fake classes 的测试思路，优先用无硬件测试覆盖运行时行为。
-
-MappyZ 应避免：
-
-- [x] 不复制 AntiMicro 的大型 Qt QObject 对象图。
-- [x] 不让控件对象直接拥有映射执行逻辑；MappyZ 后续用独立 `ZMappingEngine`。
-- [x] 不把 GUI、配置读写、输入线程和输出平台后端耦合在同一层。
+- [x] 借鉴”一个设备 profile 包含多条控件映射规则”的模型。
+- [x] 借鉴”规则需要稳定 ID，方便 UI 编辑、保存、冲突提示和日志定位”的做法。
+- [x] 借鉴”输入匹配和输出动作配置分开表达”，便于后续支持不同输出后端。
+- [x] 改进为纯数据 `SMappingProfile` 快照，不使用 QObject 控件树。
+- [x] 改进为规则列表 + 独立 `ZMappingEngine`，不让控件对象直接执行映射。
+- [x] 暂不实现 AntiMicroX 风格的 set/layer/mode shift；MVP 先做单 active profile，后续再加 layer 字段或 profile group。
+- [x] 不复制 AntiMicroX 的代码、XML 格式、类结构、资源或文案。
 
 ## Scope
 
-本轮只覆盖 Runtime 输入状态。
+本轮只覆盖 Core 映射数据契约。
 
 包含：
 
-- [x] `source/Runtime/InputRuntime.h`
-- [x] `source/Runtime/InputRuntime.cpp`
-- [x] `tests/Runtime/InputRuntimeTests.cpp`
-- [x] CMake target 和 CTest 接入
+- [x] `source/Core/MappingRule.h`
+- [x] `source/Core/MappingProfile.h`
+- [x] `tests/Core/MappingProfileTests.cpp`
+- [x] CMake 测试目标接入
 
 不做：
 
-- [x] 不接入 SDL3。
 - [x] 不实现 `ZMappingEngine`。
-- [x] 不执行键盘、鼠标或虚拟手柄输出。
-- [x] 不实现 profile 匹配或配置读写。
-- [x] 不实现 QML/Qt model。
-- [x] 不承诺线程安全；本轮沿用 fake backend 单线程测试假设。
+- [x] 不实现 JSON profile loader/saver。
+- [x] 不实现 profile schema 迁移。
+- [x] 不实现 runtime profile manager。
+- [x] 不实现 UI 绑定编辑。
+- [x] 不实现输出后端。
+- [x] 不实现 layer、mode shift、宏、连发、长按短按或组合键。
 
 ## Design Decisions
 
-- [x] `ZInputRuntime` 属于 Runtime 层，可以依赖 `IInputBackend` 和 Core 输入事件类型。
-- [x] `ZInputRuntime` 不拥有输入后端；构造时接收 `IInputBackend&`。
-- [x] `ZInputRuntime` 只订阅 `OnInputEvent`，不订阅设备连接/断开；设备生命周期仍归 `ZDeviceManager`。
-- [x] `ZInputRuntime` 维护两个数据：
-  - 最近输入事件列表，供调试 UI 和测试观察。
-  - 当前控件状态快照，供后续映射引擎查询。
-- [x] 最近事件列表设置固定容量，默认值为 256；实现中使用命名常量，超过容量时丢弃最旧事件。
-- [x] 当前控件状态以 `(DeviceId, ControlId)` 为 key，保存最后一次标准化输入事件。
-- [x] `Detach()` 清空自己设置的 `OnInputEvent`，避免 runtime 销毁后回调悬垂。
-- [x] 本轮约定 runtime attach 期间不允许外部改写后端 `OnInputEvent`；后续 EventBus 或组合订阅器再支持多订阅者。
+- [x] `MappingRule.h` 和 `MappingProfile.h` 属于 Core 层，只能依赖 `ProjectCore.h`、`InputEvent.h`、`DeviceId.h`、`Action.h`。
+- [x] Profile 是运行时可替换的不可变快照；类型本身保持普通可复制数据结构，是否不可变由 Runtime 持有策略保证。
+- [x] 规则不保存平台枚举、SDL 枚举、Win32 virtual-key 或 scan-code。
+- [x] 规则中的输入侧使用项目内部 `ControlId` 字符串和 `EInputControlType`。
+- [x] 规则中的输出侧复用 `SAction`，平台转换留给 `IOutputBackend`。
+- [x] `SchemaVersion` 默认值为 `1`。
+- [x] `SMappingProfile` 默认启用，`SMappingRule` 默认启用。
+- [x] 空 profile 合法，表示没有映射规则。
 
-## Interface Contract
+## Proposed Types
 
-- [x] `ZInputRuntime` 禁止拷贝和移动。
-- [x] 构造函数：`explicit ZInputRuntime(IInputBackend& Backend)`。
-- [x] 提供：
-  - `void Attach()`
-  - `void Detach()`
-  - `ZERO_NODISCARD bool IsAttached() const noexcept`
-  - `ZERO_NODISCARD TVector<SInputEvent> ListRecentEvents() const`
-  - `ZERO_NODISCARD uint32 GetRecentEventCount() const noexcept`
-  - `ZERO_NODISCARD TOptional<SInputEvent> FindControlState(const SDeviceId& DeviceId, StdStringView ControlId) const`
-  - `ZERO_NODISCARD uint32 GetTrackedControlCount() const noexcept`
-  - `void Clear()`
-- [x] `Attach()` 可重复调用；重复调用不应重复订阅或清空状态。
-- [x] `Detach()` 可重复调用；重复调用安全无副作用。
-- [x] `Detach()` 后再次 `Attach()` 只重新订阅输入回调，不清空已经积累的最近事件和当前控件状态。
-- [x] `Clear()` 清空最近事件和当前控件状态，但不改变 attach 状态。
-- [x] 析构函数应 best-effort 调用 `Detach()`。
+### Mapping Rule
 
-## Input State Behavior
+- [x] 新增 `enum class EMappingActionMode`：
+  - `PressRelease`：按钮按下生成 pressed 动作，抬起生成 released 动作。
+  - `Hold`：输入保持激活时保持输出状态，后续引擎处理释放。
+  - `Analog`：模拟量连续映射，例如摇杆到鼠标移动。
+- [x] 新增 `struct SMappingInput`：
+  - `StdString ControlId`
+  - `EInputControlType ControlType = EInputControlType::Button`
+  - `EInputEventType EventType = EInputEventType::Pressed`
+  - `float32 Threshold = 0.5f`
+  - `float32 Deadzone = 0.0f`
+- [x] 新增 `struct SMappingOutput`：
+  - `SAction Action`
+  - `EMappingActionMode Mode = EMappingActionMode::PressRelease`
+  - `float32 Sensitivity = 1.0f`
+- [x] 新增 `struct SMappingRule`：
+  - `StdString Id`
+  - `StdString DisplayName`
+  - `bool bEnabled = true`
+  - `SMappingInput Input`
+  - `SMappingOutput Output`
 
-- [x] attached 后，fake backend `EmitInput` 会被 runtime 记录。
-- [x] stopped backend 不会触发事件，runtime 状态不变化。
-- [x] detached 后，fake backend `EmitInput` 不再影响 runtime。
-- [x] 同一设备同一控件的多次事件只保留最后一次当前状态。
-- [x] 不同设备的同名控件应分别保存。
-- [x] `ListRecentEvents()` 返回快照拷贝，调用方修改返回值不影响 runtime 内部状态。
-- [x] `FindControlState()` 找到时返回事件副本，找不到时返回空。
-- [x] 最近事件超过容量后丢弃最旧事件，保留最新事件。
+### Mapping Profile
+
+- [x] 新增 `struct SDeviceMatch`：
+  - `StdString Name`
+  - `StdString Backend`
+  - `StdString VendorId`
+  - `StdString ProductId`
+  - `StdString Guid`
+  - `StdString InstanceId`
+- [x] 新增 `struct SMappingProfile`：
+  - `uint32 SchemaVersion = 1`
+  - `StdString Id`
+  - `StdString Name`
+  - `bool bEnabled = true`
+  - `SDeviceMatch DeviceMatch`
+  - `TVector<SMappingRule> Rules`
+
+## Field Semantics
+
+- [x] `SMappingRule::Id` 在单个 profile 内应稳定且唯一，但本轮只定义字段，不实现唯一性校验。
+- [x] `SMappingRule::DisplayName` 用于 UI 展示，可为空。
+- [x] `SMappingInput::Threshold` 用于 Trigger 或 Axis1D 激活判断，默认 `0.5f`。
+- [x] `SMappingInput::Deadzone` 用于 Axis1D 或 Axis2D，默认 `0.0f`，合法范围约定为 `[0.0f, 1.0f]`，本轮不做 clamp。
+- [x] `SMappingOutput::Sensitivity` 用于 Axis2D 到 MouseMove 等模拟输出，默认 `1.0f`。
+- [x] `SDeviceMatch` 字段都可为空；后续 profile 匹配模块按可用字段评分。
+- [x] `SMappingProfile::bEnabled = false` 表示整个 profile 不参与映射。
+- [x] `SMappingRule::bEnabled = false` 表示单条规则不参与映射。
+
+## Header Layout
+
+- [x] `MappingRule.h` 包含输入匹配和输出配置：
+  - `EMappingActionMode`
+  - `SMappingInput`
+  - `SMappingOutput`
+  - `SMappingRule`
+- [x] `MappingProfile.h` 包含 profile 级数据：
+  - include `MappingRule.h`
+  - `SDeviceMatch`
+  - `SMappingProfile`
+- [x] 不新增 `.cpp` 文件；本轮全部为 header-only 数据结构。
 
 ## CMake Plan
 
-- [x] 将 `source/Runtime/InputRuntime.cpp` 加入 `MappyZRuntime`。
-- [x] 将 `tests/Runtime/InputRuntimeTests.cpp` 加入 `MappyZRuntimeTests`。
-- [x] 保持 `MappyZRuntime` 链接 `MappyZCore` 和 `MappyZInputBackends`。
+- [x] 保持 `MappyZCore` 为 interface library。
+- [x] 新增 `tests/Core/MappingProfileTests.cpp`，加入 `MappyZCoreTests`。
 - [x] 不新增第三方依赖。
+- [x] 不修改主应用 target。
 
 ## Tests
 
-- [x] 构造后默认未 attached，事件数量和控件数量为 0。
-- [x] `Attach()` 后输入事件会进入最近事件列表。
-- [x] `Attach()` 重复调用不会清空已有状态。
-- [x] 同一控件状态被后续事件覆盖。
-- [x] 不同设备同名控件分别保存。
-- [x] `ListRecentEvents()` 返回快照拷贝。
-- [x] `FindControlState()` 对未知控件返回空。
-- [x] `Clear()` 清空事件和状态，但不 detach。
-- [x] `Detach()` 后输入事件不再影响 runtime。
-- [x] `Detach()` 可重复调用且安全无副作用。
-- [x] `Detach()` 后再次 `Attach()` 会恢复接收输入，并保留 re-attach 前已有状态。
-- [x] runtime 析构后 fake backend 继续触发输入回调不崩溃。
-- [x] 最近事件容量上限生效。
+- [x] `SMappingInput` 默认值符合预期。
+- [x] `SMappingOutput` 默认值符合预期。
+- [x] `SMappingRule` 默认启用，默认输入和输出字段可用。
+- [x] `SDeviceMatch` 默认构造为空。
+- [x] `SMappingProfile` 默认 `SchemaVersion == 1` 且 `bEnabled == true`。
+- [x] 空 `SMappingProfile::Rules` 合法。
+- [x] 可创建 Button -> Keyboard rule。
+- [x] 可创建 Button -> MouseButton rule。
+- [x] 可创建 Axis2D -> MouseMove rule，包含 deadzone 和 sensitivity。
+- [x] 可创建 Trigger threshold rule。
+- [x] `MappingProfile.h` 可单独 include 编译。
+- [x] Core 新头文件不包含 Qt、QML、SDL 或 Win32 头。
 
 ## Acceptance Criteria
 
 - [x] `cmake --build build` 通过。
 - [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
-- [x] 新增 Runtime 文件不包含 Qt、QML、SDL 或 Win32 头。
-- [x] `ZInputRuntime` 能通过 `ZFakeInputBackend` 验证输入事件和当前状态。
-- [x] `Detach()` 后不存在悬垂回调风险。
-- [x] 提交前所有新增文本文件使用 CRLF 行尾。
+- [x] `git diff --check` 通过。
+- [x] 新增文本文件使用 CRLF 行尾。
+- [x] `source/Core/MappingRule.h` 和 `source/Core/MappingProfile.h` 不依赖 Runtime、Backend、UI 或平台层。
+- [x] `MappyZCoreTests` 覆盖本轮新增默认值和典型规则构造。
 
 ## Follow-Up Module
 
-- [ ] 下一模块建议实现 `Core/MappingRule.h` 和 `Core/MappingProfile.h`，为 `ZMappingEngine` 做数据契约。
-- [ ] 再下一步实现 `ZMappingEngine` 最小版本，将输入状态变化转换成动作请求。
-- [ ] 后续实现 `ZSdlInputBackend`，把 SDL3 设备和事件转换成 `SDeviceInfo` 与 `SInputEvent`。
+- [ ] 下一模块建议实现 `Core/MappingEngine.h/.cpp`，消费 `SInputEvent + SMappingProfile` 并输出 `TVector<SAction>`。
+- [ ] 再下一步实现 `Backends/Output/OutputBackend.h` 和 `ZNullOutputBackend`，让 Runtime 可以测试动作派发。
+- [ ] 后续实现 JSON profile loader/saver，把外部 JSON schema 转换为本轮定义的 `SMappingProfile`。

@@ -157,6 +157,7 @@ if(BUILD_TESTING)
 
     add_executable(MappyZCoreTests
         tests/Core/CoreTypesTests.cpp
+        tests/Core/MappingProfileTests.cpp
     )
 
     target_link_libraries(MappyZCoreTests
