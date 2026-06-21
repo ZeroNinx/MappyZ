@@ -69,27 +69,37 @@ Window {
 
         color: theme.panel
         radius: 4
-        border.color: theme.border
-        border.width: 1
+        border.width: 0
         clip: true
 
         Rectangle {
             id: titleBar
 
             anchors.left: parent.left
+            anchors.leftMargin: 1
             anchors.right: parent.right
+            anchors.rightMargin: 1
             anchors.top: parent.top
-            height: 34
+            anchors.topMargin: 1
+            height: 33
             color: theme.panelHeader
 
             Text {
                 anchors.left: parent.left
-                anchors.leftMargin: 12
+                anchors.leftMargin: 11
                 anchors.verticalCenter: parent.verticalCenter
                 text: panel.heading
                 color: theme.text
                 font.pixelSize: 12
                 font.bold: true
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: theme.border
             }
         }
 
@@ -101,6 +111,15 @@ Window {
             anchors.top: titleBar.bottom
             anchors.bottom: parent.bottom
             anchors.margins: 12
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: panel.radius
+            color: "transparent"
+            border.color: theme.border
+            border.width: 1
+            z: 100
         }
     }
 
