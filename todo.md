@@ -1,142 +1,135 @@
-# TODO: Output Backend Interface and Null Backend Module
+# TODO: Runtime Action Dispatcher Module
 
 ## Next Step
 
-下一步实现 `Backends/Output` 的最小版本：`IOutputBackend` 纯接口和 `ZNullOutputBackend` 测试后端。这个模块接收 `SAction`，记录输出动作和后端状态，为后续 `ZActionDispatcher`、`ZMappingSession` 和 Windows SendInput 后端提供稳定边界。
+下一步实现 `Runtime/ActionDispatcher.h/.cpp` 的最小版本。这个模块接收 `SAction` 或 `TVector<SAction>`，调用当前 `IOutputBackend`，并记录最近派发结果，为后续 `ZMappingSession` 串联 `ZMappingEngine` 和输出后端提供稳定入口。
 
 优先做这个模块的理由：
 
-- `ZMappingEngine` 已经能把 `SInputEvent + SMappingProfile` 转成 `SAction`，但目前没有输出侧接口承接动作。
-- 先做 `ZNullOutputBackend` 可以在不调用 Win32 API 的情况下测试 Runtime 派发链路。
-- 输出后端边界需要早定，避免后续 `ZActionDispatcher` 直接依赖 Windows SendInput 或 UI 状态。
-- Null 后端可以作为日志、调试面板和端到端测试的观察点。
+- `ZMappingEngine` 已经能生成 `SAction`。
+- `IOutputBackend` 和 `ZNullOutputBackend` 已经能接收并记录动作。
+- Runtime 还缺少“统一派发动作并处理输出失败”的边界，不能让 `ZMappingSession` 直接散落调用输出后端。
+- 先用 Null 后端测试派发链路，可以不接 Win32 就验证 Runtime 行为。
 
 ## AntiMicroX Architecture Reference
 
-AntiMicroX 通过 event handler factory 在不同平台输出实现之间切换，例如 SendInput、XTest 或 uinput。这个方向值得借鉴：映射层只产生动作，平台输出由后端封装。
+AntiMicroX 的输出侧由 event handler 处理键盘、鼠标和平台 API 调用，映射逻辑最终会走到统一输出处理点。MappyZ 本轮借鉴这个“输出动作集中派发”的结构，但保持 Runtime 和平台后端解耦。
 
-MappyZ 本轮只借鉴输出后端分层，不照搬实现：
+MappyZ 本轮改进点：
 
-- [x] 借鉴”输出后端接口统一，平台实现可替换”的结构。
-- [x] 借鉴”需要查询输出后端状态和错误信息”的诊断思路。
-- [x] 改进为 `IOutputBackend` 只接收 Core `SAction`，不理解 UI、profile 或输入设备。
-- [x] 先做 `ZNullOutputBackend`，不直接进入 Windows SendInput。
-- [x] 后续可以添加 factory 或注册表，但本轮不引入 singleton 或全局 mutable 状态。
-- [x] 不复制 AntiMicroX 的 event handler 代码、类结构、平台映射表或资源。
+- [x] Runtime 只依赖 `IOutputBackend` 接口，不依赖 Windows SendInput。
+- [x] `ZActionDispatcher` 不理解输入设备、profile、QML 或 SDL。
+- [x] 派发结果以纯数据快照记录，后续可以接日志面板。
+- [x] 不引入全局 singleton 或 factory，构造时接收 `IOutputBackend&`。
+- [x] 不复制 AntiMicroX 的 event handler 代码、平台映射表或类结构。
 
 ## Scope
 
-本轮只覆盖输出后端接口和 Null 后端。
+本轮只覆盖 Runtime 动作派发。
 
 包含：
 
-- [x] `source/Backends/Output/OutputBackend.h`
-- [x] `source/Backends/Output/NullOutputBackend.h`
-- [x] `source/Backends/Output/NullOutputBackend.cpp`
-- [x] `tests/Backends/Output/NullOutputBackendTests.cpp`
+- [x] `source/Runtime/ActionDispatcher.h`
+- [x] `source/Runtime/ActionDispatcher.cpp`
+- [x] `tests/Runtime/ActionDispatcherTests.cpp`
 - [x] CMake target 和 CTest 接入
 
 不做：
 
-- [x] 不实现 `ZWindowsSendInputBackend`。
-- [x] 不调用 Win32、Qt、SDL 或 QML。
-- [x] 不实现 `ZActionDispatcher`。
 - [x] 不实现 `ZMappingSession`。
-- [x] 不实现输出后端 factory。
-- [x] 不做动作去重、按键状态管理或释放补偿。
-- [x] 不做 key name 到平台 virtual-key 的转换。
+- [x] 不订阅 `ZInputRuntime` 或输入后端。
+- [x] 不调用 `ZMappingEngine`。
+- [x] 不实现 Windows SendInput。
+- [x] 不做动作去重、按键状态缓存或释放补偿。
+- [x] 不做批量事务回滚；批量派发中途失败时只记录失败并继续/停止的策略本轮明确。
+- [x] 不接 UI 日志模型。
 
 ## Design Decisions
 
-- [x] `IOutputBackend` 属于 Backend 层，可以依赖 Core `SAction` 和 `ProjectCore.h`。
-- [x] `IOutputBackend` 不依赖 Runtime、UI、Qt、SDL 或平台 API。
-- [x] `IOutputBackend::SendAction()` 返回 `TResult<void>`，后续真实后端可表达失败原因。
-- [x] `IOutputBackend::GetStatus()` 返回轻量状态快照，供 Runtime 和 UI 观察。
-- [x] `ZNullOutputBackend` 只记录动作，不产生系统级输入。
-- [x] `ZNullOutputBackend` 不做线程安全承诺，本轮沿用单线程测试假设。
-- [x] `ZNullOutputBackend` 默认 Ready，可通过测试接口切换到 Error/Unavailable。
-- [x] Error/Unavailable 状态下 `SendAction()` 返回失败，不记录动作。
-- [x] `EActionType::None` 本轮作为无效动作处理，`SendAction()` 返回失败，不记录动作。
+- [x] `ZActionDispatcher` 属于 Runtime 层，可以依赖 Core `SAction` 和 `Backends/Output/OutputBackend.h`。
+- [x] `ZActionDispatcher` 不拥有输出后端；构造时接收 `IOutputBackend&`。
+- [x] `ZActionDispatcher` 禁止拷贝和移动。
+- [x] 本轮不做线程安全承诺，沿用单线程测试假设。
+- [x] 默认启用派发，支持 `SetEnabled(false)` 暂停输出。
+- [x] disabled 状态下不调用后端，返回失败结果，并记录一次派发失败。
+- [x] 批量派发按输入 action 顺序调用后端，遇到失败后继续派发剩余 action，最终返回失败。
+- [x] 最近派发记录设置固定容量，默认 `128`；超过容量时丢弃最旧记录。
+- [x] 派发记录中保存 action 副本、成功标记和消息。
 
 ## Proposed Types
 
-### Output Backend Interface
-
-- [x] 新增 `enum class EOutputBackendState`：
-  - `Unavailable`
-  - `Ready`
-  - `Error`
-- [x] 新增 `struct SOutputBackendStatus`：
-  - `EOutputBackendState State = EOutputBackendState::Unavailable`
+- [x] 新增 `struct SActionDispatchRecord`：
+  - `SAction Action`
+  - `bool bSucceeded = false`
   - `StdString Message`
-- [x] 新增 `class IOutputBackend`：
-  - 虚析构
-  - 禁止拷贝和移动
-  - `ZERO_NODISCARD virtual TResult<void> SendAction(const SAction& Action) = 0`
-  - `ZERO_NODISCARD virtual SOutputBackendStatus GetStatus() const = 0`
-
-### Null Output Backend
-
-- [x] 新增 `class ZNullOutputBackend final : public IOutputBackend`。
-- [x] 提供：
-  - `TResult<void> SendAction(const SAction& Action) override`
-  - `SOutputBackendStatus GetStatus() const override`
-  - `TVector<SAction> ListActions() const`
-  - `uint32 GetActionCount() const noexcept`
-  - `void ClearActions()`
-  - `void SetStatus(SOutputBackendStatus Status)`
-  - `void SetReady(StdString Message = "ready")`
-  - `void SetUnavailable(StdString Message)`
-  - `void SetError(StdString Message)`
-- [x] `ListActions()` 返回快照拷贝，调用方修改不影响内部记录。
+- [x] 新增 `struct SActionDispatchSummary`：
+  - `uint32 RequestedCount = 0`
+  - `uint32 SucceededCount = 0`
+  - `uint32 FailedCount = 0`
+  - `bool bSucceeded = true`
+  - `StdString Message`
+- [x] 新增 `class ZActionDispatcher`：
+  - `static constexpr uint32 MaxRecentRecords = 128`
+  - `explicit ZActionDispatcher(IOutputBackend& OutputBackend)`
+  - `TResult<void> DispatchAction(const SAction& Action)`
+  - `SActionDispatchSummary DispatchActions(const TVector<SAction>& Actions)`
+  - `bool IsEnabled() const noexcept`
+  - `void SetEnabled(bool bEnabled) noexcept`
+  - `SOutputBackendStatus GetOutputStatus() const`
+  - `TVector<SActionDispatchRecord> ListRecentRecords() const`
+  - `uint32 GetRecentRecordCount() const noexcept`
+  - `void ClearRecentRecords()`
 
 ## Behavior
 
-- [x] 默认构造后状态为 `Ready`，Message 为 `"ready"`。
-- [x] `SendAction()` 在 Ready 状态下记录非 `None` 动作并返回成功。
-- [x] `SendAction()` 在 Ready 状态下遇到 `EActionType::None` 返回失败，不记录动作。
-- [x] `SendAction()` 在 Unavailable 状态下返回失败，不记录动作。
-- [x] `SendAction()` 在 Error 状态下返回失败，不记录动作。
-- [x] `SetReady()` 切换状态为 Ready，并更新 Message。
-- [x] `SetUnavailable()` 切换状态为 Unavailable，并更新 Message。
-- [x] `SetError()` 切换状态为 Error，并更新 Message。
-- [x] `ClearActions()` 只清空动作记录，不改变状态。
-- [x] `ListActions()` 返回动作快照拷贝。
+- [x] 默认构造后 `IsEnabled() == true`。
+- [x] `DispatchAction()` enabled 时调用 `OutputBackend.SendAction(Action)`。
+- [x] `DispatchAction()` 成功时记录 `bSucceeded = true`，Message 可为 `"ok"`。
+- [x] `DispatchAction()` 失败时记录 `bSucceeded = false`，Message 使用后端错误信息。
+- [x] `DispatchAction()` disabled 时不调用后端，返回失败并记录 disabled 消息。
+- [x] `DispatchActions()` 对空列表返回成功 summary，Requested/Succeeded/Failed 都为 0。
+- [x] `DispatchActions()` 按顺序派发每个 action。
+- [x] `DispatchActions()` 即使某个 action 失败，也继续派发后续 action。
+- [x] `DispatchActions()` 只要有任一失败，summary `bSucceeded = false`。
+- [x] `DispatchActions()` 汇总 Requested/Succeeded/Failed 数量。
+- [x] `GetOutputStatus()` 透传 `OutputBackend.GetStatus()`。
+- [x] `ListRecentRecords()` 返回快照拷贝。
+- [x] `ClearRecentRecords()` 只清空记录，不改变 enabled 状态。
+- [x] 最近记录超过 128 条时丢弃最旧记录。
 
 ## Error Semantics
 
-- [x] `EActionType::None` 的错误信息应包含 `"none"` 或 `"invalid"`，方便测试和日志定位。
-- [x] Unavailable 状态的错误信息使用当前 `SOutputBackendStatus::Message`。
-- [x] Error 状态的错误信息使用当前 `SOutputBackendStatus::Message`。
-- [x] 本轮不引入自定义错误码映射；使用 ZeroStyle `TResult<void>` / `SError` 的现有能力。
+- [x] disabled 状态错误消息包含 `"disabled"`。
+- [x] 单个 action 后端失败时，`DispatchAction()` 返回失败。
+- [x] 批量派发用 `SActionDispatchSummary` 表达部分成功，不返回 `TResult`，避免隐藏部分成功信息。
+- [x] 本轮不新增自定义错误码，使用 ZeroStyle `TResult<void>` / `SError` 能力。
 
 ## CMake Plan
 
-- [x] 新建 `MappyZOutputBackends` static library target。
-- [x] 源文件包含 `source/Backends/Output/NullOutputBackend.cpp`。
-- [x] `MappyZOutputBackends` public 链接 `MappyZCore`。
-- [x] 为 `MappyZOutputBackends` 添加与其他 target 一致的 warning 选项。
-- [x] 新增 `MappyZOutputBackendTests` 测试目标。
-- [x] 测试目标链接 `MappyZOutputBackends` 和 `Catch2::Catch2WithMain`。
-- [x] 通过 `catch_discover_tests(MappyZOutputBackendTests)` 注册到 CTest。
-- [x] 不修改主应用或 Runtime target。
+- [x] 将 `source/Runtime/ActionDispatcher.cpp` 加入 `MappyZRuntime`。
+- [x] `MappyZRuntime` public 链接 `MappyZOutputBackends`。
+- [x] 新增 `tests/Runtime/ActionDispatcherTests.cpp`，加入 `MappyZRuntimeTests`。
+- [x] 测试使用 `ZNullOutputBackend`。
+- [x] 不新增第三方依赖。
+- [x] 不修改主应用 target。
 
 ## Tests
 
-- [x] `IOutputBackend` 头文件可 include 编译。
-- [x] `ZNullOutputBackend` 默认状态为 Ready。
-- [x] Ready 状态下发送 Keyboard action 会记录并返回成功。
-- [x] Ready 状态下发送 MouseButton action 会记录并返回成功。
-- [x] Ready 状态下发送 MouseMove action 会记录并返回成功。
-- [x] Ready 状态下发送 `EActionType::None` 返回失败且不记录。
-- [x] Unavailable 状态下 `SendAction()` 返回失败且不记录。
-- [x] Error 状态下 `SendAction()` 返回失败且不记录。
-- [x] `SetReady()` 可从 Error/Unavailable 恢复 Ready。
-- [x] `ListActions()` 返回快照拷贝。
-- [x] `ClearActions()` 清空记录但不改变状态。
-- [x] `GetActionCount()` 返回当前记录数量。
-- [x] `SetStatus()` 能设置完整状态快照。
-- [x] 新增 Output Backend 文件不包含 Qt、QML、SDL 或 Win32 头。
+- [x] 默认 enabled。
+- [x] 单个 Keyboard action 会派发到 Null 后端并记录成功。
+- [x] 单个 MouseButton action 会派发到 Null 后端并记录成功。
+- [x] 后端 Error 状态下单个派发返回失败并记录失败。
+- [x] disabled 状态下不调用后端并记录失败。
+- [x] disabled 后重新 enabled 可以恢复派发。
+- [x] 空批量派发返回成功 summary。
+- [x] 批量派发按顺序发送多个 action。
+- [x] 批量派发遇到失败后继续派发后续 action。
+- [x] 批量 summary 正确统计 requested/succeeded/failed。
+- [x] `GetOutputStatus()` 透传后端状态。
+- [x] `ListRecentRecords()` 返回快照拷贝。
+- [x] `ClearRecentRecords()` 清空记录但保持 enabled 状态。
+- [x] 最近记录容量上限 128 生效。
+- [x] 新增 Runtime 文件不包含 Qt、QML、SDL 或 Win32 头。
 
 ## Acceptance Criteria
 
@@ -144,11 +137,11 @@ MappyZ 本轮只借鉴输出后端分层，不照搬实现：
 - [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
 - [x] `git diff --check` 通过。
 - [x] 新增文本文件使用 CRLF 行尾。
-- [x] `IOutputBackend` 不依赖 Runtime、UI 或平台层。
-- [x] `ZNullOutputBackend` 能记录动作并覆盖失败路径。
+- [x] `ZActionDispatcher` 不依赖 UI、SDL 或平台层。
+- [x] `MappyZRuntimeTests` 覆盖成功、失败、disabled、批量和记录容量行为。
 
 ## Follow-Up Module
 
-- [ ] 下一模块建议实现 `Runtime/ActionDispatcher.h/.cpp`，将 `SAction` 派发给当前 `IOutputBackend`。
-- [ ] 再下一步实现 `Runtime/MappingSession.h/.cpp`，串联 `ZInputRuntime`、`ZMappingEngine` 和 `ZActionDispatcher`。
+- [ ] 下一模块建议实现 `Runtime/MappingSession.h/.cpp`，串联 `ZMappingEngine` 和 `ZActionDispatcher`。
+- [ ] 再下一步实现 profile JSON loader/saver，开始支持真实配置文件。
 - [ ] 后续实现 `ZWindowsSendInputBackend`，把 `SAction` 转换为 Windows 键盘和鼠标输出。

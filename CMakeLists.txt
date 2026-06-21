@@ -84,12 +84,14 @@ endif()
 add_library(MappyZRuntime STATIC
     source/Runtime/DeviceManager.cpp
     source/Runtime/InputRuntime.cpp
+    source/Runtime/ActionDispatcher.cpp
 )
 
 target_link_libraries(MappyZRuntime
     PUBLIC
         MappyZCore
         MappyZInputBackends
+        MappyZOutputBackends
 )
 
 if(MSVC)
@@ -245,6 +247,7 @@ if(BUILD_TESTING)
     add_executable(MappyZRuntimeTests
         tests/Runtime/DeviceManagerTests.cpp
         tests/Runtime/InputRuntimeTests.cpp
+        tests/Runtime/ActionDispatcherTests.cpp
     )
 
     target_link_libraries(MappyZRuntimeTests
