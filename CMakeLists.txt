@@ -85,6 +85,7 @@ add_library(MappyZRuntime STATIC
     source/Runtime/DeviceManager.cpp
     source/Runtime/InputRuntime.cpp
     source/Runtime/ActionDispatcher.cpp
+    source/Runtime/MappingSession.cpp
 )
 
 target_link_libraries(MappyZRuntime
@@ -248,6 +249,7 @@ if(BUILD_TESTING)
         tests/Runtime/DeviceManagerTests.cpp
         tests/Runtime/InputRuntimeTests.cpp
         tests/Runtime/ActionDispatcherTests.cpp
+        tests/Runtime/MappingSessionTests.cpp
     )
 
     target_link_libraries(MappyZRuntimeTests
