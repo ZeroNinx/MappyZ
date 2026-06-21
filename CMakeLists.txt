@@ -37,6 +37,23 @@ target_link_libraries(MappyZCore
         Zero::ZeroStyle
 )
 
+# ── 输入后端模块 ──
+
+add_library(MappyZInputBackends STATIC
+    source/Backends/Input/FakeInputBackend.cpp
+)
+
+target_link_libraries(MappyZInputBackends
+    PUBLIC
+        MappyZCore
+)
+
+if(MSVC)
+    target_compile_options(MappyZInputBackends PRIVATE /W4)
+else()
+    target_compile_options(MappyZInputBackends PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+endif()
+
 # ── 主应用 ──
 
 qt_add_executable(MappyZ
@@ -136,4 +153,24 @@ if(BUILD_TESTING)
     endif()
 
     catch_discover_tests(MappyZCoreTests)
+
+    # ── 输入后端测试 ──
+
+    add_executable(MappyZInputBackendTests
+        tests/Backends/Input/FakeInputBackendTests.cpp
+    )
+
+    target_link_libraries(MappyZInputBackendTests
+        PRIVATE
+            MappyZInputBackends
+            Catch2::Catch2WithMain
+    )
+
+    if(MSVC)
+        target_compile_options(MappyZInputBackendTests PRIVATE /W4)
+    else()
+        target_compile_options(MappyZInputBackendTests PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+    endif()
+
+    catch_discover_tests(MappyZInputBackendTests)
 endif()
