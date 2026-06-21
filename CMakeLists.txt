@@ -62,6 +62,23 @@ else()
     target_compile_options(MappyZInputBackends PRIVATE -Wall -Wextra -Wconversion -Wshadow)
 endif()
 
+# ── 输出后端模块 ──
+
+add_library(MappyZOutputBackends STATIC
+    source/Backends/Output/NullOutputBackend.cpp
+)
+
+target_link_libraries(MappyZOutputBackends
+    PUBLIC
+        MappyZCore
+)
+
+if(MSVC)
+    target_compile_options(MappyZOutputBackends PRIVATE /W4)
+else()
+    target_compile_options(MappyZOutputBackends PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+endif()
+
 # ── Runtime 模块 ──
 
 add_library(MappyZRuntime STATIC
@@ -202,6 +219,26 @@ if(BUILD_TESTING)
     endif()
 
     catch_discover_tests(MappyZInputBackendTests)
+
+    # ── 输出后端测试 ──
+
+    add_executable(MappyZOutputBackendTests
+        tests/Backends/Output/NullOutputBackendTests.cpp
+    )
+
+    target_link_libraries(MappyZOutputBackendTests
+        PRIVATE
+            MappyZOutputBackends
+            Catch2::Catch2WithMain
+    )
+
+    if(MSVC)
+        target_compile_options(MappyZOutputBackendTests PRIVATE /W4)
+    else()
+        target_compile_options(MappyZOutputBackendTests PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+    endif()
+
+    catch_discover_tests(MappyZOutputBackendTests)
 
     # ── Runtime 测试 ──
 

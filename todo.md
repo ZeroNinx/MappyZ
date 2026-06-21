@@ -1,139 +1,142 @@
-# TODO: Core Mapping Engine Module
+# TODO: Output Backend Interface and Null Backend Module
 
 ## Next Step
 
-下一步实现 `Core/MappingEngine.h/.cpp` 的最小版本。这个模块消费单个 `SInputEvent` 和一个 `SMappingProfile` 快照，输出按 profile 规则命中的 `TVector<SAction>`。
+下一步实现 `Backends/Output` 的最小版本：`IOutputBackend` 纯接口和 `ZNullOutputBackend` 测试后端。这个模块接收 `SAction`，记录输出动作和后端状态，为后续 `ZActionDispatcher`、`ZMappingSession` 和 Windows SendInput 后端提供稳定边界。
 
 优先做这个模块的理由：
 
-- `SInputEvent`、`SAction`、`SMappingRule`、`SMappingProfile` 已经稳定，下一步需要把这些 Core 数据真正串起来。
-- `ZMappingEngine` 是后续 `ZMappingSession`、输出派发、profile loader 和绑定 UI 的共同核心。
-- 先做纯 Core 映射算法，可以避免 Runtime、SDL、Win32 和 QML 影响规则语义。
-- 有了 MappingEngine 后，后续 `ZNullOutputBackend` 和 `ZActionDispatcher` 可以直接做端到端 Runtime 测试。
+- `ZMappingEngine` 已经能把 `SInputEvent + SMappingProfile` 转成 `SAction`，但目前没有输出侧接口承接动作。
+- 先做 `ZNullOutputBackend` 可以在不调用 Win32 API 的情况下测试 Runtime 派发链路。
+- 输出后端边界需要早定，避免后续 `ZActionDispatcher` 直接依赖 Windows SendInput 或 UI 状态。
+- Null 后端可以作为日志、调试面板和端到端测试的观察点。
 
 ## AntiMicroX Architecture Reference
 
-AntiMicroX 的映射路径大体是控件对象收到输入后，沿着 set / slot 配置执行对应输出。它的优势是控件层能直接处理复杂行为，例如 set 切换、长按、宏和特殊鼠标模式。
+AntiMicroX 通过 event handler factory 在不同平台输出实现之间切换，例如 SendInput、XTest 或 uinput。这个方向值得借鉴：映射层只产生动作，平台输出由后端封装。
 
-MappyZ 本轮只借鉴其中的映射语义，不照搬执行结构：
+MappyZ 本轮只借鉴输出后端分层，不照搬实现：
 
-- [x] 借鉴”一个输入可以命中多条映射并产生多个输出动作”的行为。
-- [x] 借鉴”按钮按下和抬起都要能驱动输出状态”的语义。
-- [x] 借鉴”摇杆映射鼠标移动需要 deadzone 和 sensitivity”的基础参数。
-- [x] 改进为 stateless 纯函数式引擎：`SInputEvent + SMappingProfile -> TVector<SAction>`。
-- [x] 不让控件对象拥有映射逻辑；控件状态仍由 Runtime 管，映射决策由 Core 引擎做。
-- [x] 本轮不实现 AntiMicroX 的 set/layer、宏、鼠标加速度曲线、连发、长按短按或 mode shift。
-- [x] 不复制 AntiMicroX 的代码、类结构、XML 格式、资源或文案。
+- [x] 借鉴”输出后端接口统一，平台实现可替换”的结构。
+- [x] 借鉴”需要查询输出后端状态和错误信息”的诊断思路。
+- [x] 改进为 `IOutputBackend` 只接收 Core `SAction`，不理解 UI、profile 或输入设备。
+- [x] 先做 `ZNullOutputBackend`，不直接进入 Windows SendInput。
+- [x] 后续可以添加 factory 或注册表，但本轮不引入 singleton 或全局 mutable 状态。
+- [x] 不复制 AntiMicroX 的 event handler 代码、类结构、平台映射表或资源。
 
 ## Scope
 
-本轮只覆盖 Core 映射引擎最小行为。
+本轮只覆盖输出后端接口和 Null 后端。
 
 包含：
 
-- [x] `source/Core/MappingEngine.h`
-- [x] `source/Core/MappingEngine.cpp`
-- [x] `tests/Core/MappingEngineTests.cpp`
-- [x] CMake target 调整和测试接入
+- [x] `source/Backends/Output/OutputBackend.h`
+- [x] `source/Backends/Output/NullOutputBackend.h`
+- [x] `source/Backends/Output/NullOutputBackend.cpp`
+- [x] `tests/Backends/Output/NullOutputBackendTests.cpp`
+- [x] CMake target 和 CTest 接入
 
 不做：
 
-- [x] 不实现 Runtime `ZMappingSession`。
+- [x] 不实现 `ZWindowsSendInputBackend`。
+- [x] 不调用 Win32、Qt、SDL 或 QML。
 - [x] 不实现 `ZActionDispatcher`。
-- [x] 不实现 `IOutputBackend` 或 `ZNullOutputBackend`。
-- [x] 不实现 JSON profile loader/saver。
-- [x] 不实现 profile 匹配、保存、迁移或冲突检测。
-- [x] 不实现状态去重、边沿检测或”只在阈值跨越时触发”。
-- [x] 不实现复杂 axis curve、鼠标加速度、宏、连发、长按短按、组合键、layer 或 mode shift。
+- [x] 不实现 `ZMappingSession`。
+- [x] 不实现输出后端 factory。
+- [x] 不做动作去重、按键状态管理或释放补偿。
+- [x] 不做 key name 到平台 virtual-key 的转换。
 
 ## Design Decisions
 
-- [x] `ZMappingEngine` 属于 Core 层，只能依赖 `ProjectCore.h`、`InputEvent.h`、`Action.h`、`MappingProfile.h`。
-- [x] `ZMappingEngine` 是无状态对象；不保存上一次输入、不保存按键是否已按下、不访问 Runtime 状态。
-- [x] `MapInput()` 不修改传入的 `SInputEvent` 或 `SMappingProfile`。
-- [x] 输出动作按 profile 中规则顺序追加，保持 deterministic。
-- [x] disabled profile 直接返回空 action 列表。
-- [x] disabled rule 会被跳过。
-- [x] 空 profile 或无匹配规则返回空 action 列表。
-- [x] 本轮遇到 action type 和 payload variant 不匹配时跳过该规则，不崩溃。
-- [x] 本轮不返回错误；没有命中或配置不支持都返回空 action 列表。
+- [x] `IOutputBackend` 属于 Backend 层，可以依赖 Core `SAction` 和 `ProjectCore.h`。
+- [x] `IOutputBackend` 不依赖 Runtime、UI、Qt、SDL 或平台 API。
+- [x] `IOutputBackend::SendAction()` 返回 `TResult<void>`，后续真实后端可表达失败原因。
+- [x] `IOutputBackend::GetStatus()` 返回轻量状态快照，供 Runtime 和 UI 观察。
+- [x] `ZNullOutputBackend` 只记录动作，不产生系统级输入。
+- [x] `ZNullOutputBackend` 不做线程安全承诺，本轮沿用单线程测试假设。
+- [x] `ZNullOutputBackend` 默认 Ready，可通过测试接口切换到 Error/Unavailable。
+- [x] Error/Unavailable 状态下 `SendAction()` 返回失败，不记录动作。
+- [x] `EActionType::None` 本轮作为无效动作处理，`SendAction()` 返回失败，不记录动作。
 
-## Interface Contract
+## Proposed Types
 
-- [x] 新增 `class ZMappingEngine final`。
+### Output Backend Interface
+
+- [x] 新增 `enum class EOutputBackendState`：
+  - `Unavailable`
+  - `Ready`
+  - `Error`
+- [x] 新增 `struct SOutputBackendStatus`：
+  - `EOutputBackendState State = EOutputBackendState::Unavailable`
+  - `StdString Message`
+- [x] 新增 `class IOutputBackend`：
+  - 虚析构
+  - 禁止拷贝和移动
+  - `ZERO_NODISCARD virtual TResult<void> SendAction(const SAction& Action) = 0`
+  - `ZERO_NODISCARD virtual SOutputBackendStatus GetStatus() const = 0`
+
+### Null Output Backend
+
+- [x] 新增 `class ZNullOutputBackend final : public IOutputBackend`。
 - [x] 提供：
-  - `ZERO_NODISCARD TVector<SAction> MapInput(const SInputEvent& Event, const SMappingProfile& Profile) const;`
-- [x] 可选 private helper：
-  - `bool DoesRuleMatchInput(const SInputEvent& Event, const SMappingRule& Rule) const`
-  - `TOptional<SAction> BuildAction(const SInputEvent& Event, const SMappingRule& Rule) const`
-  - `TOptional<SAction> BuildPressReleaseAction(const SInputEvent& Event, const SMappingRule& Rule) const`
-  - `TOptional<SAction> BuildAnalogAction(const SInputEvent& Event, const SMappingRule& Rule) const`
+  - `TResult<void> SendAction(const SAction& Action) override`
+  - `SOutputBackendStatus GetStatus() const override`
+  - `TVector<SAction> ListActions() const`
+  - `uint32 GetActionCount() const noexcept`
+  - `void ClearActions()`
+  - `void SetStatus(SOutputBackendStatus Status)`
+  - `void SetReady(StdString Message = "ready")`
+  - `void SetUnavailable(StdString Message)`
+  - `void SetError(StdString Message)`
+- [x] `ListActions()` 返回快照拷贝，调用方修改不影响内部记录。
 
-## Matching Behavior
+## Behavior
 
-- [x] `ControlId` 必须精确匹配。
-- [x] `ControlType` 必须精确匹配。
-- [x] Button / Hat 的 `PressRelease` 规则接受 `Pressed` 和 `Released` 事件。
-- [x] Button / Hat 的 `PressRelease` 规则忽略 `Changed` 事件。
-- [x] Trigger / Axis1D 的阈值规则接受 `Changed` 事件。
-- [x] Trigger / Axis1D 的激活判断为 `Event.Value >= Rule.Input.Threshold`。
-- [x] Axis2D 的 `Analog` 规则接受 `Changed` 事件。
-- [x] Axis2D 的 deadzone 使用径向长度判断：`sqrt(X*X + Y*Y) <= Deadzone` 时不输出动作。
-- [x] 本轮不 clamp `Threshold`、`Deadzone` 或 `Sensitivity`；配置有效性留给后续 profile validation。
+- [x] 默认构造后状态为 `Ready`，Message 为 `"ready"`。
+- [x] `SendAction()` 在 Ready 状态下记录非 `None` 动作并返回成功。
+- [x] `SendAction()` 在 Ready 状态下遇到 `EActionType::None` 返回失败，不记录动作。
+- [x] `SendAction()` 在 Unavailable 状态下返回失败，不记录动作。
+- [x] `SendAction()` 在 Error 状态下返回失败，不记录动作。
+- [x] `SetReady()` 切换状态为 Ready，并更新 Message。
+- [x] `SetUnavailable()` 切换状态为 Unavailable，并更新 Message。
+- [x] `SetError()` 切换状态为 Error，并更新 Message。
+- [x] `ClearActions()` 只清空动作记录，不改变状态。
+- [x] `ListActions()` 返回动作快照拷贝。
 
-## Action Building Behavior
+## Error Semantics
 
-- [x] Keyboard `PressRelease`：
-  - 输入 `Pressed` 输出 `SKeyboardAction::bPressed = true`
-  - 输入 `Released` 输出 `SKeyboardAction::bPressed = false`
-  - Key 从规则配置中的 `SKeyboardAction::Key` 复制
-- [x] MouseButton `PressRelease`：
-  - 输入 `Pressed` 输出 `SMouseButtonAction::bPressed = true`
-  - 输入 `Released` 输出 `SMouseButtonAction::bPressed = false`
-  - Button 从规则配置中的 `SMouseButtonAction::Button` 复制
-- [x] Trigger / Axis1D 到 Keyboard 或 MouseButton：
-  - `Value >= Threshold` 输出 pressed action
-  - `Value < Threshold` 输出 released action
-  - 这是 stateless 连续判断，可能重复输出同一 pressed/released 状态，后续 Runtime 再做去重
-- [x] Axis2D 到 MouseMove：
-  - 只支持 `EActionType::MouseMove`
-  - 输出 `DeltaX = Event.Axis2D.X * Rule.Output.Sensitivity`
-  - 输出 `DeltaY = Event.Axis2D.Y * Rule.Output.Sensitivity`
-  - deadzone 内返回空
-- [x] `EMappingActionMode::Hold` 本轮暂不实现，遇到时返回空；后续需要 Runtime 状态配合。
-- [x] `EActionType::MouseWheel` 本轮暂不实现，遇到时返回空。
+- [x] `EActionType::None` 的错误信息应包含 `"none"` 或 `"invalid"`，方便测试和日志定位。
+- [x] Unavailable 状态的错误信息使用当前 `SOutputBackendStatus::Message`。
+- [x] Error 状态的错误信息使用当前 `SOutputBackendStatus::Message`。
+- [x] 本轮不引入自定义错误码映射；使用 ZeroStyle `TResult<void>` / `SError` 的现有能力。
 
 ## CMake Plan
 
-- [x] 将 `MappyZCore` 从 `INTERFACE` library 调整为 `STATIC` library。
-- [x] `MappyZCore` 源文件包含 `source/Core/MappingEngine.cpp`。
-- [x] `MappyZCore` 继续 public 暴露 `${CMAKE_CURRENT_SOURCE_DIR}/source` include path。
-- [x] `MappyZCore` 继续 public 链接 `Zero::ZeroStyle`。
-- [x] 为 `MappyZCore` 添加与其他 C++ target 一致的 warning 选项。
-- [x] 新增 `tests/Core/MappingEngineTests.cpp`，加入 `MappyZCoreTests`。
-- [x] 不新增第三方依赖。
-- [x] 不修改主应用 QML 或 Runtime 代码。
+- [x] 新建 `MappyZOutputBackends` static library target。
+- [x] 源文件包含 `source/Backends/Output/NullOutputBackend.cpp`。
+- [x] `MappyZOutputBackends` public 链接 `MappyZCore`。
+- [x] 为 `MappyZOutputBackends` 添加与其他 target 一致的 warning 选项。
+- [x] 新增 `MappyZOutputBackendTests` 测试目标。
+- [x] 测试目标链接 `MappyZOutputBackends` 和 `Catch2::Catch2WithMain`。
+- [x] 通过 `catch_discover_tests(MappyZOutputBackendTests)` 注册到 CTest。
+- [x] 不修改主应用或 Runtime target。
 
 ## Tests
 
-- [x] 空 profile 返回空 action 列表。
-- [x] disabled profile 返回空 action 列表。
-- [x] disabled rule 不参与映射。
-- [x] control id 不匹配时返回空。
-- [x] control type 不匹配时返回空。
-- [x] Button -> Keyboard 在 Pressed 时输出 pressed key action。
-- [x] Button -> Keyboard 在 Released 时输出 released key action。
-- [x] Button -> MouseButton 在 Pressed / Released 时输出对应 mouse button 状态。
-- [x] 多条匹配规则按 profile 顺序输出多个 action。
-- [x] Trigger below threshold 输出 released action。
-- [x] Trigger above threshold 输出 pressed action。
-- [x] Axis2D deadzone 内不输出 MouseMove。
-- [x] Axis2D deadzone 外输出按 sensitivity 缩放的 MouseMove。
-- [x] action type 和 payload 不匹配时跳过规则且不崩溃。
-- [x] `Hold` mode 本轮返回空。
-- [x] `MouseWheel` 本轮返回空。
-- [x] `MappingEngine.h` 可单独 include 编译。
-- [x] Core 新文件不包含 Qt、QML、SDL 或 Win32 头。
+- [x] `IOutputBackend` 头文件可 include 编译。
+- [x] `ZNullOutputBackend` 默认状态为 Ready。
+- [x] Ready 状态下发送 Keyboard action 会记录并返回成功。
+- [x] Ready 状态下发送 MouseButton action 会记录并返回成功。
+- [x] Ready 状态下发送 MouseMove action 会记录并返回成功。
+- [x] Ready 状态下发送 `EActionType::None` 返回失败且不记录。
+- [x] Unavailable 状态下 `SendAction()` 返回失败且不记录。
+- [x] Error 状态下 `SendAction()` 返回失败且不记录。
+- [x] `SetReady()` 可从 Error/Unavailable 恢复 Ready。
+- [x] `ListActions()` 返回快照拷贝。
+- [x] `ClearActions()` 清空记录但不改变状态。
+- [x] `GetActionCount()` 返回当前记录数量。
+- [x] `SetStatus()` 能设置完整状态快照。
+- [x] 新增 Output Backend 文件不包含 Qt、QML、SDL 或 Win32 头。
 
 ## Acceptance Criteria
 
@@ -141,11 +144,11 @@ MappyZ 本轮只借鉴其中的映射语义，不照搬执行结构：
 - [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
 - [x] `git diff --check` 通过。
 - [x] 新增文本文件使用 CRLF 行尾。
-- [x] `ZMappingEngine` 不依赖 Runtime、Backend、UI 或平台层。
-- [x] `MappyZCoreTests` 覆盖本轮最小映射行为。
+- [x] `IOutputBackend` 不依赖 Runtime、UI 或平台层。
+- [x] `ZNullOutputBackend` 能记录动作并覆盖失败路径。
 
 ## Follow-Up Module
 
-- [ ] 下一模块建议实现 `Backends/Output/OutputBackend.h` 和 `ZNullOutputBackend`，让动作输出可以被 Runtime 测试记录。
-- [ ] 再下一步实现 `Runtime/ActionDispatcher.h/.cpp`，将 `SAction` 派发给当前输出后端。
-- [ ] 后续实现 `Runtime/MappingSession.h/.cpp`，串联 `ZInputRuntime`、`ZMappingEngine` 和 `ZActionDispatcher`。
+- [ ] 下一模块建议实现 `Runtime/ActionDispatcher.h/.cpp`，将 `SAction` 派发给当前 `IOutputBackend`。
+- [ ] 再下一步实现 `Runtime/MappingSession.h/.cpp`，串联 `ZInputRuntime`、`ZMappingEngine` 和 `ZActionDispatcher`。
+- [ ] 后续实现 `ZWindowsSendInputBackend`，把 `SAction` 转换为 Windows 键盘和鼠标输出。
