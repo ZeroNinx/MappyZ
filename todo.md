@@ -1,130 +1,114 @@
-# TODO: Core Input Model Module
+# TODO: Input Backend Interface Module
 
 ## Next Step
 
-建议下一步实现 `Core Input Model` 模块。这个模块只定义项目内部输入、设备、控件和动作数据结构，不接入 Qt/QML、SDL 或 Win32。它是 Milestone 1 的 `SInputEvent` 和后续 Milestone 2 的 `ZMappingEngine` 的共同基础。
+下一步实现 `Backends/Input` 接口层。这个模块定义输入后端的统一契约，并提供一个可测试的假输入后端，用来在不接入 SDL3、不启动真实输入线程、不碰 QML 的情况下验证设备枚举、设备连接/断开回调和输入事件回调。
 
 优先做这个模块的理由：
 
-- 当前仓库已经能启动 UI，但还没有稳定的 C++ 数据契约。
-- SDL3 输入后端必须先把原始事件转换成项目内部 `SInputEvent`。
-- 映射引擎后续只应该依赖纯 Core 类型，不能依赖 SDL、Qt 或平台 API。
-- 范围小，可独立编译验证，不需要先决定完整运行时线程模型。
+- `Core Input Model` 已完成，`SDeviceInfo`、`SDeviceId`、`SInputEvent` 已经可以作为后端边界数据。
+- Milestone 1 的 `ZSdlInputBackend` 需要先有稳定的 `IInputBackend` 接口。
+- 直接接 SDL3 会同时引入第三方依赖、设备生命周期、事件轮询和线程模型；本轮先把接口和测试替身固定下来，风险更小。
+- 假输入后端可以后续用于 Runtime、UI Bridge 和绑定流程测试，不依赖真实手柄。
 
 ## Scope
 
-本轮只覆盖 `source/Core/` 的基础类型和最小构建接入。
+本轮只覆盖输入后端接口层和测试替身。
+
+包含：
+
+- [ ] `source/Backends/Input/InputBackend.h`
+- [ ] `source/Backends/Input/FakeInputBackend.h`
+- [ ] `source/Backends/Input/FakeInputBackend.cpp`
+- [ ] `tests/Backends/Input/FakeInputBackendTests.cpp`
+- [ ] CMake target 和 CTest 接入
 
 不做：
 
 - [ ] 不接入 SDL3。
-- [ ] 不实现输入线程。
-- [ ] 不实现 QML 实时输入显示。
-- [ ] 不实现 profile JSON 读写。
-- [ ] 不实现 `ZMappingEngine`。
-- [ ] 不实现 Windows 输出。
+- [ ] 不实现 `ZSdlInputBackend`。
+- [ ] 不启动输入线程或事件轮询线程。
+- [ ] 不访问 Qt、QML、Win32 或 SDL 头文件。
+- [ ] 不实现 `ZDeviceManager`、`ZInputRuntime` 或 Runtime 队列。
+- [ ] 不把假输入后端暴露给最终用户 UI。
 
-目录取舍：
+## Design Decisions
 
-- [ ] `SDeviceInfo` 本轮放在 `source/Core/DeviceId.h`。这有意偏离 blueprint 中 `Runtime/DeviceInfo.h` 的目录草案，因为 `IInputBackend` 和后续假输入后端都需要返回 `TVector<SDeviceInfo>`；把它放 Core 可以避免 Backend 反向依赖 Runtime。
+- [ ] `IInputBackend` 放在 `source/Backends/Input/InputBackend.h`，只依赖 `Core/DeviceId.h`、`Core/InputEvent.h` 和标准库回调类型。
+- [ ] `IInputBackend::Start()` 返回 `TResult<void>`，用于表达后端初始化失败。
+- [ ] `IInputBackend::Stop()` 为幂等操作，多次调用不应失败。
+- [ ] `IInputBackend::ListDevices()` 返回当前后端已知的设备快照，不暴露内部容器引用。
+- [ ] 回调保留在接口层，后续 Runtime 通过这些回调订阅设备和输入事件。
+- [ ] `FakeInputBackend` 是测试替身，不是生产后端；它只用于单元测试和后续无硬件集成测试。
 
-测试框架取舍：
+## Interface Contract
 
-- [ ] 本轮选择 Catch2 v3，不使用 GoogleTest。理由是 Catch2 v3 对初期 CMake 项目更轻，测试写法更短，不需要预编译库；后续如果项目规模扩大，再评估是否需要迁移。
+- [ ] `IInputBackend` 定义虚析构函数。
+- [ ] `IInputBackend` 禁止拷贝和移动，避免后端生命周期、回调和线程所有权不清晰。
+- [ ] `IInputBackend` 提供：
+  - `ZERO_NODISCARD virtual TResult<void> Start() = 0`
+  - `virtual void Stop() = 0`
+  - `ZERO_NODISCARD virtual bool IsRunning() const noexcept = 0`
+  - `ZERO_NODISCARD virtual TVector<SDeviceInfo> ListDevices() const = 0`
+- [ ] `IInputBackend` 暴露以下回调成员：
+  - `std::function<void(const SDeviceInfo& DeviceInfo)> OnDeviceConnected`
+  - `std::function<void(const SDeviceId& DeviceId)> OnDeviceDisconnected`
+  - `std::function<void(const SInputEvent& Event)> OnInputEvent`
+- [ ] 回调调用顺序由具体后端保证；本轮假后端应按调用者触发顺序同步调用。
 
-## Implementation Plan
+## Fake Backend Behavior
 
-- [ ] 新建 `source/Core/ProjectCore.h`，提供项目基础类型别名和 `ZERO_NODISCARD` 兼容定义。
-  - 直接在 `ProjectCore.h` 内用标准库别名落地，例如 `using StdString = std::string`、`template <typename T> using TVector = std::vector<T>`、`template <typename T> using TOptional = std::optional<T>`。
-  - 不创建假的 `ZeroStyle.h` stub，也不引入虚假的 `Zero::` 命名空间。
-  - 如果 ZeroStyle 基础库之后接入，再把别名切换到 Zero 命名空间。
-  - 保持 Core 不依赖 Qt、QML、SDL、Win32。
+- [ ] `ZFakeInputBackend` 实现 `IInputBackend`。
+- [ ] `ZFakeInputBackend` 初始为 stopped 状态。
+- [ ] `Start()` 将状态切到 running；重复调用返回成功且不重复派发连接事件。
+- [ ] `Stop()` 将状态切到 stopped；重复调用安全无副作用。
+- [ ] `AddDevice(const SDeviceInfo& DeviceInfo)` 加入设备快照。
+- [ ] 如果 backend 正在 running，`AddDevice` 应同步触发 `OnDeviceConnected`。
+- [ ] `RemoveDevice(const SDeviceId& DeviceId)` 从设备快照移除设备。
+- [ ] 如果 backend 正在 running 且设备存在，`RemoveDevice` 应同步触发 `OnDeviceDisconnected`。
+- [ ] `EmitInput(const SInputEvent& Event)` 在 running 状态同步触发 `OnInputEvent`。
+- [ ] stopped 状态下 `EmitInput` 不触发回调。
+- [ ] `ListDevices()` 返回当前设备快照，调用方修改返回值不影响后端内部状态。
+- [ ] 本轮假后端不做线程安全承诺；线程安全留给真实后端或 Runtime 层设计。
 
-- [ ] 新建 `source/Core/DeviceId.h`，定义设备标识和设备匹配所需的最小字段。
-  - `SDeviceId`
-  - `SDeviceInfo`
-  - 字段优先覆盖 `Name`、`Backend`、`VendorId`、`ProductId`、`Guid`、`InstanceId`。
-  - 先只做数据结构，不做匹配算法。
+## CMake Plan
 
-- [ ] 新建 `source/Core/ControlId.h`，集中定义标准控件命名约定。
-  - 保留 `StdString ControlId` 的开放形式，避免过早枚举化导致 SDL 映射受限。
-  - 增加常用控件常量，例如 `button_south`、`right_trigger`、`left_stick`。
-  - 明确字符串使用 `snake_case`，与 profile 的 `control_id` 对齐。
+- [ ] 新建 `MappyZInputBackends` target。
+  - 如果只有接口和一个 `.cpp`，使用 static library。
+  - 链接 `MappyZCore`。
+  - include 根继续通过 target 传递，不手动散落 include path。
+- [ ] 主应用本轮不强制链接 `MappyZInputBackends`，除非需要编译探针。
+- [ ] 新增 `MappyZInputBackendTests` 测试目标。
+  - 链接 `MappyZCore`、`MappyZInputBackends`、`Catch2::Catch2WithMain`。
+  - 通过 `catch_discover_tests(MappyZInputBackendTests)` 注册到 CTest。
+- [ ] 保持 Catch2 v3 获取策略不变：优先 vcpkg `find_package`，兜底 FetchContent。
 
-- [ ] 新建 `source/Core/InputEvent.h`，实现 blueprint 中的输入事件契约。
-  - `EInputControlType`
-  - `EInputEventType`
-  - `SAxis2DValue`
-  - `SInputEvent`
-  - `Timestamp` 使用 `std::chrono::steady_clock::time_point`。
-  - `Value` 表达按钮、扳机和单轴值。
-  - `Axis2D` 表达摇杆双轴值，包含 `X` 和 `Y` 两个 `float32`，避免后续接摇杆鼠标映射时修改 `SInputEvent` 契约。
+## Tests
 
-- [ ] 新建 `source/Core/Action.h`，定义平台无关输出动作。
-  - `EActionType`
-  - `SKeyboardAction`
-  - `SMouseButtonAction`
-  - `SMouseMoveAction`
-  - `SAction`
-  - 不包含 Win32 virtual-key、scan-code 或 SDL 枚举。
-
-- [ ] 更新 `CMakeLists.txt`，把 Core 头文件加入目标源列表。
-  - 创建 `MappyZCore` interface library target。
-  - 通过 `target_include_directories(MappyZCore INTERFACE source)` 暴露 Core include 根。
-  - `MappyZ` 可执行目标通过 `target_link_libraries(MappyZ PRIVATE MappyZCore)` 使用 Core。
-  - 先保持 Core 实现 header-only，降低本轮范围。
-  - 保证 MSVC `/W4` 下可编译。
-
-- [ ] 引入基础测试工程，满足 Milestone 0 的测试链路要求。
-  - 使用 Catch2 v3。
-  - 优先 `find_package(Catch2 3 CONFIG QUIET)`，兼容 vcpkg 安装的 Catch2。
-  - 如果本地没有 vcpkg 包，再用 `FetchContent` 拉取 Catch2 v3 作为 fallback。
-  - fallback 版本固定到一个明确 tag，例如 `v3.7.1`，避免每次配置拉到不同代码。
-  - 新增 `MappyZCoreTests` 测试目标，链接 `MappyZCore`。
-  - `MappyZCoreTests` 链接 `Catch2::Catch2WithMain`，不手写测试 main。
-  - 通过 CTest 注册测试，保证 `ctest --test-dir build` 可运行。
-  - 不把测试依赖暴露给主应用目标。
-
-- [ ] 添加最小 Core 编译测试，验证 Core 头和基础默认值。
-  - 包含 `ProjectCore.h`、`DeviceId.h`、`ControlId.h`、`InputEvent.h`、`Action.h`。
-  - 构造一个按钮按下 `SInputEvent` 并检查默认字段。
-  - 构造一个键盘 `SAction` 并检查类型和 payload。
-  - 不在 `source/App/Main.cpp` 中加入临时探针，避免应用入口承担测试职责。
-
-## Test Framework Plan
-
-- [ ] 在根 `CMakeLists.txt` 增加 `include(CTest)`，只在 `BUILD_TESTING` 为 ON 时配置测试。
-- [ ] 新建 `tests/Core/CoreTypesTests.cpp`，使用 Catch2 v3 的 `TEST_CASE` 和 `REQUIRE`。
-- [ ] CMake 获取 Catch2 的优先级：
-  - 首选：`find_package(Catch2 3 CONFIG QUIET)`，适配 vcpkg toolchain。
-  - 兜底：`FetchContent_Declare(Catch2 GIT_REPOSITORY https://github.com/catchorg/Catch2.git GIT_TAG v3.7.1)`。
-- [ ] 测试目标结构：
-  - `add_executable(MappyZCoreTests tests/Core/CoreTypesTests.cpp)`
-  - `target_link_libraries(MappyZCoreTests PRIVATE MappyZCore Catch2::Catch2WithMain)`
-  - `include(Catch)` 后调用 `catch_discover_tests(MappyZCoreTests)`。
-- [ ] 默认开发命令：
-  - 配置：`cmake -S . -B build -DBUILD_TESTING=ON`
-  - 构建：`cmake --build build`
-  - 测试：`ctest --test-dir build --output-on-failure`
-- [ ] 如果离线或网络受限，要求开发者通过 vcpkg 安装 Catch2，而不是提交第三方源码到仓库。
+- [ ] `ZFakeInputBackend` 默认 stopped，设备列表为空。
+- [ ] `Start()` / `Stop()` 状态切换正确，重复调用安全。
+- [ ] `AddDevice` 能更新 `ListDevices()`。
+- [ ] running 状态下 `AddDevice` 触发一次 `OnDeviceConnected`。
+- [ ] stopped 状态下 `AddDevice` 不触发连接回调。
+- [ ] running 状态下 `RemoveDevice` 触发一次 `OnDeviceDisconnected`。
+- [ ] 移除不存在的设备不触发断开回调。
+- [ ] running 状态下 `EmitInput` 触发 `OnInputEvent`，事件内容保持不变。
+- [ ] stopped 状态下 `EmitInput` 不触发输入回调。
+- [ ] `ListDevices()` 返回快照，修改返回值不污染后端内部设备列表。
 
 ## Acceptance Criteria
 
-- [ ] `cmake --build build` 可以通过。
-- [ ] `source/Core/` 下的类型命名遵守 ZeroStyle：`S` 数据结构、`E` 枚举、`T` 模板别名。
-- [ ] Core 头文件不包含 Qt、QML、SDL 或 Win32 头。
-- [ ] `ProjectCore.h` 不依赖不存在的 `ZeroStyle.h`，也不声明假的 `Zero::` 兼容命名空间。
-- [ ] `SInputEvent` 能表达按钮按下/抬起、轴变化、扳机变化和方向键输入。
-- [ ] `SInputEvent` 能直接表达摇杆 `Axis2D` 的 X/Y 双轴值。
-- [ ] `SAction` 能表达键盘键、鼠标按钮和鼠标移动。
-- [ ] `MappyZCore` interface library target 存在，主程序和测试都通过 target 链接使用它。
-- [ ] Catch2 v3 可以通过 vcpkg `find_package` 或 FetchContent fallback 获取。
-- [ ] 至少一个 Core 测试目标可通过 `ctest --test-dir build --output-on-failure` 运行。
-- [ ] 后续 `IInputBackend` 可以只依赖 `SInputEvent` 和 `SDeviceInfo`。
-- [ ] 后续 `ZMappingEngine` 可以只依赖 `SInputEvent`、`SAction` 和 profile 数据。
+- [ ] `cmake --build build` 通过。
+- [ ] `ctest --test-dir build --output-on-failure -C Debug` 通过。
+- [ ] 新增输入后端头文件不包含 Qt、QML、SDL 或 Win32 头。
+- [ ] `MappyZInputBackends` target 存在并链接 `MappyZCore`。
+- [ ] `MappyZInputBackendTests` target 存在并通过 CTest 运行。
+- [ ] `IInputBackend` 可以直接作为后续 `ZSdlInputBackend` 的实现接口。
+- [ ] `ZFakeInputBackend` 可以用于后续 Runtime 和 UI Bridge 的无硬件测试。
+- [ ] 提交前所有新增文本文件使用 CRLF 行尾。
 
 ## Follow-Up Module
 
-- [ ] 完成本模块后，下一模块建议实现 `Backends/Input` 的接口层：`IInputBackend` 和空实现/假实现。
+- [ ] 下一模块建议实现 `Runtime/DeviceManager` 的最小版本，消费 `IInputBackend` 的设备连接/断开回调并维护设备快照。
+- [ ] 再下一步实现 `ZSdlInputBackend`，把 SDL3 设备和事件转换成 `SDeviceInfo` 与 `SInputEvent`。
 - [ ] 在进入 `ZMappingEngine` 前补齐 `source/Core/MappingRule.h` 和 `source/Core/MappingProfile.h`，定义 `SMappingRule`、`SMappingProfile` 与最小匹配字段。
-- [ ] 再下一步接入 `ZSdlInputBackend`，把 SDL3 设备和事件转换成 `SDeviceInfo` 与 `SInputEvent`。
