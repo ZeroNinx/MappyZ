@@ -23,19 +23,27 @@ find_package(Qt6 REQUIRED COMPONENTS Quick)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
-# ── Core 模块（header-only） ──
+# ── Core 模块 ──
 
-add_library(MappyZCore INTERFACE)
+add_library(MappyZCore STATIC
+    source/Core/MappingEngine.cpp
+)
 
 target_include_directories(MappyZCore
-    INTERFACE
+    PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/source
 )
 
 target_link_libraries(MappyZCore
-    INTERFACE
+    PUBLIC
         Zero::ZeroStyle
 )
+
+if(MSVC)
+    target_compile_options(MappyZCore PRIVATE /W4)
+else()
+    target_compile_options(MappyZCore PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+endif()
 
 # ── 输入后端模块 ──
 
@@ -158,6 +166,7 @@ if(BUILD_TESTING)
     add_executable(MappyZCoreTests
         tests/Core/CoreTypesTests.cpp
         tests/Core/MappingProfileTests.cpp
+        tests/Core/MappingEngineTests.cpp
     )
 
     target_link_libraries(MappyZCoreTests

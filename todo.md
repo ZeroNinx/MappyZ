@@ -1,149 +1,139 @@
-# TODO: Core Mapping Profile Contract Module
+# TODO: Core Mapping Engine Module
 
 ## Next Step
 
-下一步实现 `Core/MappingRule.h` 和 `Core/MappingProfile.h` 的最小版本。这个模块只定义映射规则和 profile 快照的数据契约，为后续 `ZMappingEngine`、JSON profile loader、绑定 UI 和 `ZMappingSession` 提供稳定输入。
+下一步实现 `Core/MappingEngine.h/.cpp` 的最小版本。这个模块消费单个 `SInputEvent` 和一个 `SMappingProfile` 快照，输出按 profile 规则命中的 `TVector<SAction>`。
 
 优先做这个模块的理由：
 
-- `SInputEvent`、`SAction`、`ZInputRuntime` 已经存在，但中间缺少“输入如何匹配到动作”的数据结构。
-- `ZMappingEngine` 不应该直接读 JSON 或 UI 状态，它应该只消费 `SMappingProfile` 快照。
-- Profile schema、绑定 UI、保存加载和映射执行都会依赖同一组 Core 类型，先稳定契约可以减少后续破坏性修改。
-- 这是纯 Core 模块，不依赖 Qt、SDL、Win32，适合用单元测试快速锁定默认值和字段语义。
+- `SInputEvent`、`SAction`、`SMappingRule`、`SMappingProfile` 已经稳定，下一步需要把这些 Core 数据真正串起来。
+- `ZMappingEngine` 是后续 `ZMappingSession`、输出派发、profile loader 和绑定 UI 的共同核心。
+- 先做纯 Core 映射算法，可以避免 Runtime、SDL、Win32 和 QML 影响规则语义。
+- 有了 MappingEngine 后，后续 `ZNullOutputBackend` 和 `ZActionDispatcher` 可以直接做端到端 Runtime 测试。
 
 ## AntiMicroX Architecture Reference
 
-AntiMicroX 的整体思路里，设备对象下挂多个 set，每个 set 内包含按钮、轴、摇杆、方向键等控件对象，控件对象再持有各自的映射 slot。这种结构的优点是功能表达直接，复杂绑定和 set 切换容易挂在控件对象上。
+AntiMicroX 的映射路径大体是控件对象收到输入后，沿着 set / slot 配置执行对应输出。它的优势是控件层能直接处理复杂行为，例如 set 切换、长按、宏和特殊鼠标模式。
 
-MappyZ 本轮只借鉴其中的架构意图，不照搬对象图：
+MappyZ 本轮只借鉴其中的映射语义，不照搬执行结构：
 
-- [x] 借鉴”一个设备 profile 包含多条控件映射规则”的模型。
-- [x] 借鉴”规则需要稳定 ID，方便 UI 编辑、保存、冲突提示和日志定位”的做法。
-- [x] 借鉴”输入匹配和输出动作配置分开表达”，便于后续支持不同输出后端。
-- [x] 改进为纯数据 `SMappingProfile` 快照，不使用 QObject 控件树。
-- [x] 改进为规则列表 + 独立 `ZMappingEngine`，不让控件对象直接执行映射。
-- [x] 暂不实现 AntiMicroX 风格的 set/layer/mode shift；MVP 先做单 active profile，后续再加 layer 字段或 profile group。
-- [x] 不复制 AntiMicroX 的代码、XML 格式、类结构、资源或文案。
+- [x] 借鉴”一个输入可以命中多条映射并产生多个输出动作”的行为。
+- [x] 借鉴”按钮按下和抬起都要能驱动输出状态”的语义。
+- [x] 借鉴”摇杆映射鼠标移动需要 deadzone 和 sensitivity”的基础参数。
+- [x] 改进为 stateless 纯函数式引擎：`SInputEvent + SMappingProfile -> TVector<SAction>`。
+- [x] 不让控件对象拥有映射逻辑；控件状态仍由 Runtime 管，映射决策由 Core 引擎做。
+- [x] 本轮不实现 AntiMicroX 的 set/layer、宏、鼠标加速度曲线、连发、长按短按或 mode shift。
+- [x] 不复制 AntiMicroX 的代码、类结构、XML 格式、资源或文案。
 
 ## Scope
 
-本轮只覆盖 Core 映射数据契约。
+本轮只覆盖 Core 映射引擎最小行为。
 
 包含：
 
-- [x] `source/Core/MappingRule.h`
-- [x] `source/Core/MappingProfile.h`
-- [x] `tests/Core/MappingProfileTests.cpp`
-- [x] CMake 测试目标接入
+- [x] `source/Core/MappingEngine.h`
+- [x] `source/Core/MappingEngine.cpp`
+- [x] `tests/Core/MappingEngineTests.cpp`
+- [x] CMake target 调整和测试接入
 
 不做：
 
-- [x] 不实现 `ZMappingEngine`。
+- [x] 不实现 Runtime `ZMappingSession`。
+- [x] 不实现 `ZActionDispatcher`。
+- [x] 不实现 `IOutputBackend` 或 `ZNullOutputBackend`。
 - [x] 不实现 JSON profile loader/saver。
-- [x] 不实现 profile schema 迁移。
-- [x] 不实现 runtime profile manager。
-- [x] 不实现 UI 绑定编辑。
-- [x] 不实现输出后端。
-- [x] 不实现 layer、mode shift、宏、连发、长按短按或组合键。
+- [x] 不实现 profile 匹配、保存、迁移或冲突检测。
+- [x] 不实现状态去重、边沿检测或”只在阈值跨越时触发”。
+- [x] 不实现复杂 axis curve、鼠标加速度、宏、连发、长按短按、组合键、layer 或 mode shift。
 
 ## Design Decisions
 
-- [x] `MappingRule.h` 和 `MappingProfile.h` 属于 Core 层，只能依赖 `ProjectCore.h`、`InputEvent.h`、`DeviceId.h`、`Action.h`。
-- [x] Profile 是运行时可替换的不可变快照；类型本身保持普通可复制数据结构，是否不可变由 Runtime 持有策略保证。
-- [x] 规则不保存平台枚举、SDL 枚举、Win32 virtual-key 或 scan-code。
-- [x] 规则中的输入侧使用项目内部 `ControlId` 字符串和 `EInputControlType`。
-- [x] 规则中的输出侧复用 `SAction`，平台转换留给 `IOutputBackend`。
-- [x] `SchemaVersion` 默认值为 `1`。
-- [x] `SMappingProfile` 默认启用，`SMappingRule` 默认启用。
-- [x] 空 profile 合法，表示没有映射规则。
+- [x] `ZMappingEngine` 属于 Core 层，只能依赖 `ProjectCore.h`、`InputEvent.h`、`Action.h`、`MappingProfile.h`。
+- [x] `ZMappingEngine` 是无状态对象；不保存上一次输入、不保存按键是否已按下、不访问 Runtime 状态。
+- [x] `MapInput()` 不修改传入的 `SInputEvent` 或 `SMappingProfile`。
+- [x] 输出动作按 profile 中规则顺序追加，保持 deterministic。
+- [x] disabled profile 直接返回空 action 列表。
+- [x] disabled rule 会被跳过。
+- [x] 空 profile 或无匹配规则返回空 action 列表。
+- [x] 本轮遇到 action type 和 payload variant 不匹配时跳过该规则，不崩溃。
+- [x] 本轮不返回错误；没有命中或配置不支持都返回空 action 列表。
 
-## Proposed Types
+## Interface Contract
 
-### Mapping Rule
+- [x] 新增 `class ZMappingEngine final`。
+- [x] 提供：
+  - `ZERO_NODISCARD TVector<SAction> MapInput(const SInputEvent& Event, const SMappingProfile& Profile) const;`
+- [x] 可选 private helper：
+  - `bool DoesRuleMatchInput(const SInputEvent& Event, const SMappingRule& Rule) const`
+  - `TOptional<SAction> BuildAction(const SInputEvent& Event, const SMappingRule& Rule) const`
+  - `TOptional<SAction> BuildPressReleaseAction(const SInputEvent& Event, const SMappingRule& Rule) const`
+  - `TOptional<SAction> BuildAnalogAction(const SInputEvent& Event, const SMappingRule& Rule) const`
 
-- [x] 新增 `enum class EMappingActionMode`：
-  - `PressRelease`：按钮按下生成 pressed 动作，抬起生成 released 动作。
-  - `Hold`：输入保持激活时保持输出状态，后续引擎处理释放。
-  - `Analog`：模拟量连续映射，例如摇杆到鼠标移动。
-- [x] 新增 `struct SMappingInput`：
-  - `StdString ControlId`
-  - `EInputControlType ControlType = EInputControlType::Button`
-  - `EInputEventType EventType = EInputEventType::Pressed`
-  - `float32 Threshold = 0.5f`
-  - `float32 Deadzone = 0.0f`
-- [x] 新增 `struct SMappingOutput`：
-  - `SAction Action`
-  - `EMappingActionMode Mode = EMappingActionMode::PressRelease`
-  - `float32 Sensitivity = 1.0f`
-- [x] 新增 `struct SMappingRule`：
-  - `StdString Id`
-  - `StdString DisplayName`
-  - `bool bEnabled = true`
-  - `SMappingInput Input`
-  - `SMappingOutput Output`
+## Matching Behavior
 
-### Mapping Profile
+- [x] `ControlId` 必须精确匹配。
+- [x] `ControlType` 必须精确匹配。
+- [x] Button / Hat 的 `PressRelease` 规则接受 `Pressed` 和 `Released` 事件。
+- [x] Button / Hat 的 `PressRelease` 规则忽略 `Changed` 事件。
+- [x] Trigger / Axis1D 的阈值规则接受 `Changed` 事件。
+- [x] Trigger / Axis1D 的激活判断为 `Event.Value >= Rule.Input.Threshold`。
+- [x] Axis2D 的 `Analog` 规则接受 `Changed` 事件。
+- [x] Axis2D 的 deadzone 使用径向长度判断：`sqrt(X*X + Y*Y) <= Deadzone` 时不输出动作。
+- [x] 本轮不 clamp `Threshold`、`Deadzone` 或 `Sensitivity`；配置有效性留给后续 profile validation。
 
-- [x] 新增 `struct SDeviceMatch`：
-  - `StdString Name`
-  - `StdString Backend`
-  - `StdString VendorId`
-  - `StdString ProductId`
-  - `StdString Guid`
-  - `StdString InstanceId`
-- [x] 新增 `struct SMappingProfile`：
-  - `uint32 SchemaVersion = 1`
-  - `StdString Id`
-  - `StdString Name`
-  - `bool bEnabled = true`
-  - `SDeviceMatch DeviceMatch`
-  - `TVector<SMappingRule> Rules`
+## Action Building Behavior
 
-## Field Semantics
-
-- [x] `SMappingRule::Id` 在单个 profile 内应稳定且唯一，但本轮只定义字段，不实现唯一性校验。
-- [x] `SMappingRule::DisplayName` 用于 UI 展示，可为空。
-- [x] `SMappingInput::Threshold` 用于 Trigger 或 Axis1D 激活判断，默认 `0.5f`。
-- [x] `SMappingInput::Deadzone` 用于 Axis1D 或 Axis2D，默认 `0.0f`，合法范围约定为 `[0.0f, 1.0f]`，本轮不做 clamp。
-- [x] `SMappingOutput::Sensitivity` 用于 Axis2D 到 MouseMove 等模拟输出，默认 `1.0f`。
-- [x] `SDeviceMatch` 字段都可为空；后续 profile 匹配模块按可用字段评分。
-- [x] `SMappingProfile::bEnabled = false` 表示整个 profile 不参与映射。
-- [x] `SMappingRule::bEnabled = false` 表示单条规则不参与映射。
-
-## Header Layout
-
-- [x] `MappingRule.h` 包含输入匹配和输出配置：
-  - `EMappingActionMode`
-  - `SMappingInput`
-  - `SMappingOutput`
-  - `SMappingRule`
-- [x] `MappingProfile.h` 包含 profile 级数据：
-  - include `MappingRule.h`
-  - `SDeviceMatch`
-  - `SMappingProfile`
-- [x] 不新增 `.cpp` 文件；本轮全部为 header-only 数据结构。
+- [x] Keyboard `PressRelease`：
+  - 输入 `Pressed` 输出 `SKeyboardAction::bPressed = true`
+  - 输入 `Released` 输出 `SKeyboardAction::bPressed = false`
+  - Key 从规则配置中的 `SKeyboardAction::Key` 复制
+- [x] MouseButton `PressRelease`：
+  - 输入 `Pressed` 输出 `SMouseButtonAction::bPressed = true`
+  - 输入 `Released` 输出 `SMouseButtonAction::bPressed = false`
+  - Button 从规则配置中的 `SMouseButtonAction::Button` 复制
+- [x] Trigger / Axis1D 到 Keyboard 或 MouseButton：
+  - `Value >= Threshold` 输出 pressed action
+  - `Value < Threshold` 输出 released action
+  - 这是 stateless 连续判断，可能重复输出同一 pressed/released 状态，后续 Runtime 再做去重
+- [x] Axis2D 到 MouseMove：
+  - 只支持 `EActionType::MouseMove`
+  - 输出 `DeltaX = Event.Axis2D.X * Rule.Output.Sensitivity`
+  - 输出 `DeltaY = Event.Axis2D.Y * Rule.Output.Sensitivity`
+  - deadzone 内返回空
+- [x] `EMappingActionMode::Hold` 本轮暂不实现，遇到时返回空；后续需要 Runtime 状态配合。
+- [x] `EActionType::MouseWheel` 本轮暂不实现，遇到时返回空。
 
 ## CMake Plan
 
-- [x] 保持 `MappyZCore` 为 interface library。
-- [x] 新增 `tests/Core/MappingProfileTests.cpp`，加入 `MappyZCoreTests`。
+- [x] 将 `MappyZCore` 从 `INTERFACE` library 调整为 `STATIC` library。
+- [x] `MappyZCore` 源文件包含 `source/Core/MappingEngine.cpp`。
+- [x] `MappyZCore` 继续 public 暴露 `${CMAKE_CURRENT_SOURCE_DIR}/source` include path。
+- [x] `MappyZCore` 继续 public 链接 `Zero::ZeroStyle`。
+- [x] 为 `MappyZCore` 添加与其他 C++ target 一致的 warning 选项。
+- [x] 新增 `tests/Core/MappingEngineTests.cpp`，加入 `MappyZCoreTests`。
 - [x] 不新增第三方依赖。
-- [x] 不修改主应用 target。
+- [x] 不修改主应用 QML 或 Runtime 代码。
 
 ## Tests
 
-- [x] `SMappingInput` 默认值符合预期。
-- [x] `SMappingOutput` 默认值符合预期。
-- [x] `SMappingRule` 默认启用，默认输入和输出字段可用。
-- [x] `SDeviceMatch` 默认构造为空。
-- [x] `SMappingProfile` 默认 `SchemaVersion == 1` 且 `bEnabled == true`。
-- [x] 空 `SMappingProfile::Rules` 合法。
-- [x] 可创建 Button -> Keyboard rule。
-- [x] 可创建 Button -> MouseButton rule。
-- [x] 可创建 Axis2D -> MouseMove rule，包含 deadzone 和 sensitivity。
-- [x] 可创建 Trigger threshold rule。
-- [x] `MappingProfile.h` 可单独 include 编译。
-- [x] Core 新头文件不包含 Qt、QML、SDL 或 Win32 头。
+- [x] 空 profile 返回空 action 列表。
+- [x] disabled profile 返回空 action 列表。
+- [x] disabled rule 不参与映射。
+- [x] control id 不匹配时返回空。
+- [x] control type 不匹配时返回空。
+- [x] Button -> Keyboard 在 Pressed 时输出 pressed key action。
+- [x] Button -> Keyboard 在 Released 时输出 released key action。
+- [x] Button -> MouseButton 在 Pressed / Released 时输出对应 mouse button 状态。
+- [x] 多条匹配规则按 profile 顺序输出多个 action。
+- [x] Trigger below threshold 输出 released action。
+- [x] Trigger above threshold 输出 pressed action。
+- [x] Axis2D deadzone 内不输出 MouseMove。
+- [x] Axis2D deadzone 外输出按 sensitivity 缩放的 MouseMove。
+- [x] action type 和 payload 不匹配时跳过规则且不崩溃。
+- [x] `Hold` mode 本轮返回空。
+- [x] `MouseWheel` 本轮返回空。
+- [x] `MappingEngine.h` 可单独 include 编译。
+- [x] Core 新文件不包含 Qt、QML、SDL 或 Win32 头。
 
 ## Acceptance Criteria
 
@@ -151,11 +141,11 @@ MappyZ 本轮只借鉴其中的架构意图，不照搬对象图：
 - [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
 - [x] `git diff --check` 通过。
 - [x] 新增文本文件使用 CRLF 行尾。
-- [x] `source/Core/MappingRule.h` 和 `source/Core/MappingProfile.h` 不依赖 Runtime、Backend、UI 或平台层。
-- [x] `MappyZCoreTests` 覆盖本轮新增默认值和典型规则构造。
+- [x] `ZMappingEngine` 不依赖 Runtime、Backend、UI 或平台层。
+- [x] `MappyZCoreTests` 覆盖本轮最小映射行为。
 
 ## Follow-Up Module
 
-- [ ] 下一模块建议实现 `Core/MappingEngine.h/.cpp`，消费 `SInputEvent + SMappingProfile` 并输出 `TVector<SAction>`。
-- [ ] 再下一步实现 `Backends/Output/OutputBackend.h` 和 `ZNullOutputBackend`，让 Runtime 可以测试动作派发。
-- [ ] 后续实现 JSON profile loader/saver，把外部 JSON schema 转换为本轮定义的 `SMappingProfile`。
+- [ ] 下一模块建议实现 `Backends/Output/OutputBackend.h` 和 `ZNullOutputBackend`，让动作输出可以被 Runtime 测试记录。
+- [ ] 再下一步实现 `Runtime/ActionDispatcher.h/.cpp`，将 `SAction` 派发给当前输出后端。
+- [ ] 后续实现 `Runtime/MappingSession.h/.cpp`，串联 `ZInputRuntime`、`ZMappingEngine` 和 `ZActionDispatcher`。
