@@ -23,6 +23,19 @@ find_package(Qt6 REQUIRED COMPONENTS Quick)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
+# 优先使用 vcpkg 安装的 nlohmann_json，找不到则通过 FetchContent 拉取
+find_package(nlohmann_json CONFIG QUIET)
+
+if(NOT nlohmann_json_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG        v3.11.3
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+
 # ── Core 模块 ──
 
 add_library(MappyZCore STATIC
@@ -86,6 +99,7 @@ add_library(MappyZRuntime STATIC
     source/Runtime/InputRuntime.cpp
     source/Runtime/ActionDispatcher.cpp
     source/Runtime/MappingSession.cpp
+    source/Runtime/ProfileManager.cpp
 )
 
 target_link_libraries(MappyZRuntime
@@ -93,6 +107,8 @@ target_link_libraries(MappyZRuntime
         MappyZCore
         MappyZInputBackends
         MappyZOutputBackends
+    PRIVATE
+        nlohmann_json::nlohmann_json
 )
 
 if(MSVC)
@@ -250,6 +266,7 @@ if(BUILD_TESTING)
         tests/Runtime/InputRuntimeTests.cpp
         tests/Runtime/ActionDispatcherTests.cpp
         tests/Runtime/MappingSessionTests.cpp
+        tests/Runtime/ProfileManagerTests.cpp
     )
 
     target_link_libraries(MappyZRuntimeTests
