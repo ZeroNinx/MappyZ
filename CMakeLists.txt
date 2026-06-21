@@ -54,6 +54,24 @@ else()
     target_compile_options(MappyZInputBackends PRIVATE -Wall -Wextra -Wconversion -Wshadow)
 endif()
 
+# ── Runtime 模块 ──
+
+add_library(MappyZRuntime STATIC
+    source/Runtime/DeviceManager.cpp
+)
+
+target_link_libraries(MappyZRuntime
+    PUBLIC
+        MappyZCore
+        MappyZInputBackends
+)
+
+if(MSVC)
+    target_compile_options(MappyZRuntime PRIVATE /W4)
+else()
+    target_compile_options(MappyZRuntime PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+endif()
+
 # ── 主应用 ──
 
 qt_add_executable(MappyZ
@@ -173,4 +191,25 @@ if(BUILD_TESTING)
     endif()
 
     catch_discover_tests(MappyZInputBackendTests)
+
+    # ── Runtime 测试 ──
+
+    add_executable(MappyZRuntimeTests
+        tests/Runtime/DeviceManagerTests.cpp
+    )
+
+    target_link_libraries(MappyZRuntimeTests
+        PRIVATE
+            MappyZRuntime
+            MappyZInputBackends
+            Catch2::Catch2WithMain
+    )
+
+    if(MSVC)
+        target_compile_options(MappyZRuntimeTests PRIVATE /W4)
+    else()
+        target_compile_options(MappyZRuntimeTests PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+    endif()
+
+    catch_discover_tests(MappyZRuntimeTests)
 endif()

@@ -1,124 +1,120 @@
-# TODO: Input Backend Interface Module
+# TODO: Runtime Device Manager Module
 
 ## Next Step
 
-下一步实现 `Backends/Input` 接口层。这个模块定义输入后端的统一契约，并提供一个可测试的假输入后端，用来在不接入 SDL3、不启动真实输入线程、不碰 QML 的情况下验证设备枚举、设备连接/断开回调和输入事件回调。
+下一步实现 `Runtime/DeviceManager` 的最小版本。这个模块消费 `IInputBackend` 的设备连接/断开回调，维护运行时设备快照，并为后续 UI Bridge、输入运行时和热插拔流程提供稳定查询入口。
 
 优先做这个模块的理由：
 
-- `Core Input Model` 已完成，`SDeviceInfo`、`SDeviceId`、`SInputEvent` 已经可以作为后端边界数据。
-- Milestone 1 的 `ZSdlInputBackend` 需要先有稳定的 `IInputBackend` 接口。
-- 直接接 SDL3 会同时引入第三方依赖、设备生命周期、事件轮询和线程模型；本轮先把接口和测试替身固定下来，风险更小。
-- 假输入后端可以后续用于 Runtime、UI Bridge 和绑定流程测试，不依赖真实手柄。
+- `Core Input Model` 已完成，设备和输入事件数据契约已稳定。
+- `Input Backend Interface` 已完成，`ZFakeInputBackend` 可作为无硬件测试替身。
+- Milestone 1 要求启动后枚举手柄并支持热插拔；`ZDeviceManager` 是输入后端与 UI/Runtime 之间的第一层状态归口。
+- 先做设备管理，不直接接 SDL3，可以用假后端把设备生命周期测试完整。
 
 ## Scope
 
-本轮只覆盖输入后端接口层和测试替身。
+本轮只覆盖 Runtime 设备管理。
 
 包含：
 
-- [x] `source/Backends/Input/InputBackend.h`
-- [x] `source/Backends/Input/FakeInputBackend.h`
-- [x] `source/Backends/Input/FakeInputBackend.cpp`
-- [x] `tests/Backends/Input/FakeInputBackendTests.cpp`
+- [x] `source/Runtime/DeviceManager.h`
+- [x] `source/Runtime/DeviceManager.cpp`
+- [x] `tests/Runtime/DeviceManagerTests.cpp`
 - [x] CMake target 和 CTest 接入
 
 不做：
 
 - [x] 不接入 SDL3。
-- [x] 不实现 `ZSdlInputBackend`。
-- [x] 不启动输入线程或事件轮询线程。
-- [x] 不访问 Qt、QML、Win32 或 SDL 头文件。
-- [x] 不实现 `ZDeviceManager`、`ZInputRuntime` 或 Runtime 队列。
-- [x] 不把假输入后端暴露给最终用户 UI。
+- [x] 不实现 `ZInputRuntime`。
+- [x] 不处理输入事件队列。
+- [x] 不实现 QML/Qt model。
+- [x] 不实现 profile 匹配或自动切换。
+- [x] 不实现线程同步；本轮假定和 fake backend 一样在单线程测试。
 
 ## Design Decisions
 
-- [x] `IInputBackend` 放在 `source/Backends/Input/InputBackend.h`，只依赖 `Core/DeviceId.h`、`Core/InputEvent.h` 和标准库回调类型。
-- [x] `IInputBackend::Start()` 返回 `TResult<void>`，用于表达后端初始化失败。
-- [x] `IInputBackend::Stop()` 为幂等操作，多次调用不应失败。
-- [x] `IInputBackend::ListDevices()` 返回当前后端已知的设备快照，不暴露内部容器引用。
-- [x] 回调保留在接口层，后续 Runtime 通过这些回调订阅设备和输入事件。
-- [x] 回调成员允许为空；后端触发回调前必须检查 `std::function` 是否有效。
-- [x] `FakeInputBackend` 是测试替身，不是生产后端；它只用于单元测试和后续无硬件集成测试。
+- [x] `ZDeviceManager` 属于 Runtime 层，可以依赖 `IInputBackend` 和 Core 类型。
+- [x] `ZDeviceManager` 不拥有输入后端；构造时接收 `IInputBackend&`，避免本轮处理后端生命周期。
+- [x] `ZDeviceManager` 负责订阅后端回调，并维护自己的设备快照。
+- [x] `ZDeviceManager` 启动时调用 `InputBackend.ListDevices()` 读取初始设备快照。
+- [x] 热插拔通过 `OnDeviceConnected` 和 `OnDeviceDisconnected` 同步更新快照。
+- [x] 本轮不把设备事件再广播给 UI；后续 UI Bridge 或 EventBus 模块再定义对外通知。
+- [x] 本轮不做线程安全承诺；真实 SDL 后端接入前再明确线程边界和队列模型。
 
 ## Interface Contract
 
-- [x] `IInputBackend` 定义虚析构函数。
-- [x] `IInputBackend` 禁止拷贝和移动，避免后端生命周期、回调和线程所有权不清晰。
-- [x] `IInputBackend` 提供：
-  - `ZERO_NODISCARD virtual TResult<void> Start() = 0`
-  - `virtual void Stop() = 0`
-  - `ZERO_NODISCARD virtual bool IsRunning() const noexcept = 0`
-  - `ZERO_NODISCARD virtual TVector<SDeviceInfo> ListDevices() const = 0`
-- [x] `IInputBackend` 暴露以下回调成员：
-  - `std::function<void(const SDeviceInfo& DeviceInfo)> OnDeviceConnected`
-  - `std::function<void(const SDeviceId& DeviceId)> OnDeviceDisconnected`
-  - `std::function<void(const SInputEvent& Event)> OnInputEvent`
-- [x] 回调调用顺序由具体后端保证；本轮假后端应按调用者触发顺序同步调用。
+- [x] `ZDeviceManager` 禁止拷贝和移动。
+- [x] 构造函数：`explicit ZDeviceManager(IInputBackend& Backend)`。
+- [x] 提供：
+  - `void Attach()`
+  - `void Detach()`
+  - `ZERO_NODISCARD bool IsAttached() const noexcept`
+  - `ZERO_NODISCARD TVector<SDeviceInfo> ListDevices() const`
+  - `ZERO_NODISCARD TOptional<SDeviceInfo> FindDevice(const SDeviceId& DeviceId) const`
+  - `ZERO_NODISCARD uint32 GetDeviceCount() const noexcept`
+- [x] `Attach()` 可重复调用；重复调用不应重复订阅、不应重复插入设备。
+- [x] `Detach()` 可重复调用；重复调用安全无副作用。
+- [x] `Detach()` 应清空后端回调，避免 manager 销毁后回调悬垂。
+- [x] 析构函数应 best-effort 调用 `Detach()`。
 
-## Fake Backend Behavior
+## Device Snapshot Behavior
 
-- [x] `ZFakeInputBackend` 实现 `IInputBackend`。
-- [x] `ZFakeInputBackend` 初始为 stopped 状态。
-- [x] `Start()` 将状态切到 running；重复调用返回成功且不重复派发连接事件。
-- [x] `Stop()` 将状态切到 stopped；重复调用安全无副作用。
-- [x] `AddDevice(const SDeviceInfo& DeviceInfo)` 加入设备快照。
-- [x] 如果 backend 正在 running，`AddDevice` 应同步触发 `OnDeviceConnected`。
-- [x] 如果 `AddDevice` 收到已存在的 `SDeviceId`，不重复添加、不覆盖原设备、不触发连接回调。
-- [x] 重复设备 ID 应记录 warning 级别调试日志；本轮可先通过 Qt logging category 或 ZeroStyle/标准错误日志中较轻的方式实现，避免引入正式日志系统。
-- [x] `RemoveDevice(const SDeviceId& DeviceId)` 从设备快照移除设备。
-- [x] 如果 backend 正在 running 且设备存在，`RemoveDevice` 应同步触发 `OnDeviceDisconnected`。
-- [x] `EmitInput(const SInputEvent& Event)` 在 running 状态同步触发 `OnInputEvent`。
-- [x] stopped 状态下 `EmitInput` 不触发回调。
-- [x] 回调未设置时跳过调用，不抛异常、不崩溃；可输出 debug 级别日志说明事件没有订阅者。
-- [x] `ListDevices()` 返回当前设备快照，调用方修改返回值不影响后端内部状态。
-- [x] 本轮假后端不做线程安全承诺；线程安全留给真实后端或 Runtime 层设计。
+- [x] `Attach()` 后，manager 快照等于 `Backend.ListDevices()` 的返回值。
+- [x] `OnDeviceConnected` 收到新设备时加入快照。
+- [x] `OnDeviceConnected` 收到重复 `SDeviceId` 时不新增设备，可保留原设备信息并输出 warning 日志。
+- [x] `OnDeviceDisconnected` 收到存在的 `SDeviceId` 时移除设备。
+- [x] `OnDeviceDisconnected` 收到不存在的 `SDeviceId` 时忽略，可输出 debug/warning 日志。
+- [x] `ListDevices()` 返回快照拷贝，调用方修改返回值不影响 manager 内部状态。
+- [x] `FindDevice()` 找到时返回设备副本，找不到时返回空 `TOptional`。
+
+## Callback Ownership
+
+- [x] `Attach()` 设置后端的 `OnDeviceConnected` 和 `OnDeviceDisconnected`。
+- [x] 如果后端已有回调，本轮可以覆盖，但必须在注释中明确此限制；后续 EventBus 或组合订阅器再解决多订阅者。
+- [x] `Detach()` 只清空由 manager 设置的回调。
+- [x] 为避免误清用户后来替换的回调，可用一个简单标记或约束说明：本轮约定 manager attach 期间不允许外部改写后端回调。
+- [x] 本轮不订阅 `OnInputEvent`；输入事件归 `ZInputRuntime` 后续模块处理。
 
 ## CMake Plan
 
-- [x] 新建 `MappyZInputBackends` target。
-  - 如果只有接口和一个 `.cpp`，使用 static library。
-  - 链接 `MappyZCore`。
-  - include 根继续通过 target 传递，不手动散落 include path。
-- [x] 主应用本轮不强制链接 `MappyZInputBackends`，除非需要编译探针。
-- [x] 新增 `MappyZInputBackendTests` 测试目标。
-  - 链接 `MappyZCore`、`MappyZInputBackends`、`Catch2::Catch2WithMain`。
-  - 通过 `catch_discover_tests(MappyZInputBackendTests)` 注册到 CTest。
-- [x] 保持 Catch2 v3 获取策略不变：优先 vcpkg `find_package`，兜底 FetchContent。
+- [x] 新建 `MappyZRuntime` static library target。
+  - 源文件包含 `source/Runtime/DeviceManager.cpp`。
+  - 链接 `MappyZCore` 和 `MappyZInputBackends`。
+  - include 根通过 target 传递，不散落 include path。
+- [x] 主应用本轮不强制链接 `MappyZRuntime`，除非需要编译探针。
+- [x] 新增 `MappyZRuntimeTests` 测试目标。
+  - 链接 `MappyZRuntime`、`MappyZInputBackends`、`Catch2::Catch2WithMain`。
+  - 通过 `catch_discover_tests(MappyZRuntimeTests)` 注册到 CTest。
 
 ## Tests
 
-- [x] `ZFakeInputBackend` 默认 stopped，设备列表为空。
-- [x] `Start()` / `Stop()` 状态切换正确，重复调用安全。
-- [x] `AddDevice` 能更新 `ListDevices()`。
-- [x] running 状态下 `AddDevice` 触发一次 `OnDeviceConnected`。
-- [x] stopped 状态下 `AddDevice` 不触发连接回调。
-- [x] 重复 `SDeviceId` 的 `AddDevice` 不改变设备数量、不覆盖原设备、不触发连接回调。
-- [x] 未设置 `OnDeviceConnected` 时，running 状态下 `AddDevice` 不崩溃。
-- [x] running 状态下 `RemoveDevice` 触发一次 `OnDeviceDisconnected`。
-- [x] 移除不存在的设备不触发断开回调。
-- [x] 未设置 `OnDeviceDisconnected` 时，running 状态下 `RemoveDevice` 不崩溃。
-- [x] running 状态下 `EmitInput` 触发 `OnInputEvent`，事件内容保持不变。
-- [x] stopped 状态下 `EmitInput` 不触发输入回调。
-- [x] 未设置 `OnInputEvent` 时，running 状态下 `EmitInput` 不崩溃。
-- [x] `ListDevices()` 返回快照，修改返回值不污染后端内部设备列表。
+- [x] 构造后默认未 attached，设备数量为 0。
+- [x] `Attach()` 读取 fake backend 已存在设备。
+- [x] `Attach()` 重复调用不会重复设备。
+- [x] attached 后 fake backend `AddDevice` 会更新 manager 快照。
+- [x] attached 后 fake backend `RemoveDevice` 会更新 manager 快照。
+- [x] 重复设备 ID 不会让 manager 快照出现重复项。
+- [x] 断开不存在设备不会改变 manager 快照。
+- [x] `FindDevice()` 可找到已连接设备。
+- [x] `FindDevice()` 对未知设备返回空。
+- [x] `ListDevices()` 返回快照拷贝，修改返回值不影响 manager。
+- [x] `Detach()` 后 fake backend 设备变化不再影响 manager。
+- [x] manager 析构后 fake backend 继续触发设备回调不崩溃。
+- [x] 本轮不测试多线程行为。
 
 ## Acceptance Criteria
 
 - [x] `cmake --build build` 通过。
 - [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
-- [x] 新增输入后端头文件不包含 Qt、QML、SDL 或 Win32 头。
-- [x] `MappyZInputBackends` target 存在并链接 `MappyZCore`。
-- [x] `MappyZInputBackendTests` target 存在并通过 CTest 运行。
-- [x] `IInputBackend` 可以直接作为后续 `ZSdlInputBackend` 的实现接口。
-- [x] 所有回调触发路径都先检查回调是否已设置。
-- [x] 重复设备 ID 行为有测试覆盖。
-- [x] `ZFakeInputBackend` 可以用于后续 Runtime 和 UI Bridge 的无硬件测试。
+- [x] 新增 Runtime 文件不包含 Qt、QML、SDL 或 Win32 头。
+- [x] `MappyZRuntime` target 存在并链接必要 target。
+- [x] `MappyZRuntimeTests` target 存在并通过 CTest。
+- [x] `ZDeviceManager` 能通过 `ZFakeInputBackend` 验证初始枚举和热插拔。
+- [x] `Detach()` 后不存在悬垂回调风险。
 - [x] 提交前所有新增文本文件使用 CRLF 行尾。
 
 ## Follow-Up Module
 
-- [x] 下一模块建议实现 `Runtime/DeviceManager` 的最小版本，消费 `IInputBackend` 的设备连接/断开回调并维护设备快照。
-- [x] 再下一步实现 `ZSdlInputBackend`，把 SDL3 设备和事件转换成 `SDeviceInfo` 与 `SInputEvent`。
-- [x] 在进入 `ZMappingEngine` 前补齐 `source/Core/MappingRule.h` 和 `source/Core/MappingProfile.h`，定义 `SMappingRule`、`SMappingProfile` 与最小匹配字段。
+- [ ] 下一模块建议实现 `ZInputRuntime` 的最小版本，订阅 `IInputBackend::OnInputEvent` 并维护最近输入事件快照。
+- [ ] 再下一步实现 `ZSdlInputBackend`，把 SDL3 设备和事件转换成 `SDeviceInfo` 与 `SInputEvent`。
+- [ ] 在进入 `ZMappingEngine` 前补齐 `source/Core/MappingRule.h` 和 `source/Core/MappingProfile.h`，定义 `SMappingRule`、`SMappingProfile` 与最小匹配字段。
