@@ -1,189 +1,199 @@
-# TODO: SDL3 Input Backend Module
+# TODO: Windows SendInput Output Backend Module
 
 ## Next Step
 
-下一步实现 `source/Backends/Input/SdlInputBackend.h/.cpp` 的最小真实输入后端，负责把物理手柄转换为现有 `SDeviceInfo` 和 `SInputEvent`。
+下一步实现 `source/Backends/Output/WindowsSendInputBackend.h/.cpp` 的最小真实输出后端，负责把现有 `SAction` 转换为 Windows 键盘和鼠标输入。
 
 优先做这个模块的理由：
 
-- [x] Core 层的 `SInputEvent`、`SDeviceInfo`、`SMappingProfile`、`ZMappingEngine` 已经具备稳定数据契约。
-- [x] Runtime 层已经有 `ZDeviceManager`、`ZInputRuntime`、`ZMappingSession`、`ZActionDispatcher`，但目前只能消费 fake input。
-- [x] `ZProfileManager` 已经完成 JSON profile 读写，后续需要真实设备信息验证 `device_match` 字段是否够用。
-- [x] AntiMicroX 的关键经验是：SDL 输入采集应独立于 UI 和平台输出，先把设备生命周期和原始输入稳定地转成内部事件。
-- [x] Windows 输出后端可以稍后接入；没有真实输入入口时，输出后端只能靠单元测试验证，无法形成可观察的硬件链路。
+- [x] Core 层已有平台无关的 `SAction`、`SKeyboardAction`、`SMouseButtonAction`、`SMouseMoveAction`、`SMouseWheelAction`。
+- [x] Runtime 层已有 `ZActionDispatcher`，可以把 `SAction` 发送给任意 `IOutputBackend`。
+- [x] `ZNullOutputBackend` 已能验证派发链路，但不会产生真实系统输入。
+- [x] SDL3 输入后端已完成，下一步应补齐 “输入 -> 映射 -> 输出” 的硬件闭环。
+- [x] Windows 是 MVP 首发平台，`SendInput` 后端是 v0.1 可用性的关键模块。
 
-## AntiMicroX Reference Notes
+## Architecture Boundary
 
-只参考架构经验，不复制、不改写、不翻译 AntiMicroX 代码。
+本轮继续保持 Qt、Core、Runtime、平台 API 的边界清晰。
 
-- [x] AntiMicroX 使用 SDL worker 负责设备枚举、事件读取、热插拔和刷新，说明输入采集需要清晰生命周期。
-- [x] AntiMicroX 把设备身份拆成名称、GUID、vendor/product、unique id 等字段，MappyZ 的 `SDeviceInfo` 应在 SDL 后端里尽量填充这些字段。
-- [x] AntiMicroX 的输入对象、Qt signal 和 UI 耦合较深，MappyZ 不应照搬；本项目继续使用 `IInputBackend` 回调和 Core 数据结构隔离后端。
-- [x] AntiMicroX 的平台输出 handler 独立于 SDL 输入读取，MappyZ 应继续保持 `IInputBackend` 和 `IOutputBackend` 分离。
-
-## Qt Boundary
-
-Qt 只负责 UI 必要部分，不进入核心运行时。
-
-- [x] Core 只包含纯数据、映射规则、映射引擎和通用错误类型，不使用 `QObject`、`QString`、`QVariant`、`QTimer`、`QThread` 或 Qt 容器。
-- [x] Backends 只面向 `IInputBackend` / `IOutputBackend` 接口，不依赖 Qt；SDL 后端使用标准 C++ 线程和回调。
-- [x] Runtime 只组合 Core 和 Backend，保持标准 C++ API；不直接暴露 Qt property、signal/slot 或 QML 类型。
-- [x] UI Bridge 后续单独放在 `source/UI/Bridge`，可以使用 `QObject`、`QAbstractListModel`、queued connection 等 Qt 机制，把 Runtime 快照适配给 QML。
-- [x] QML 只负责显示、交互和调用 UI Bridge，不直接读取 SDL、不直接发送键鼠、不直接解析 profile 文件。
+- [ ] `MappyZCore` 不依赖 Win32，不包含 `Windows.h`。
+- [ ] `MappyZRuntime` 不直接依赖 Win32，只通过 `IOutputBackend` 派发 `SAction`。
+- [ ] `WindowsSendInputBackend.h` 不包含 `Windows.h`，public API 不出现 Win32 类型。
+- [ ] Win32 类型、`INPUT` 构造、virtual-key / mouse flag 映射全部放在 `.cpp` 或私有 helper 中。
+- [ ] UI/QML 不直接调用 `SendInput`，后续只通过 Runtime / UI Bridge 控制后端选择和状态展示。
+- [ ] 不修改 `SAction` 的平台无关语义，平台差异由输出后端吸收。
 
 ## Scope
 
-本轮只做 SDL3 输入后端，不做 UI 绑定、不做真实键鼠输出、不做 profile 自动选择。
+本轮只做 Windows 键盘/鼠标真实输出后端，不做 UI 绑定、不做 profile 自动选择、不做虚拟手柄。
 
 包含：
 
-- [x] `source/Backends/Input/SdlInputBackend.h`
-- [x] `source/Backends/Input/SdlInputBackend.cpp`
-- [x] `tests/Backends/Input/SdlInputBackendTests.cpp`
-- [x] CMake 中 SDL3 可选依赖接入
-- [x] CMake 中后端源文件和测试文件的条件编译
-- [x] SDL-free helper 测试文件，用于覆盖不需要真实 SDL runtime 的转换逻辑
-- [x] 设备枚举、热插拔、按钮事件、摇杆/扳机轴事件标准化
-- [x] 后端生命周期：`Start()`、`Stop()`、`IsRunning()`、析构自动停止
+- [ ] `source/Backends/Output/WindowsSendInputBackend.h`
+- [ ] `source/Backends/Output/WindowsSendInputBackend.cpp`
+- [ ] 可选的内部 helper，例如 `source/Backends/Output/WindowsSendInputHelpers.h`
+- [ ] `tests/Backends/Output/WindowsSendInputBackendTests.cpp`
+- [ ] `tests/Backends/Output/WindowsSendInputHelperTests.cpp`
+- [ ] CMake 中 Windows 输出后端的条件编译
+- [ ] 键盘按下 / 抬起输出
+- [ ] 鼠标左键 / 右键 / 中键按下和抬起输出
+- [ ] 相对鼠标移动输出
+- [ ] 鼠标滚轮输出
+- [ ] 后端状态查询：Ready / Unavailable / Error
 
 不做：
 
-- [ ] 不实现 Windows `SendInput` 输出。
-- [ ] 不实现 UI/QML 设备面板或输入状态面板。
+- [ ] 不实现 UI/QML 后端切换面板。
+- [ ] 不实现按下手柄输入进行绑定。
 - [ ] 不实现 profile 目录扫描、自动匹配或 active profile 管理。
+- [ ] 不实现虚拟 Xbox / DS4 手柄输出。
+- [ ] 不实现原始物理手柄隐藏。
+- [ ] 不实现低级键盘/鼠标 hook。
+- [ ] 不实现管理员权限提升。
 - [ ] 不实现 per-app profile。
-- [ ] 不实现传感器、陀螺仪、触摸板、rumble、灯光或电量信息。
-- [ ] 不实现 SDL joystick raw mode；第一版只使用 SDL Gamepad 标准布局。
-- [ ] 不把 AntiMicroX 的类结构、XML 配置或 Qt signal 网络搬进本项目。
-- [ ] 不让 SDL 后端、Core 或 Runtime 引入任何 Qt 类型；Qt 集成留给后续 UI Bridge。
+- [ ] 不实现宏时间线、连发、组合键或 Layer / Mode Shift。
+- [ ] 不让 Core、Runtime、SDL 后端或 UI Bridge 引入 Win32 类型。
 
 ## Dependency Plan
 
-- [x] 新增 `option(MAPPYZ_ENABLE_SDL3_INPUT "Build SDL3 input backend" ON)`。
-- [x] 使用 `find_package(SDL3 CONFIG QUIET)` 查找 vcpkg/系统 SDL3。
-- [x] 找到 SDL3 时编译 `ZSdlInputBackend` 并链接 `SDL3::SDL3`。
-- [x] 找不到 SDL3 时保持项目可配置、可编译，输出 CMake warning，并跳过 SDL 后端和对应测试。
-- [x] 不在本轮用 `FetchContent` 拉 SDL3，避免把大型 native 依赖引入当前 bootstrap 流程。
-- [x] `SdlInputBackend.h` 不包含 SDL 头；使用 Pimpl，SDL handle、设备 map、轴缓存、worker 状态全部藏在 `.cpp`。
-- [x] `MappyZCore` 继续不依赖 SDL。
-- [x] `MappyZRuntime` 继续只依赖 `IInputBackend`，不直接依赖 SDL。
+- [ ] 新增 `option(MAPPYZ_ENABLE_WINDOWS_SENDINPUT_OUTPUT "Build Windows SendInput output backend" ON)`。
+- [ ] 仅在 `WIN32` 且 option 为 ON 时编译 `ZWindowsSendInputBackend`。
+- [ ] 非 Windows 平台即使 option 为 ON，也输出 CMake warning 并跳过该后端。
+- [ ] 新增 `MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT` 编译定义，供测试和后续 App bootstrap 判断。
+- [ ] `MappyZOutputBackends` 在 Windows 后端启用时条件加入源文件。
+- [ ] `MappyZOutputBackends` 不需要链接额外第三方库。
+- [ ] 不引入 Qt、SDL、nlohmann_json 或其他依赖。
+- [ ] 不在 public header 中包含 `Windows.h`，避免 `min/max` 宏和平台类型污染。
 
 ## Proposed API
 
-- [x] 新增 `class ZSdlInputBackend final : public IInputBackend`。
-- [x] 头文件只持有 `TUniquePtr<SImpl> Impl`，`struct SImpl` 在 `.cpp` 中定义。
-- [x] `TResult<void> Start() override`
-- [x] `void Stop() override`
-- [x] `bool IsRunning() const noexcept override`
-- [x] `TVector<SDeviceInfo> ListDevices() const override`
-- [x] 构造函数不做 SDL 初始化，`Start()` 才初始化输入子系统。
-- [x] 析构函数调用 `Stop()`，确保线程和 SDL gamepad handle 被释放。
-- [x] 析构函数在 `.cpp` 中定义，避免 incomplete pimpl type 影响头文件使用者。
-- [x] 禁止拷贝和移动。
+- [ ] 新增 `class ZWindowsSendInputBackend final : public IOutputBackend`。
+- [ ] `ZERO_NODISCARD TResult<void> SendAction(const SAction& Action) override`
+- [ ] `ZERO_NODISCARD SOutputBackendStatus GetStatus() const override`
+- [ ] 构造后默认状态为 `Ready`，除非当前平台/运行环境不可用。
+- [ ] 支持 `SetStatusForTesting()` 或测试 seam 时，保持在测试文件可控范围内，不污染 Runtime API。
+- [ ] 禁止拷贝和移动。
+- [ ] 如需缓存鼠标小数移动残差，使用私有 Pimpl 或私有成员，不暴露 Win32 类型。
 
-## Threading And Lifecycle
+## Key Mapping Contract
 
-- [x] `Start()` 幂等：已运行时返回 `Ok()`。
-- [x] `Stop()` 幂等：未运行时安全无副作用。
-- [x] 使用 `std::jthread` 和 `std::stop_token` 管理输入轮询线程。
-- [x] worker 使用 `SDL_WaitEventTimeout(..., 4~8ms)` 等待事件，避免 `SDL_PollEvent()` 紧循环烧 CPU。
-- [x] 每次 wait 收到事件后，用 `SDL_PollEvent()` drain 当前队列，避免事件 burst 时逐个等待 timeout。
-- [x] `Stop()` 返回前必须请求停止并等待 worker 退出。
-- [x] 后端内部设备列表使用 mutex 保护，`ListDevices()` 返回快照拷贝。
-- [x] 回调触发必须串行化，不允许同一后端并发调用多个回调。
-- [x] 本轮明确回调线程语义：SDL 后端回调来自输入 worker；UI 集成前需要 Runtime/EventQueue 或 Qt queued connection 做线程切换。
-- [x] 不让 `ZDeviceManager` 或 `ZInputRuntime` 在本轮承担 SDL 线程安全责任。
-- [x] 不使用 `QThread`、`QTimer` 或 Qt event loop 驱动 SDL 后端；Qt 线程投递只允许出现在后续 UI Bridge。
+第一版只支持明确、可测试、跨 profile 稳定的 key name。
 
-## Device Contract
+- [ ] 单字符字母：`A` 到 `Z`，大小写输入统一映射到大写 virtual-key。
+- [ ] 单字符数字：`0` 到 `9`。
+- [ ] 常用功能键：`Space`、`Enter`、`Escape`、`Tab`、`Backspace`。
+- [ ] 方向键：`ArrowUp`、`ArrowDown`、`ArrowLeft`、`ArrowRight`。
+- [ ] 修饰键：`Shift`、`Control`、`Alt`。
+- [ ] 功能键：`F1` 到 `F12`。
+- [ ] 未知 key name 返回 `EErrorCode::InvalidArgument`，不静默忽略。
+- [ ] 不在本轮实现文本输入、Unicode 输入、键盘布局相关字符转换。
+- [ ] 不在本轮区分 left/right Shift、Control、Alt。
 
-- [x] 只接受 SDL 识别为 Gamepad 的设备。
-- [x] `Start()` 只初始化 SDL gamepad 输入相关子系统，例如 `SDL_INIT_GAMEPAD`；不初始化 `SDL_INIT_VIDEO`，窗口生命周期交给 Qt。
-- [x] `Stop()` 对应释放所有 gamepad handle，并调用匹配的 SDL gamepad 子系统退出逻辑。
-- [x] `SDeviceInfo::Backend` 固定为 `"sdl3"`。
-- [x] `SDeviceInfo::Id.Value` 使用稳定会话内 ID，例如 `"sdl3:<instance_id>"`。
-- [x] `SDeviceInfo::InstanceId` 保存 SDL joystick instance id 字符串。
-- [x] `SDeviceInfo::Name` 保存 SDL 设备名，缺失时使用空字符串。
-- [x] `SDeviceInfo::Guid` 保存 SDL GUID 字符串，缺失时使用空字符串。
-- [x] `SDeviceInfo::VendorId` 和 `ProductId` 使用 4 位小写十六进制字符串，缺失时使用空字符串。
-- [x] 热插拔新增设备时更新设备列表并触发 `OnDeviceConnected`。
-- [x] 热插拔移除设备时关闭对应 handle、更新设备列表并触发 `OnDeviceDisconnected`。
-- [x] 重复 added/remapped 事件不应重复插入同一个 instance id。
-- [x] `SDL_EVENT_GAMEPAD_REMAPPED` 第一版只刷新该设备 metadata 或记录调试信息，不重开设备、不重复触发 connected。
+## Mouse Mapping Contract
 
-## Event Mapping Contract
+- [ ] `SMouseButtonAction::Button = 0` 映射为左键。
+- [ ] `SMouseButtonAction::Button = 1` 映射为右键。
+- [ ] `SMouseButtonAction::Button = 2` 映射为中键。
+- [ ] 其他按钮编号返回 `EErrorCode::InvalidArgument`。
+- [ ] `SMouseMoveAction` 使用相对移动，不使用绝对屏幕坐标。
+- [ ] `DeltaX` / `DeltaY` 转换为 `LONG dx/dy`，第一版可以 round 到整数。
+- [ ] 小于 1 像素的连续移动如需平滑，可在后端内部缓存小数残差。
+- [ ] `SMouseWheelAction::Delta` 映射到 `MOUSEEVENTF_WHEEL`，按 `WHEEL_DELTA` 缩放。
+- [ ] 滚轮 delta 为 0 时返回成功但不发送系统事件，或作为无效输入返回错误；实现前二选一并写入测试。
 
-- [x] SDL gamepad button down 映射为 `EInputEventType::Pressed`，`Value = 1.0f`。
-- [x] SDL gamepad button up 映射为 `EInputEventType::Released`，`Value = 0.0f`。
-- [x] 面板按钮映射到 `button_south/east/west/north`。
-- [x] Start/Back/Guide 映射到 `button_start/button_back/button_guide`。
-- [x] 肩键映射到 `left_shoulder/right_shoulder`。
-- [x] 摇杆按下映射到 `left_stick_button/right_stick_button`。
-- [x] D-pad 四方向映射到 `dpad_up/down/left/right`。
-- [x] SDL trigger axis 映射为 `EInputControlType::Trigger`，范围归一化到 `[0.0, 1.0]`。
-- [x] SDL left/right stick axis 映射为 `EInputControlType::Axis2D`，`ControlId` 为 `left_stick/right_stick`。
-- [x] 摇杆 X/Y 轴事件需要合并最近一次同摇杆另一轴状态后再发出完整 `SAxis2DValue`。
-- [x] 摇杆值归一化到 `[-1.0, 1.0]`，不在后端应用 deadzone。
-- [x] 不认识的 SDL button/axis 只记录调试信息，不产生 `SInputEvent`。
-- [x] `Timestamp` 使用 `std::chrono::steady_clock::now()`，不把 SDL timestamp 暴露到 Core。
+## SendInput Contract
+
+- [ ] 每次 `SendAction()` 最多发送一个逻辑动作对应的一组 `INPUT`。
+- [ ] Keyboard pressed 使用 key down，released 使用 key up。
+- [ ] Mouse button pressed 使用 button down flag，released 使用 button up flag。
+- [ ] Mouse move 使用 `MOUSEEVENTF_MOVE`。
+- [ ] Mouse wheel 使用 `MOUSEEVENTF_WHEEL`。
+- [ ] `SendInput()` 返回数量不等于请求数量时返回错误，并更新后端状态为 `Error`。
+- [ ] `SendInput()` 成功后保持状态为 `Ready`。
+- [ ] `EActionType::None` 返回 `EErrorCode::InvalidArgument`。
+- [ ] action type 与 payload 不匹配时返回 `EErrorCode::InvalidArgument`。
+- [ ] 不抛异常作为普通错误路径。
+
+## Testability Plan
+
+真实 `SendInput()` 不适合在单元测试中直接触发系统输入，本轮需要把转换逻辑和系统调用分开。
+
+- [ ] 将 key name -> virtual-key 的映射提取为纯 helper。
+- [ ] 将 mouse button -> down/up flag 的映射提取为纯 helper。
+- [ ] 将 `SAction` -> 内部 command / `INPUT` 描述的转换提取为可测试 helper。
+- [ ] 后端内部通过很薄的 native sender 调用 `SendInput()`。
+- [ ] 单元测试默认使用 fake sender，记录请求数量和参数，不产生真实键鼠输入。
+- [ ] 真实 `SendInput()` 只在手动测试或显式集成测试中执行。
+- [ ] 测试 helper 不需要 Qt、SDL 或 Runtime。
 
 ## Error Semantics
 
-- [x] SDL 初始化失败时 `Start()` 返回 `TResult<void>::Err(...)`。
-- [x] SDL gamepad subsystem 不可用时返回可诊断错误消息。
-- [x] 单个设备打开失败不导致整个后端停止，但要跳过该设备并记录错误。
-- [x] worker 运行中遇到单个事件解析失败时跳过该事件，不停止后端。
-- [x] `Start()` 部分成功后如果 worker 创建失败，必须关闭已打开设备并释放 SDL 状态。
-- [x] `Stop()` 不返回错误；关闭阶段只做 best-effort 清理。
+- [ ] 不支持的平台返回 `Unavailable` 状态和可诊断消息。
+- [ ] 未知 key name 返回 `EErrorCode::InvalidArgument`。
+- [ ] 未知 mouse button 返回 `EErrorCode::InvalidArgument`。
+- [ ] action payload 类型不匹配返回 `EErrorCode::InvalidArgument`。
+- [ ] `SendInput()` 失败返回 `EErrorCode::Unknown` 或更合适的现有错误码，并带上 `GetLastError()` 信息。
+- [ ] 失败后 `GetStatus()` 返回 `Error`，Message 保存最近一次失败原因。
+- [ ] 后续成功发送可以把状态恢复为 `Ready`，或保留 Error 直到显式 Reset；实现前二选一并写入测试。
 
 ## CMake Plan
 
-- [x] 将 `source/Backends/Input/SdlInputBackend.cpp` 条件加入 `MappyZInputBackends`。
-- [x] `MAPPYZ_ENABLE_SDL3_INPUT=OFF` 时完全跳过 `find_package(SDL3 ...)`，不输出 SDL 缺失 warning。
-- [x] `MAPPYZ_ENABLE_SDL3_INPUT=ON` 且找到 SDL3 时编译 SDL 后端和 SDL 后端测试。
-- [x] `MAPPYZ_ENABLE_SDL3_INPUT=ON` 但未找到 SDL3 时输出 warning，跳过 SDL 后端和 SDL 后端测试，其他 target 正常配置。
-- [x] SDL3 可用时让 `MappyZInputBackends` `PRIVATE` 链接 `SDL3::SDL3`。
-- [x] 新增 `MAPPYZ_HAS_SDL3_INPUT` 编译定义，供测试和后续 App bootstrap 判断。
-- [x] 新增 `tests/Backends/Input/SdlInputBackendTests.cpp`，只在 SDL3 可用时加入 `MappyZInputBackendTests`。
-- [x] 不修改 `MappyZCore` target。
-- [x] 不修改主应用启动逻辑；App bootstrap 后续单独接入真实后端。
+- [ ] 将 `source/Backends/Output/WindowsSendInputBackend.cpp` 条件加入 `MappyZOutputBackends`。
+- [ ] 将 helper 测试和后端测试条件加入 `MappyZOutputBackendTests`。
+- [ ] `MAPPYZ_ENABLE_WINDOWS_SENDINPUT_OUTPUT=OFF` 时完全跳过 Windows 后端源文件和测试。
+- [ ] 非 Windows 平台不编译 Windows 后端源文件。
+- [ ] Windows 后端启用时定义 `MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT`。
+- [ ] 不修改 `MappyZCore` target。
+- [ ] 不修改 `MappyZRuntime` target 的公共接口。
+- [ ] 不修改主应用启动逻辑；App bootstrap 后续单独选择真实输出后端。
 
 ## Tests
 
-- [x] SDL3 可用时，`ZSdlInputBackend` 默认状态为 stopped，设备列表为空。
-- [x] `Start()` 后 `IsRunning()` 为 true。
-- [x] 重复 `Start()` 返回成功且不启动第二个 worker。
-- [x] `Stop()` 后 `IsRunning()` 为 false。
-- [x] 重复 `Stop()` 安全。
-- [x] 析构 running backend 不崩溃。
-- [x] 无手柄环境下 `Start()` 成功，`ListDevices()` 返回空或当前系统设备快照。
-- [x] `ListDevices()` 返回快照，不暴露内部容器引用。
-- [x] 空回调时设备和输入事件处理不崩溃。
-- [x] 将按钮枚举到 `ControlId`、axis 归一化、Axis2D 合并拆成 `.cpp` 内部 helper，优先用不启动 SDL runtime 的单元测试覆盖。
-- [x] 按钮枚举到 `ControlId` 的转换覆盖 south/east/west/north、肩键、stick button、D-pad。
-- [x] trigger 归一化覆盖最小值、中间值、最大值。
-- [x] stick 归一化覆盖负向、中心、正向。
-- [x] Axis2D 合并逻辑覆盖先 X 后 Y、先 Y 后 X。
-- [x] `SDL_EVENT_GAMEPAD_REMAPPED` 不会产生重复 connected 事件。
-- [x] 后端头文件不包含 Qt、QML、Win32 或 SDL 头。
-- [x] Core/Runtime 现有测试不需要 SDL3 也能继续通过。
+- [ ] `ZWindowsSendInputBackend` 默认状态为 `Ready`。
+- [ ] `EActionType::None` 返回错误。
+- [ ] payload 类型与 `EActionType` 不匹配返回错误。
+- [ ] `KeyboardKey` pressed 生成 key down。
+- [ ] `KeyboardKey` released 生成 key up。
+- [ ] 支持 `A-Z`、`0-9`、常用功能键、方向键、`F1-F12`。
+- [ ] 未知 key name 返回错误且不调用 native sender。
+- [ ] `MouseButton` pressed / released 生成对应 down/up flag。
+- [ ] 未知 mouse button 返回错误且不调用 native sender。
+- [ ] `MouseMove` 生成相对移动 command。
+- [ ] `MouseWheel` 生成滚轮 command。
+- [ ] fake sender 返回部分成功时，`SendAction()` 返回错误并更新状态。
+- [ ] fake sender 成功时，`SendAction()` 返回成功并保持 Ready。
+- [ ] 后端头文件不包含 Qt、QML、SDL、Win32 头。
+- [ ] Core/Runtime 现有测试不需要 Windows 后端也能继续通过。
+
+## Manual Test Checklist
+
+这些不作为自动单元测试，但实现完成后需要人工验证。
+
+- [ ] 按钮映射到 `Space` 后，按下手柄按钮能在文本框中产生空格。
+- [ ] 按钮映射到鼠标左键后，按下/抬起状态符合预期。
+- [ ] 右摇杆映射到鼠标移动后，光标可以相对移动。
+- [ ] 扳机阈值映射到鼠标按钮后，不会在阈值附近异常连点。
+- [ ] 输出后端不可用或失败时，状态消息可被 Runtime/UI 后续读取。
+- [ ] 程序退出后不会残留按键按下状态；如发现风险，后续需要补 pressed-state cleanup。
 
 ## Acceptance Criteria
 
-- [x] 未安装 SDL3 时，`cmake -S . -B build` 可以完成配置并跳过 SDL 后端。
-- [x] 安装 SDL3 时，`cmake -S . -B build -DMAPPYZ_ENABLE_SDL3_INPUT=ON` 能启用 SDL 后端。
-- [x] `cmake --build build` 通过。
-- [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
-- [x] `git diff --check` 通过。
-- [x] 新增和修改的文本文件使用 CRLF 行尾。
-- [x] `ZSdlInputBackend` 不依赖 UI、QML 或 Win32。
-- [x] `ZSdlInputBackend`、`MappyZRuntime` 和 `MappyZCore` 不包含 Qt 头，也不在 public API 中出现 Qt 类型。
-- [x] `MappyZCore` 不引入 SDL 依赖。
-- [ ] 连接普通 Xbox 风格手柄时，可以通过后端回调观察设备连接和按钮/轴输入事件。
+- [ ] Windows + option ON 时，`cmake -S . -B build -DMAPPYZ_ENABLE_WINDOWS_SENDINPUT_OUTPUT=ON` 能启用后端。
+- [ ] Windows + option OFF 时，项目可配置、可编译、可测试，且不编译 Windows 后端。
+- [ ] 非 Windows 平台可以跳过该后端并继续配置。
+- [ ] `cmake --build build` 通过。
+- [ ] `ctest --test-dir build --output-on-failure -C Debug` 通过。
+- [ ] `git diff --check` 通过。
+- [ ] 新增和修改的文本文件使用 CRLF 行尾。
+- [ ] `ZWindowsSendInputBackend` 不依赖 UI、QML、SDL。
+- [ ] `ZWindowsSendInputBackend.h` 不包含 `Windows.h`。
+- [ ] `MappyZCore` 和 `MappyZRuntime` 不引入 Win32 依赖。
+- [ ] 连接普通 Xbox 风格手柄并使用测试 profile 时，可以观察到至少一种真实键盘或鼠标输出。
 
 ## Follow-Up Module
 
+- [ ] 后续实现 App bootstrap，把 `ZSdlInputBackend`、`ZMappingSession`、`ZWindowsSendInputBackend` 串成真实运行链路。
 - [ ] 后续实现 Runtime/EventQueue 或 UI Bridge 的线程切换层，安全接收 SDL worker 回调。
-- [ ] 后续实现 profile directory/active profile 管理，支持从配置目录选择 profile。
-- [ ] 后续实现 `ZWindowsSendInputBackend`，把 `SAction` 转换为 Windows 键盘和鼠标输出。
 - [ ] 后续实现基础 QML 输入状态面板，显示设备和最近输入事件。
+- [ ] 后续实现 profile directory/active profile 管理，支持从配置目录选择 profile。
+- [ ] 后续实现绑定 UI：等待输入、选择输出动作、保存 profile。
