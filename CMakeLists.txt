@@ -36,6 +36,22 @@ if(NOT nlohmann_json_FOUND)
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
 
+# SDL3 输入后端（可选）
+option(MAPPYZ_ENABLE_SDL3_INPUT "构建 SDL3 输入后端" ON)
+
+set(MAPPYZ_HAS_SDL3_INPUT OFF)
+
+if(MAPPYZ_ENABLE_SDL3_INPUT)
+    find_package(SDL3 CONFIG QUIET)
+
+    if(SDL3_FOUND)
+        set(MAPPYZ_HAS_SDL3_INPUT ON)
+        message(STATUS "SDL3 已找到，SDL 输入后端已启用")
+    else()
+        message(WARNING "MAPPYZ_ENABLE_SDL3_INPUT=ON 但未找到 SDL3，跳过 SDL 输入后端")
+    endif()
+endif()
+
 # ── Core 模块 ──
 
 add_library(MappyZCore STATIC
@@ -60,14 +76,29 @@ endif()
 
 # ── 输入后端模块 ──
 
-add_library(MappyZInputBackends STATIC
+set(MAPPYZ_INPUT_BACKEND_SOURCES
     source/Backends/Input/FakeInputBackend.cpp
+)
+
+if(MAPPYZ_HAS_SDL3_INPUT)
+    list(APPEND MAPPYZ_INPUT_BACKEND_SOURCES
+        source/Backends/Input/SdlInputBackend.cpp
+    )
+endif()
+
+add_library(MappyZInputBackends STATIC
+    ${MAPPYZ_INPUT_BACKEND_SOURCES}
 )
 
 target_link_libraries(MappyZInputBackends
     PUBLIC
         MappyZCore
 )
+
+if(MAPPYZ_HAS_SDL3_INPUT)
+    target_link_libraries(MappyZInputBackends PRIVATE SDL3::SDL3)
+    target_compile_definitions(MappyZInputBackends PUBLIC MAPPYZ_HAS_SDL3_INPUT)
+endif()
 
 if(MSVC)
     target_compile_options(MappyZInputBackends PRIVATE /W4)
@@ -221,8 +252,19 @@ if(BUILD_TESTING)
 
     # ── 输入后端测试 ──
 
-    add_executable(MappyZInputBackendTests
+    set(MAPPYZ_INPUT_BACKEND_TEST_SOURCES
         tests/Backends/Input/FakeInputBackendTests.cpp
+    )
+
+    if(MAPPYZ_HAS_SDL3_INPUT)
+        list(APPEND MAPPYZ_INPUT_BACKEND_TEST_SOURCES
+            tests/Backends/Input/SdlInputHelperTests.cpp
+            tests/Backends/Input/SdlInputBackendTests.cpp
+        )
+    endif()
+
+    add_executable(MappyZInputBackendTests
+        ${MAPPYZ_INPUT_BACKEND_TEST_SOURCES}
     )
 
     target_link_libraries(MappyZInputBackendTests
