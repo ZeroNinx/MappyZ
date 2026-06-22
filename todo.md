@@ -1,160 +1,187 @@
-# TODO: Runtime Host Lifecycle Module
+# TODO: Application Bootstrap Module
 
 ## Next Step
 
-下一步实现 `Runtime/RuntimeHost.h/.cpp` 的最小版本，作为运行时组合入口。`ZRuntimeHost` 不直接依赖 SDL、Win32 或 UI，而是通过传入的 `IInputBackend` 和 `IOutputBackend` 引用组装 `ZBackendEventQueue`、`ZActionDispatcher`、`ZMappingSession` 和 `ZRuntimeEventPump`，对外提供启动、停止、pump 和 profile 替换接口。
+下一步实现 `source/App/ApplicationBootstrap.h/.cpp` 的最小版本，作为应用层运行时装配入口。它负责根据编译期开关选择输入/输出后端，加载启动 profile，构造 `ZRuntimeHost`，并向 `Main.cpp` 或后续 UI Bridge 暴露启动、停止和 pump 接口。
 
 优先做这个模块的理由：
 
-- [ ] `ZBackendEventQueue` 已经能安全接收后端 worker 回调。
-- [ ] `ZRuntimeEventPump` 已经能把队列事件送进 `ZMappingSession`。
-- [ ] `ZActionDispatcher` 和 `ZMappingSession` 已经能完成输入到输出的运行链路。
-- [ ] 当前缺少一个统一生命周期入口，App bootstrap 还不能干净地组合这些模块。
+- [x] `ZRuntimeHost` 已经提供统一生命周期入口，但当前 `Main.cpp` 仍只加载 QML。
+- [x] SDL 输入后端、Windows SendInput 输出后端、ProfileManager 和 Runtime Host 已经具备组合条件。
+- [x] UI Bridge 后续需要一个稳定的 App 级对象，而不是直接拼后端和 Runtime 组件。
+- [x] 先把 App bootstrap 做成可测试的纯 C++ 组合层，可以避免 QML 层过早承担生命周期责任。
 
 ## Scope
 
-本轮只做 Runtime 组合和生命周期，不接真实 App UI。
+本轮只做 App 层 bootstrap，不实现 QML model，不做绑定编辑 UI。
 
 包含：
 
-- [x] `source/Runtime/RuntimeHost.h`
-- [x] `source/Runtime/RuntimeHost.cpp`
-- [x] `tests/Runtime/RuntimeHostTests.cpp`
-- [x] CMake target 和 CTest 接入
-- [x] 非拥有式引用 `IInputBackend` 和 `IOutputBackend`
-- [x] 内部组合 event queue、dispatcher、mapping session、event pump
-- [x] `Start()` / `Stop()` / `IsRunning()`
-- [x] `PumpOnce()`
-- [x] `ReplaceProfile()` 和 mapping enabled 开关
-- [x] 设备/输入事件 handler 转发
-- [x] 为 `ZFakeInputBackend` 增加 start failure 测试注入接口，便于覆盖 host 启动失败回滚路径
+- [x] `source/App/ApplicationBootstrap.h`
+- [x] `source/App/ApplicationBootstrap.cpp`
+- [x] `tests/App/ApplicationBootstrapTests.cpp`
+- [x] CMake 增加 `MappyZApp` 静态库和 `MappyZAppTests`
+- [x] App bootstrap 拥有输入后端、输出后端和 `ZRuntimeHost`
+- [x] 启动时可选加载 profile 文件
+- [x] 无 profile 文件时使用空的默认 profile snapshot
+- [x] 公开 `StartRuntime()` / `StopRuntime()` / `PumpOnce()`
+- [x] 公开只读 runtime status 查询
+- [x] 公开 `ZRuntimeHost&` 访问器，供后续 UI Bridge 绑定
 
 不做：
 
-- [x] 不创建 `ZSdlInputBackend` 或 `ZWindowsSendInputBackend`。
-- [x] 不选择平台后端。
-- [x] 不读取 profile 文件或扫描 profile 目录。
-- [x] 不实现 Qt/QML bridge。
-- [x] 不修改 `Main.cpp`。
-- [x] 不实现定时器或后台 pump 线程。
-- [x] 不实现 pressed-state cleanup 或退出时释放补偿。
-- [x] 不实现多 profile、layer、mode shift。
-- [x] 不修改 `IInputBackend`、`IOutputBackend` 或 Core 接口；只允许扩展 fake backend 测试辅助方法。
+- [x] 不实现 QML `ZAppController`
+- [x] 不实现 `DeviceModel` / `InputStateModel` / `LogModel`
+- [x] 不新增 profile 编辑或保存逻辑
+- [x] 不实现定时器；`Main.cpp` 或 UI Bridge 后续负责定期调用 `PumpOnce()`
+- [x] 不实现系统托盘、设置页、打包逻辑
+- [x] 不复制或移植第三方项目代码结构
+- [x] 不把本地路径、机器信息或私有参考项目细节写入提交
 
 ## Architecture Boundary
 
-- [x] `ZRuntimeHost` 属于 Runtime 层。
-- [x] 依赖 `IInputBackend`、`IOutputBackend` 和现有 Runtime 组件。
-- [x] 不依赖 Qt、QML、SDL、Win32 或 nlohmann_json。
-- [x] public header 不包含平台头。
-- [x] host 负责生命周期顺序，不负责平台后端构造。
-- [x] host 不绕过 `ZRuntimeEventPump` 直接处理 backend callback。
+- [x] `ApplicationBootstrap` 属于 App 层。
+- [x] 可以依赖 Runtime、InputBackends、OutputBackends。
+- [x] 不依赖 QML 类型，不包含 QML 文件。
+- [x] 不直接处理 SDL 事件，不直接调用 Win32 SendInput。
+- [x] 不绕过 `ZRuntimeHost` 处理 mapping 或 dispatch。
+- [x] 不让 UI 直接持有后端对象。
+- [x] 参考成熟映射软件的分层思路：App 层集中拥有运行时对象，UI 只观察状态并发起命令。
 
 ## Proposed Types
 
-- [x] 新增 `enum class ERuntimeHostState`：
-  - `Stopped`
-  - `Running`
-  - `Error`
-- [x] 新增 `struct SRuntimeHostStatus`：
-  - `ERuntimeHostState State = ERuntimeHostState::Stopped`
-  - `StdString Message`
-  - `SOutputBackendStatus OutputStatus`
-- [x] 新增 `struct SRuntimeHostStartOptions`：
-  - `bool bAttachEventQueue = true`
+- [x] 新增 factory 类型别名：
+  - `using TInputBackendFactory = std::function<TResult<TUniquePtr<IInputBackend>>()>;`
+  - `using TOutputBackendFactory = std::function<TResult<TUniquePtr<IOutputBackend>>()>;`
+- [x] 新增 `struct SApplicationBootstrapOptions`：
+  - `StdPath ProfilePath`
+  - `bool bUseNullOutput = false`
   - `bool bStartInputBackend = true`
   - `bool bEnableMapping = true`
-- [x] 扩展 `ZFakeInputBackend`：
-  - `void SetStartError(StdString Message)`
-  - `void ClearStartError()`
-- [x] 新增 `class ZRuntimeHost`：
-  - `ZRuntimeHost(IInputBackend& InputBackend, IOutputBackend& OutputBackend)`
-  - `TResult<void> Start(SRuntimeHostStartOptions Options = {})`
-  - `void Stop()`
-  - `bool IsRunning() const noexcept`
-  - `SRuntimeHostStatus GetStatus() const`
+- [x] 新增 `enum class EApplicationBootstrapState`：
+  - `Created`
+  - `Ready`
+  - `Running`
+  - `Error`
+- [x] 新增 `struct SApplicationBootstrapStatus`：
+  - `EApplicationBootstrapState State = EApplicationBootstrapState::Created`
+  - `StdString Message`
+  - `SRuntimeHostStatus RuntimeStatus`
+- [x] 新增 `class ZApplicationBootstrap`：
+  - `ZApplicationBootstrap()`
+  - `ZApplicationBootstrap(TInputBackendFactory InputFactory, TOutputBackendFactory OutputFactory)`
+  - `~ZApplicationBootstrap()`
+  - `TResult<void> Initialize(SApplicationBootstrapOptions Options = {})`
+  - `TResult<void> StartRuntime()`
+  - `void StopRuntime()`
   - `SRuntimeEventPumpSummary PumpOnce()`
-  - `void ReplaceProfile(SMappingProfile Profile)`
-  - `SMappingProfile GetProfileSnapshot() const`
-  - `void SetMappingEnabled(bool bEnabled)`
-  - `bool IsMappingEnabled() const noexcept`
-  - `ZBackendEventQueue& GetEventQueue()`
-  - `ZRuntimeEventPump& GetEventPump()`
-  - `ZMappingSession& GetMappingSession()`
-  - `ZActionDispatcher& GetActionDispatcher()`
+  - `SApplicationBootstrapStatus GetStatus() const`
+  - `ZRuntimeHost& GetRuntimeHost()`
+  - `const ZRuntimeHost& GetRuntimeHost() const`
+- [x] `GetRuntimeHost()` 有前置条件：必须在 `Initialize()` 成功后调用；实现中使用 assert 或同等调试检查，不返回 optional。
 
-## Behavior
+## Backend Selection
 
-- [x] 默认构造后状态为 Stopped，输入后端未启动，event queue 未 attached。
-- [x] `Start()` 默认先 attach event queue，再调用 input backend `Start()`，最后设置 mapping enabled。
-- [x] `bStartInputBackend = false` 时 host 不调用 `IInputBackend::Start()`；该模式用于外部已经管理输入后端生命周期的场景。
-- [x] `bAttachEventQueue = true && bStartInputBackend = false` 合法，但 stopped backend 是否产生事件由具体 backend 决定，host 不额外保证。
-- [x] `Start()` 成功后状态为 Running。
-- [x] 重复 `Start()` 返回 Ok，不重复 attach、不重复启动后端、不清空 runtime 状态。
-- [x] 如果 input backend `Start()` 失败，host 状态变为 Error，返回原始错误。
-- [x] input backend 启动失败时，如果本次 Start 已 attach event queue，则需要 detach 回滚。
-- [x] `Stop()` 先停止 input backend，再 detach event queue，状态变为 Stopped。
-- [x] 重复 `Stop()` 安全。
-- [x] 析构时调用 `Stop()`，避免后端保留回调。
-- [x] `PumpOnce()` 仅在 Running 状态处理事件；非 Running 状态返回空 summary，并输出调试日志。
-- [x] `ReplaceProfile()` 替换 `ZMappingSession` 内的 profile 快照。
-- [x] `SetMappingEnabled()` 透传到 `ZMappingSession::SetEnabled()`。
-- [x] `GetStatus()` 返回 host 状态、消息和当前 output backend 状态。
-- [x] `GetEventQueue()` / `GetEventPump()` 等访问器用于测试和后续 UI bridge，不转移所有权。
+- [x] 输入后端：
+  - 如果定义 `MAPPYZ_HAS_SDL3_INPUT`，创建 `ZSdlInputBackend`。
+  - 否则 `Initialize()` 返回错误，说明当前构建没有可用真实输入后端。
+  - 测试不依赖 SDL，可通过测试专用构造或 factory 注入 fake backend。
+- [x] 输出后端：
+  - 如果 `Options.bUseNullOutput = true`，创建 `ZNullOutputBackend`。
+  - `Options.bUseNullOutput = true` 时不调用 output factory。
+  - Windows 且定义 `MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT` 时，默认创建 `ZWindowsSendInputBackend`。
+  - 无真实输出后端可用时回退到 `ZNullOutputBackend`，状态消息说明当前为调试输出。
+- [x] bootstrap 不暴露具体后端类型给 UI。
 
-## Handler Semantics
+## Profile Startup Behavior
 
-- [x] host 不新增自己的 handler 类型，调用方通过 `GetEventPump()` 设置 handler。
-- [x] handler 仍由 `ZRuntimeEventPump` 在 `PumpOnce()` 调用线程同步执行。
-- [x] host 不捕获 handler 异常。
-- [x] 空 handler 是正常状态。
+- [x] `Options.ProfilePath` 为空时，创建默认空 profile：
+  - `ProfileName = "Default"`
+  - `Rules` 为空
+  - `bEnabled` 使用现有 profile 默认值
+- [x] `Options.ProfilePath` 非空时，调用 `ZProfileManager::LoadProfile()`。
+- [x] profile 加载失败时：
+  - `Initialize()` 返回原始错误
+  - 状态变为 `Error`
+  - 不创建 running host
+- [x] profile 加载成功后，调用 `ZRuntimeHost::ReplaceProfile()`。
+- [x] 本轮不保存 profile，不扫描目录。
 
-## Error Semantics
+## Lifecycle Behavior
 
-- [x] `Start()` 返回 `TResult<void>`，因为后端启动可能失败。
-- [x] `ZFakeInputBackend::SetStartError()` 设置后，`Start()` 返回失败结果，Message 使用注入文本。
-- [x] `ZFakeInputBackend::ClearStartError()` 清除注入错误，后续 `Start()` 恢复成功。
-- [x] `Stop()` 不返回错误，保持幂等。
-- [x] `PumpOnce()` 不返回 `TResult`，沿用 `ZRuntimeEventPump` 的 summary 语义。
-- [x] input backend start failure 使用原始 `SError`，host 只补充状态消息。
-- [x] output backend 错误不阻止 host Running；由 dispatcher/session/pump summary 表达派发失败。
+- [x] 默认构造后状态为 `Created`，未创建后端，未创建 host。
+- [x] `Initialize()` 成功后状态为 `Ready`。
+- [x] `Created` 状态下 `Initialize()` 执行完整 setup。
+- [x] `Error` 状态下允许重新 `Initialize()`，重新创建后端、重新加载 profile、重新构造 host。
+- [x] `Ready` 状态下重复 `Initialize()` 返回 Ok，不重复创建后端，不清空 runtime 状态。
+- [x] `Running` 状态下重复 `Initialize()` 返回 Ok，不停止 host，不重复创建后端，不重新加载 profile。
+- [x] `StartRuntime()` 要求已 `Initialize()`。
+- [x] `StartRuntime()` 调用 `ZRuntimeHost::Start()`，使用 options 透传 mapping enabled 和 start input backend。
+- [x] `StartRuntime()` 成功后状态为 `Running`。
+- [x] `StartRuntime()` 失败时状态为 `Error`，保留错误消息。
+- [x] `StopRuntime()` 安全幂等。
+- [x] `StopRuntime()` 在 `Created` 状态且 host 未构造时 no-op，状态保持 `Created`。
+- [x] `StopRuntime()` 在 `Error` 状态且 host 未构造时 no-op，状态保持 `Error`。
+- [x] `StopRuntime()` 在 `Ready` 状态调用 host `Stop()`，状态保持 `Ready`。
+- [x] `StopRuntime()` 在 `Running` 状态调用 host `Stop()`，状态回到 `Ready`。
+- [x] 析构时调用 `StopRuntime()`。
+- [x] `PumpOnce()` 仅在 `Running` 状态委托给 host；其他状态返回空 summary。
 
-## Lifecycle Order
+## Factory And Testability
 
-- [x] 构造成员顺序固定为：event queue、dispatcher、mapping session、event pump。
-- [x] event pump 引用 event queue 和 mapping session，必须在它们之后构造。
-- [x] Stop 顺序固定为：input backend stop -> event queue detach。
-- [x] host 不清空 event queue pending events；调用方可通过 `GetEventQueue().Clear()` 控制。
-- [x] host 不清空 pump/session/dispatcher recent records；调用方可按需清理。
+- [x] 为测试提供后端 factory 注入点，避免 App 测试依赖 SDL 或真实 SendInput。
+- [x] factory 返回 `TUniquePtr<IInputBackend>` 和 `TUniquePtr<IOutputBackend>`。
+- [x] bootstrap 用 `TUniquePtr` 持有后端所有权，再解引用传给 `ZRuntimeHost(IInputBackend&, IOutputBackend&)`。
+- [x] 成员声明顺序必须保证后端生命周期长于 host：
+  - `TUniquePtr<IInputBackend> InputBackend`
+  - `TUniquePtr<IOutputBackend> OutputBackend`
+  - `TUniquePtr<ZRuntimeHost> RuntimeHost`
+- [x] 析构顺序依赖成员声明顺序：`RuntimeHost` 先析构，后端对象后析构，避免 host 持有悬垂引用。
+- [x] 生产默认 factory 根据编译期开关选择真实后端。
+- [x] 测试 factory 使用 `ZFakeInputBackend` 和 `ZNullOutputBackend`。
+- [x] factory 创建失败使用 `TResult` 返回清晰错误，不使用异常作为常规控制流。
+
+## Initialization Notes
+
+- [x] `ZProfileManager` 当前是无状态可默认构造类型，bootstrap 可在 `Initialize()` 中创建局部实例或作为普通成员持有。
+- [x] `Initialize()` 是 heavy setup：创建后端、加载 profile、构造 stopped 状态的 `ZRuntimeHost`。
+- [x] `StartRuntime()` 是薄封装：只调用已经构造好的 host `Start()`，不重新创建后端或重新加载 profile。
+- [x] 输出后端默认不让 Initialize 因缺少真实输出失败；无 Windows SendInput 时回退 `ZNullOutputBackend` 并通过状态消息说明。
 
 ## CMake Plan
 
-- [x] 将 `source/Runtime/RuntimeHost.cpp` 加入 `MappyZRuntime`。
-- [x] 新增 `tests/Runtime/RuntimeHostTests.cpp`，加入 `MappyZRuntimeTests`。
-- [x] 测试使用 `ZFakeInputBackend` 和 `ZNullOutputBackend`。
-- [x] 将 `FakeInputBackendTests.cpp` 增加 start failure 注入覆盖。
-- [x] 不修改主应用 target。
-- [x] 不修改 Core、InputBackend、OutputBackend 接口。
+- [x] 新增 `MappyZApp` 静态库：
+  - `source/App/ApplicationBootstrap.cpp`
+- [x] `MappyZApp` 链接：
+  - `MappyZRuntime`
+  - `MappyZInputBackends`
+  - `MappyZOutputBackends`
+- [x] `MappyZ` 可执行文件链接 `MappyZApp`。
+- [x] 本轮可以不修改 `Main.cpp` 的行为；如果修改，只做构造 bootstrap 的最小接入。
+- [x] 新增 `MappyZAppTests`：
+  - `tests/App/ApplicationBootstrapTests.cpp`
+  - 链接 `MappyZApp`、`MappyZInputBackends`、`MappyZOutputBackends`、Catch2。
 
 ## Tests
 
-- [x] 默认状态为 Stopped，host 未 running。
-- [x] `Start()` 启动 input backend 并 attach event queue。
-- [x] `Start()` 后 fake input 事件经 `PumpOnce()` 触发 mapping dispatch。
-- [x] 重复 `Start()` 幂等，不重复清空 pending events 或 records。
-- [x] `Stop()` 停止 input backend 并 detach event queue。
-- [x] 重复 `Stop()` 安全。
-- [x] 析构时清空 backend callback，后续 fake backend 注入不崩溃。
-- [x] input backend start failure 返回错误，host 状态为 Error，event queue 回滚 detach。
-- [x] fake backend `SetStartError()` 后 `Start()` 返回错误，`ClearStartError()` 后恢复成功。
-- [x] `Start({ .bStartInputBackend = false })` 不调用 input backend start，但可按选项 attach event queue。
-- [x] `PumpOnce()` 在 Stopped 状态不处理事件。
-- [x] `ReplaceProfile()` 更新 active profile 快照。
-- [x] `SetMappingEnabled(false)` 后输入事件不会产生动作。
-- [x] output backend Error 时 host 仍 Running，pump summary 记录 dispatch failure。
-- [x] `GetStatus()` 反映 host 状态和 output status。
-- [x] 通过 `GetEventPump()` 设置 input handler 能被调用。
-- [x] 新增 Runtime 文件不包含 Qt、QML、SDL 或 Win32 头。
+- [x] 默认构造状态为 `Created`。
+- [x] 使用 fake/null factory 的 `Initialize()` 成功后状态为 `Ready`。
+- [x] `Initialize()` 创建 runtime host 并加载默认空 profile。
+- [x] 指定 profile JSON 路径时加载 profile 并应用到 host。
+- [x] profile 加载失败时返回错误，状态为 `Error`。
+- [x] 重复 `Initialize()` 幂等。
+- [x] `Initialize()` 失败进入 Error 后，修复 factory/profile 条件再调用 `Initialize()` 可以成功进入 Ready。
+- [x] `StartRuntime()` 在未 Initialize 时返回错误。
+- [x] `StartRuntime()` 成功启动 fake input backend 和 host。
+- [x] `StopRuntime()` 停止 host，状态回到 `Ready`。
+- [x] `StopRuntime()` 在 Created/Error 且 host 未构造时 no-op。
+- [x] 重复 `StopRuntime()` 安全。
+- [x] `GetRuntimeHost()` 只在 Initialize 成功后使用；测试不在未初始化状态调用。
+- [x] `PumpOnce()` 在 Running 时委托 host 并处理输入事件。
+- [x] `PumpOnce()` 在非 Running 状态返回空 summary。
+- [x] 析构时停止 host 并清理 backend callback。
+- [x] factory 创建输入后端失败时 Initialize 返回错误。
+- [x] factory 创建输出后端失败时 Initialize 返回错误。
 
 ## Acceptance Criteria
 
@@ -162,13 +189,14 @@
 - [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
 - [x] `git diff --check` 通过。
 - [x] 新增和修改的文本文件使用 CRLF 行尾。
-- [x] `ZRuntimeHost` 不依赖 UI、SDL 或平台层。
-- [x] 可以用 fake input、test profile、null output 验证 host 级输入到输出链路。
+- [x] `ApplicationBootstrap` 不包含 QML、SDL 或 Win32 public 类型。
+- [x] App 层可以在测试中通过 fake input + null output 启动完整 runtime 链路。
 
 ## Follow-Up Module
 
-- [ ] 后续实现 App bootstrap，选择 `ZSdlInputBackend` 和 `ZWindowsSendInputBackend`，加载默认测试 profile，并驱动 `ZRuntimeHost`。
-- [ ] 后续实现基础 QML 输入状态面板，显示设备和最近输入事件。
-- [ ] 后续实现 profile directory/active profile 管理，支持从配置目录选择 profile。
-- [ ] 后续实现退出时 pressed-state cleanup。
+- [ ] 后续实现 `Main.cpp` 的实际 runtime 接入和 Qt `QTimer` pump。
+- [ ] 后续实现 UI Bridge：`ZAppController`、`DeviceModel`、`InputStateModel`、`LogModel`。
+- [ ] 后续实现 QML 输入状态面板，显示设备、最近输入和输出状态。
 - [ ] 后续实现绑定 UI：等待输入、选择输出动作、保存 profile。
+- [ ] 后续实现 profile directory/active profile 管理。
+- [ ] 后续实现退出时 pressed-state cleanup。

@@ -177,6 +177,25 @@ else()
     target_compile_options(MappyZRuntime PRIVATE -Wall -Wextra -Wconversion -Wshadow)
 endif()
 
+# ── App 模块 ──
+
+add_library(MappyZApp STATIC
+    source/App/ApplicationBootstrap.cpp
+)
+
+target_link_libraries(MappyZApp
+    PUBLIC
+        MappyZRuntime
+        MappyZInputBackends
+        MappyZOutputBackends
+)
+
+if(MSVC)
+    target_compile_options(MappyZApp PRIVATE /W4)
+else()
+    target_compile_options(MappyZApp PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+endif()
+
 # ── 主应用 ──
 
 qt_add_executable(MappyZ
@@ -204,6 +223,7 @@ target_compile_features(MappyZ PRIVATE cxx_std_20)
 
 target_link_libraries(MappyZ
     PRIVATE
+        MappyZApp
         MappyZCore
         Qt6::Quick
 )
@@ -368,4 +388,26 @@ if(BUILD_TESTING)
     endif()
 
     catch_discover_tests(MappyZRuntimeTests)
+
+    # ── App 测试 ──
+
+    add_executable(MappyZAppTests
+        tests/App/ApplicationBootstrapTests.cpp
+    )
+
+    target_link_libraries(MappyZAppTests
+        PRIVATE
+            MappyZApp
+            MappyZInputBackends
+            MappyZOutputBackends
+            Catch2::Catch2WithMain
+    )
+
+    if(MSVC)
+        target_compile_options(MappyZAppTests PRIVATE /W4)
+    else()
+        target_compile_options(MappyZAppTests PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+    endif()
+
+    catch_discover_tests(MappyZAppTests)
 endif()
