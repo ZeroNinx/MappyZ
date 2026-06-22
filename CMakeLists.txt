@@ -108,14 +108,40 @@ endif()
 
 # ── 输出后端模块 ──
 
-add_library(MappyZOutputBackends STATIC
+# Windows SendInput 输出后端（可选，仅 Windows 平台）
+option(MAPPYZ_ENABLE_WINDOWS_SENDINPUT_OUTPUT "Build Windows SendInput output backend" ON)
+
+set(MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT OFF)
+
+if(MAPPYZ_ENABLE_WINDOWS_SENDINPUT_OUTPUT AND WIN32)
+    set(MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT ON)
+    message(STATUS "Windows SendInput 输出后端已启用")
+elseif(MAPPYZ_ENABLE_WINDOWS_SENDINPUT_OUTPUT AND NOT WIN32)
+    message(WARNING "MAPPYZ_ENABLE_WINDOWS_SENDINPUT_OUTPUT=ON 但非 Windows 平台，跳过")
+endif()
+
+set(MAPPYZ_OUTPUT_BACKEND_SOURCES
     source/Backends/Output/NullOutputBackend.cpp
+)
+
+if(MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT)
+    list(APPEND MAPPYZ_OUTPUT_BACKEND_SOURCES
+        source/Backends/Output/WindowsSendInputBackend.cpp
+    )
+endif()
+
+add_library(MappyZOutputBackends STATIC
+    ${MAPPYZ_OUTPUT_BACKEND_SOURCES}
 )
 
 target_link_libraries(MappyZOutputBackends
     PUBLIC
         MappyZCore
 )
+
+if(MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT)
+    target_compile_definitions(MappyZOutputBackends PUBLIC MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT)
+endif()
 
 if(MSVC)
     target_compile_options(MappyZOutputBackends PRIVATE /W4)
@@ -283,8 +309,19 @@ if(BUILD_TESTING)
 
     # ── 输出后端测试 ──
 
-    add_executable(MappyZOutputBackendTests
+    set(MAPPYZ_OUTPUT_BACKEND_TEST_SOURCES
         tests/Backends/Output/NullOutputBackendTests.cpp
+    )
+
+    if(MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT)
+        list(APPEND MAPPYZ_OUTPUT_BACKEND_TEST_SOURCES
+            tests/Backends/Output/WindowsSendInputHelperTests.cpp
+            tests/Backends/Output/WindowsSendInputBackendTests.cpp
+        )
+    endif()
+
+    add_executable(MappyZOutputBackendTests
+        ${MAPPYZ_OUTPUT_BACKEND_TEST_SOURCES}
     )
 
     target_link_libraries(MappyZOutputBackendTests
