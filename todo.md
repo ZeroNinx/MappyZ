@@ -1,187 +1,171 @@
-# TODO: Application Bootstrap Module
+# TODO: UI Bridge AppController Module
 
 ## Next Step
 
-下一步实现 `source/App/ApplicationBootstrap.h/.cpp` 的最小版本，作为应用层运行时装配入口。它负责根据编译期开关选择输入/输出后端，加载启动 profile，构造 `ZRuntimeHost`，并向 `Main.cpp` 或后续 UI Bridge 暴露启动、停止和 pump 接口。
+下一步实现 `source/UI/Bridge/AppController.h/.cpp` 的最小版本，把已经完成的 `ZApplicationBootstrap` 暴露给 QML。`ZAppController` 只负责应用级命令和运行时状态，不直接读取手柄、不直接发送键鼠、不承载设备列表或输入状态模型。
 
 优先做这个模块的理由：
 
-- [x] `ZRuntimeHost` 已经提供统一生命周期入口，但当前 `Main.cpp` 仍只加载 QML。
-- [x] SDL 输入后端、Windows SendInput 输出后端、ProfileManager 和 Runtime Host 已经具备组合条件。
-- [x] UI Bridge 后续需要一个稳定的 App 级对象，而不是直接拼后端和 Runtime 组件。
-- [x] 先把 App bootstrap 做成可测试的纯 C++ 组合层，可以避免 QML 层过早承担生命周期责任。
+- [x] `ZApplicationBootstrap` 已经能创建后端、加载 profile、构造并启动 `ZRuntimeHost`。
+- [x] 当前 `Main.cpp` 仍只加载静态 QML，UI 没有 runtime 状态入口。
+- [x] QML 后续的设备面板、输入面板、日志面板都需要一个稳定的 C++ bridge 根对象。
+- [x] 先做 AppController 可以把 Qt/QML 生命周期和 runtime 生命周期分开，避免 QML 直接拼后端对象。
 
 ## Scope
 
-本轮只做 App 层 bootstrap，不实现 QML model，不做绑定编辑 UI。
+本轮只做 UI Bridge 根控制器，不做设备列表 model、不做输入状态 model、不做绑定编辑保存。
 
 包含：
 
-- [x] `source/App/ApplicationBootstrap.h`
-- [x] `source/App/ApplicationBootstrap.cpp`
-- [x] `tests/App/ApplicationBootstrapTests.cpp`
-- [x] CMake 增加 `MappyZApp` 静态库和 `MappyZAppTests`
-- [x] App bootstrap 拥有输入后端、输出后端和 `ZRuntimeHost`
-- [x] 启动时可选加载 profile 文件
-- [x] 无 profile 文件时使用空的默认 profile snapshot
-- [x] 公开 `StartRuntime()` / `StopRuntime()` / `PumpOnce()`
-- [x] 公开只读 runtime status 查询
-- [x] 公开 `ZRuntimeHost&` 访问器，供后续 UI Bridge 绑定
+- [x] `source/UI/Bridge/AppController.h`
+- [x] `source/UI/Bridge/AppController.cpp`
+- [x] `tests/UI/Bridge/AppControllerTests.cpp`
+- [x] CMake 增加 `MappyZUIBridge` 静态库和 `MappyZUIBridgeTests`
+- [x] `ZAppController` 继承 `QObject`
+- [x] 内部拥有 `ZApplicationBootstrap`
+- [x] 暴露 runtime 状态、消息、mapping enabled、last pump summary 基础属性
+- [x] 提供 `initializeRuntime()` / `startRuntime()` / `stopRuntime()` / `pumpOnce()` invokable
+- [x] 提供可选 `QTimer` pump 控制：`startPumpTimer()` / `stopPumpTimer()`
+- [x] `Main.cpp` 注册或注入 `ZAppController` 到 QML context
 
 不做：
 
-- [x] 不实现 QML `ZAppController`
-- [x] 不实现 `DeviceModel` / `InputStateModel` / `LogModel`
-- [x] 不新增 profile 编辑或保存逻辑
-- [x] 不实现定时器；`Main.cpp` 或 UI Bridge 后续负责定期调用 `PumpOnce()`
-- [x] 不实现系统托盘、设置页、打包逻辑
+- [x] 不实现 `ZDeviceModel`
+- [x] 不实现 `ZInputStateModel`
+- [x] 不实现 `ZLogModel`
+- [x] 不实现 profile 目录扫描或保存
+- [x] 不修改 Core、Runtime、Backend 接口
+- [x] 不让 QML 直接访问 `IInputBackend`、`IOutputBackend` 或 `ZRuntimeHost`
 - [x] 不复制或移植第三方项目代码结构
-- [x] 不把本地路径、机器信息或私有参考项目细节写入提交
 
 ## Architecture Boundary
 
-- [x] `ApplicationBootstrap` 属于 App 层。
-- [x] 可以依赖 Runtime、InputBackends、OutputBackends。
-- [x] 不依赖 QML 类型，不包含 QML 文件。
-- [x] 不直接处理 SDL 事件，不直接调用 Win32 SendInput。
-- [x] 不绕过 `ZRuntimeHost` 处理 mapping 或 dispatch。
-- [x] 不让 UI 直接持有后端对象。
-- [x] 参考成熟映射软件的分层思路：App 层集中拥有运行时对象，UI 只观察状态并发起命令。
+- [x] `ZAppController` 属于 UI Bridge 层。
+- [x] 可以依赖 Qt Core、`ZApplicationBootstrap` 和 Runtime public types。
+- [x] 不包含 SDL 头，不包含 Win32 头。
+- [x] 不直接处理 backend callback；只调用 `ZApplicationBootstrap` / `ZRuntimeHost` 的 public API。
+- [x] QML 只绑定 `ZAppController` 暴露的属性和 invokable，不直接持有 runtime 对象。
+- [x] 运行时 pump 在 UI 线程同步调用，后续如有性能问题再引入单独 runtime thread。
 
 ## Proposed Types
 
-- [x] 新增 factory 类型别名：
-  - `using TInputBackendFactory = std::function<TResult<TUniquePtr<IInputBackend>>()>;`
-  - `using TOutputBackendFactory = std::function<TResult<TUniquePtr<IOutputBackend>>()>;`
-- [x] 新增 `struct SApplicationBootstrapOptions`：
-  - `StdPath ProfilePath`
-  - `bool bUseNullOutput = false`
-  - `bool bStartInputBackend = true`
-  - `bool bEnableMapping = true`
-- [x] 新增 `enum class EApplicationBootstrapState`：
-  - `Created`
-  - `Ready`
-  - `Running`
-  - `Error`
-- [x] 新增 `struct SApplicationBootstrapStatus`：
-  - `EApplicationBootstrapState State = EApplicationBootstrapState::Created`
-  - `StdString Message`
-  - `SRuntimeHostStatus RuntimeStatus`
-- [x] 新增 `class ZApplicationBootstrap`：
-  - `ZApplicationBootstrap()`
-  - `ZApplicationBootstrap(TInputBackendFactory InputFactory, TOutputBackendFactory OutputFactory)`
-  - `~ZApplicationBootstrap()`
-  - `TResult<void> Initialize(SApplicationBootstrapOptions Options = {})`
-  - `TResult<void> StartRuntime()`
-  - `void StopRuntime()`
-  - `SRuntimeEventPumpSummary PumpOnce()`
-  - `SApplicationBootstrapStatus GetStatus() const`
-  - `ZRuntimeHost& GetRuntimeHost()`
-  - `const ZRuntimeHost& GetRuntimeHost() const`
-- [x] `GetRuntimeHost()` 有前置条件：必须在 `Initialize()` 成功后调用；实现中使用 assert 或同等调试检查，不返回 optional。
+- [x] 新增 `class ZAppController final : public QObject`
+- [x] 构造函数：
+  - `explicit ZAppController(QObject* Parent = nullptr)`
+  - `ZAppController(TInputBackendFactory InputFactory, TOutputBackendFactory OutputFactory, QObject* Parent = nullptr)`
+- [x] QML 属性：
+  - `Q_PROPERTY(QString runtimeState READ RuntimeState NOTIFY RuntimeStatusChanged)`
+  - `Q_PROPERTY(QString runtimeMessage READ RuntimeMessage NOTIFY RuntimeStatusChanged)`
+  - `Q_PROPERTY(QString outputState READ OutputState NOTIFY RuntimeStatusChanged)`
+  - `Q_PROPERTY(bool mappingEnabled READ IsMappingEnabled WRITE SetMappingEnabled NOTIFY MappingEnabledChanged)`
+  - `Q_PROPERTY(bool pumpTimerRunning READ IsPumpTimerRunning NOTIFY PumpTimerRunningChanged)`
+  - `Q_PROPERTY(int lastDrainedEventCount READ LastDrainedEventCount NOTIFY LastPumpSummaryChanged)`
+  - `Q_PROPERTY(int lastInputEventCount READ LastInputEventCount NOTIFY LastPumpSummaryChanged)`
+  - `Q_PROPERTY(int lastMappedInputCount READ LastMappedInputCount NOTIFY LastPumpSummaryChanged)`
+  - `Q_PROPERTY(int lastDispatchedInputCount READ LastDispatchedInputCount NOTIFY LastPumpSummaryChanged)`
+- [x] Public invokable：
+  - `Q_INVOKABLE bool initializeRuntime(bool useNullOutput = false)`
+  - `Q_INVOKABLE bool startRuntime()`
+  - `Q_INVOKABLE void stopRuntime()`
+  - `Q_INVOKABLE void pumpOnce()`
+  - `Q_INVOKABLE void startPumpTimer(int intervalMs = 16)`
+  - `Q_INVOKABLE void stopPumpTimer()`
+- [x] Signals：
+  - `void RuntimeStatusChanged()`
+  - `void MappingEnabledChanged()`
+  - `void PumpTimerRunningChanged()`
+  - `void LastPumpSummaryChanged()`
+  - `void RuntimeError(QString message)`
 
-## Backend Selection
+## Dependency Injection
 
-- [x] 输入后端：
-  - 如果定义 `MAPPYZ_HAS_SDL3_INPUT`，创建 `ZSdlInputBackend`。
-  - 否则 `Initialize()` 返回错误，说明当前构建没有可用真实输入后端。
-  - 测试不依赖 SDL，可通过测试专用构造或 factory 注入 fake backend。
-- [x] 输出后端：
-  - 如果 `Options.bUseNullOutput = true`，创建 `ZNullOutputBackend`。
-  - `Options.bUseNullOutput = true` 时不调用 output factory。
-  - Windows 且定义 `MAPPYZ_HAS_WINDOWS_SENDINPUT_OUTPUT` 时，默认创建 `ZWindowsSendInputBackend`。
-  - 无真实输出后端可用时回退到 `ZNullOutputBackend`，状态消息说明当前为调试输出。
-- [x] bootstrap 不暴露具体后端类型给 UI。
+- [x] 生产构造使用默认 `ZApplicationBootstrap`。
+- [x] 测试构造允许注入 `TInputBackendFactory` 和 `TOutputBackendFactory`，复用 ApplicationBootstrap 的 fake/null 测试路径。
+- [x] controller 构造后不自动 initialize、不自动 start，避免测试和 UI 加载时产生真实输入/输出副作用。
+- [x] `Main.cpp` 可以选择只创建 controller 并注入 QML，不自动启动 runtime。
 
-## Profile Startup Behavior
+## Runtime Behavior
 
-- [x] `Options.ProfilePath` 为空时，创建默认空 profile：
-  - `ProfileName = "Default"`
-  - `Rules` 为空
-  - `bEnabled` 使用现有 profile 默认值
-- [x] `Options.ProfilePath` 非空时，调用 `ZProfileManager::LoadProfile()`。
-- [x] profile 加载失败时：
-  - `Initialize()` 返回原始错误
-  - 状态变为 `Error`
-  - 不创建 running host
-- [x] profile 加载成功后，调用 `ZRuntimeHost::ReplaceProfile()`。
-- [x] 本轮不保存 profile，不扫描目录。
+- [x] `initializeRuntime()` 调用 `ZApplicationBootstrap::Initialize()`。
+- [x] `initializeRuntime(useNullOutput=true)` 传递 `SApplicationBootstrapOptions::bUseNullOutput = true`。
+- [x] `startRuntime()` 如果尚未 initialize，先返回 false 并发出 `RuntimeError`，不隐式 initialize。
+- [x] `startRuntime()` 成功后更新 runtime status 属性。
+- [x] `stopRuntime()` 安全幂等，停止 timer 后调用 bootstrap `StopRuntime()`。
+- [x] `pumpOnce()` 只调用 bootstrap `PumpOnce()`，并缓存 summary 到属性。
+- [x] `startPumpTimer()` 创建或启动内部 `QTimer`，timeout 连接到 `pumpOnce()`。
+- [x] `stopPumpTimer()` 停止 timer，重复调用安全。
+- [x] 析构时停止 timer，并调用 bootstrap `StopRuntime()`。
 
-## Lifecycle Behavior
+## Mapping Behavior
 
-- [x] 默认构造后状态为 `Created`，未创建后端，未创建 host。
-- [x] `Initialize()` 成功后状态为 `Ready`。
-- [x] `Created` 状态下 `Initialize()` 执行完整 setup。
-- [x] `Error` 状态下允许重新 `Initialize()`，重新创建后端、重新加载 profile、重新构造 host。
-- [x] `Ready` 状态下重复 `Initialize()` 返回 Ok，不重复创建后端，不清空 runtime 状态。
-- [x] `Running` 状态下重复 `Initialize()` 返回 Ok，不停止 host，不重复创建后端，不重新加载 profile。
-- [x] `StartRuntime()` 要求已 `Initialize()`。
-- [x] `StartRuntime()` 调用 `ZRuntimeHost::Start()`，使用 options 透传 mapping enabled 和 start input backend。
-- [x] `StartRuntime()` 成功后状态为 `Running`。
-- [x] `StartRuntime()` 失败时状态为 `Error`，保留错误消息。
-- [x] `StopRuntime()` 安全幂等。
-- [x] `StopRuntime()` 在 `Created` 状态且 host 未构造时 no-op，状态保持 `Created`。
-- [x] `StopRuntime()` 在 `Error` 状态且 host 未构造时 no-op，状态保持 `Error`。
-- [x] `StopRuntime()` 在 `Ready` 状态调用 host `Stop()`，状态保持 `Ready`。
-- [x] `StopRuntime()` 在 `Running` 状态调用 host `Stop()`，状态回到 `Ready`。
-- [x] 析构时调用 `StopRuntime()`。
-- [x] `PumpOnce()` 仅在 `Running` 状态委托给 host；其他状态返回空 summary。
+- [x] `mappingEnabled` 默认从 runtime host/session 状态读取；未 initialize 时缓存期望值。
+- [x] `SetMappingEnabled(bool)` 更新缓存值；如果 runtime 已 initialize，则透传到 `GetRuntimeHost().SetMappingEnabled()`。
+- [x] `initializeRuntime()` 创建 `SApplicationBootstrapOptions` 时必须设置 `bEnableMapping = CachedMappingEnabled`，避免 `ZRuntimeHost::Start()` 用默认 true 覆盖用户选择。
+- [x] `initializeRuntime()` 成功后仍将缓存的 mapping enabled 应用到 host，保证 stopped host snapshot 与 UI 状态一致。
+- [x] `startRuntime()` 成功后再调用一次 `GetRuntimeHost().SetMappingEnabled(CachedMappingEnabled)`，覆盖 initialize 与 start 之间用户再次切换 mapping enabled 的场景。
+- [x] 仅控制启停，不新增或保存 mapping rule。
 
-## Factory And Testability
+## Status Mapping
 
-- [x] 为测试提供后端 factory 注入点，避免 App 测试依赖 SDL 或真实 SendInput。
-- [x] factory 返回 `TUniquePtr<IInputBackend>` 和 `TUniquePtr<IOutputBackend>`。
-- [x] bootstrap 用 `TUniquePtr` 持有后端所有权，再解引用传给 `ZRuntimeHost(IInputBackend&, IOutputBackend&)`。
-- [x] 成员声明顺序必须保证后端生命周期长于 host：
-  - `TUniquePtr<IInputBackend> InputBackend`
-  - `TUniquePtr<IOutputBackend> OutputBackend`
-  - `TUniquePtr<ZRuntimeHost> RuntimeHost`
-- [x] 析构顺序依赖成员声明顺序：`RuntimeHost` 先析构，后端对象后析构，避免 host 持有悬垂引用。
-- [x] 生产默认 factory 根据编译期开关选择真实后端。
-- [x] 测试 factory 使用 `ZFakeInputBackend` 和 `ZNullOutputBackend`。
-- [x] factory 创建失败使用 `TResult` 返回清晰错误，不使用异常作为常规控制流。
+- [x] `runtimeState` 将 `EApplicationBootstrapState` 转成稳定字符串：
+  - `created`
+  - `ready`
+  - `running`
+  - `error`
+- [x] `outputState` 将 `EOutputBackendState` 转成稳定字符串：
+  - `unavailable`
+  - `ready`
+  - `error`
+- [x] `runtimeMessage` 直接来自 `SApplicationBootstrapStatus::Message`。
+- [x] 失败路径保留最后错误消息，并发出 `RuntimeError(message)`。
+- [x] 仅暴露 UI 友好的字符串，不把 enum 直接暴露给 QML。
 
-## Initialization Notes
+## Main.cpp Integration
 
-- [x] `ZProfileManager` 当前是无状态可默认构造类型，bootstrap 可在 `Initialize()` 中创建局部实例或作为普通成员持有。
-- [x] `Initialize()` 是 heavy setup：创建后端、加载 profile、构造 stopped 状态的 `ZRuntimeHost`。
-- [x] `StartRuntime()` 是薄封装：只调用已经构造好的 host `Start()`，不重新创建后端或重新加载 profile。
-- [x] 输出后端默认不让 Initialize 因缺少真实输出失败；无 Windows SendInput 时回退 `ZNullOutputBackend` 并通过状态消息说明。
+- [x] `Main.cpp` 创建 `ZAppController AppController;`
+- [x] 在 `Engine.loadFromModule()` 前通过 root context 注入：
+  - context property 名称建议为 `appController`
+- [x] 本轮不强制 QML 使用它；可以先只完成注入和编译链路。
+- [x] 后续 QML 再把按钮、状态栏和日志绑定到 `appController`。
 
 ## CMake Plan
 
-- [x] 新增 `MappyZApp` 静态库：
-  - `source/App/ApplicationBootstrap.cpp`
-- [x] `MappyZApp` 链接：
-  - `MappyZRuntime`
-  - `MappyZInputBackends`
-  - `MappyZOutputBackends`
-- [x] `MappyZ` 可执行文件链接 `MappyZApp`。
-- [x] 本轮可以不修改 `Main.cpp` 的行为；如果修改，只做构造 bootstrap 的最小接入。
-- [x] 新增 `MappyZAppTests`：
-  - `tests/App/ApplicationBootstrapTests.cpp`
-  - 链接 `MappyZApp`、`MappyZInputBackends`、`MappyZOutputBackends`、Catch2。
+- [x] 生产构建继续使用 `find_package(Qt6 REQUIRED COMPONENTS Quick)`。
+- [x] 仅在 `if(BUILD_TESTING)` 内追加 `find_package(Qt6 REQUIRED COMPONENTS Test)`，避免非测试构建依赖 Qt Test 模块。
+- [x] 新增 `MappyZUIBridge` 静态库：
+  - `source/UI/Bridge/AppController.cpp`
+- [x] `MappyZUIBridge` 链接：
+  - `Qt6::Core`
+  - `MappyZApp`
+- [x] `MappyZ` 可执行文件链接 `MappyZUIBridge`。
+- [x] 新增 `MappyZUIBridgeTests`：
+  - `tests/UI/Bridge/Main.cpp`
+  - `tests/UI/Bridge/AppControllerTests.cpp`
+  - 链接 `MappyZUIBridge`、`MappyZInputBackends`、`MappyZOutputBackends`、`Qt6::Test`、`Catch2::Catch2`。
+- [x] `MappyZUIBridgeTests` 不使用 `Catch2::Catch2WithMain`，因为 `QSignalSpy` 需要进程中已有 `QCoreApplication`。
+- [x] `tests/UI/Bridge/Main.cpp` 自定义测试入口：
+  - 先创建 `QCoreApplication App(argc, argv)`
+  - 再调用 `Catch::Session().run(argc, argv)`
 
 ## Tests
 
-- [x] 默认构造状态为 `Created`。
-- [x] 使用 fake/null factory 的 `Initialize()` 成功后状态为 `Ready`。
-- [x] `Initialize()` 创建 runtime host 并加载默认空 profile。
-- [x] 指定 profile JSON 路径时加载 profile 并应用到 host。
-- [x] profile 加载失败时返回错误，状态为 `Error`。
-- [x] 重复 `Initialize()` 幂等。
-- [x] `Initialize()` 失败进入 Error 后，修复 factory/profile 条件再调用 `Initialize()` 可以成功进入 Ready。
-- [x] `StartRuntime()` 在未 Initialize 时返回错误。
-- [x] `StartRuntime()` 成功启动 fake input backend 和 host。
-- [x] `StopRuntime()` 停止 host，状态回到 `Ready`。
-- [x] `StopRuntime()` 在 Created/Error 且 host 未构造时 no-op。
-- [x] 重复 `StopRuntime()` 安全。
-- [x] `GetRuntimeHost()` 只在 Initialize 成功后使用；测试不在未初始化状态调用。
-- [x] `PumpOnce()` 在 Running 时委托 host 并处理输入事件。
-- [x] `PumpOnce()` 在非 Running 状态返回空 summary。
-- [x] 析构时停止 host 并清理 backend callback。
-- [x] factory 创建输入后端失败时 Initialize 返回错误。
-- [x] factory 创建输出后端失败时 Initialize 返回错误。
+- [x] 默认构造状态为 `created`，timer 未运行。
+- [x] fake/null factory 下 `initializeRuntime(true)` 成功后状态为 `ready`。
+- [x] `startRuntime()` 未 initialize 时返回 false 并发出 `RuntimeError`。
+- [x] initialize 后 `startRuntime()` 成功，状态变为 `running`。
+- [x] `stopRuntime()` 将 running 状态停回 `ready`，重复调用安全。
+- [x] `pumpOnce()` 在 running 状态更新 last summary 属性。
+- [x] `pumpOnce()` 在非 running 状态 summary 保持空。
+- [x] `startPumpTimer()` 启动 timer，`stopPumpTimer()` 停止 timer。
+- [x] 析构时停止 timer 和 runtime，不崩溃。
+- [x] `SetMappingEnabled(false)` 在 initialize 前缓存；initialize 后 host mapping disabled。
+- [x] `SetMappingEnabled()` 在 initialize 后透传到 host。
+- [x] `SetMappingEnabled(false)` 在 initialize 前设置后，`startRuntime()` 不会把 mapping enabled 恢复成 true。
+- [x] initialize 后、start 前再次切换 `mappingEnabled`，`startRuntime()` 后 host 使用最新缓存值。
+- [x] 使用 `QSignalSpy` 验证 `RuntimeStatusChanged`、`MappingEnabledChanged`、`RuntimeError` 等关键信号。
+- [x] input factory failure 时 `initializeRuntime()` 返回 false，状态为 `error`，发出 `RuntimeError`。
+- [x] output factory failure 时 `initializeRuntime(false)` 返回 false；`initializeRuntime(true)` 使用 Null output 不调用 output factory。
+- [x] header 不包含 SDL 或 Win32 头。
 
 ## Acceptance Criteria
 
@@ -189,14 +173,13 @@
 - [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
 - [x] `git diff --check` 通过。
 - [x] 新增和修改的文本文件使用 CRLF 行尾。
-- [x] `ApplicationBootstrap` 不包含 QML、SDL 或 Win32 public 类型。
-- [x] App 层可以在测试中通过 fake input + null output 启动完整 runtime 链路。
+- [x] `ZAppController` public API 不暴露 Core/Runtime 复杂对象给 QML。
+- [x] QML engine 能拿到 `appController` context property。
 
 ## Follow-Up Module
 
-- [ ] 后续实现 `Main.cpp` 的实际 runtime 接入和 Qt `QTimer` pump。
-- [ ] 后续实现 UI Bridge：`ZAppController`、`DeviceModel`、`InputStateModel`、`LogModel`。
-- [ ] 后续实现 QML 输入状态面板，显示设备、最近输入和输出状态。
-- [ ] 后续实现绑定 UI：等待输入、选择输出动作、保存 profile。
+- [ ] 后续实现 `ZDeviceModel`，把设备列表和热插拔状态暴露给 QML。
+- [ ] 后续实现 `ZInputStateModel`，显示最近输入和控件状态。
+- [ ] 后续把 `ui/Main.qml` 的状态栏、按钮和日志绑定到 `appController`。
 - [ ] 后续实现 profile directory/active profile 管理。
-- [ ] 后续实现退出时 pressed-state cleanup。
+- [ ] 后续实现绑定 UI：等待输入、选择输出动作、保存 profile。

@@ -196,6 +196,24 @@ else()
     target_compile_options(MappyZApp PRIVATE -Wall -Wextra -Wconversion -Wshadow)
 endif()
 
+# ── UI Bridge 模块 ──
+
+add_library(MappyZUIBridge STATIC
+    source/UI/Bridge/AppController.cpp
+)
+
+target_link_libraries(MappyZUIBridge
+    PUBLIC
+        Qt6::Core
+        MappyZApp
+)
+
+if(MSVC)
+    target_compile_options(MappyZUIBridge PRIVATE /W4)
+else()
+    target_compile_options(MappyZUIBridge PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+endif()
+
 # ── 主应用 ──
 
 qt_add_executable(MappyZ
@@ -223,6 +241,7 @@ target_compile_features(MappyZ PRIVATE cxx_std_20)
 
 target_link_libraries(MappyZ
     PRIVATE
+        MappyZUIBridge
         MappyZApp
         MappyZCore
         Qt6::Quick
@@ -410,4 +429,30 @@ if(BUILD_TESTING)
     endif()
 
     catch_discover_tests(MappyZAppTests)
+
+    # ── UI Bridge 测试 ──
+
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+
+    add_executable(MappyZUIBridgeTests
+        tests/UI/Bridge/Main.cpp
+        tests/UI/Bridge/AppControllerTests.cpp
+    )
+
+    target_link_libraries(MappyZUIBridgeTests
+        PRIVATE
+            MappyZUIBridge
+            MappyZInputBackends
+            MappyZOutputBackends
+            Qt6::Test
+            Catch2::Catch2
+    )
+
+    if(MSVC)
+        target_compile_options(MappyZUIBridgeTests PRIVATE /W4)
+    else()
+        target_compile_options(MappyZUIBridgeTests PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+    endif()
+
+    catch_discover_tests(MappyZUIBridgeTests)
 endif()

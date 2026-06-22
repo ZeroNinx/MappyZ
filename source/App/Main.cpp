@@ -2,13 +2,20 @@
 #include <QGuiApplication>
 #include <QObject>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <Qt>
+
+#include "UI/Bridge/AppController.h"
 
 int main(int ArgCount, char* Arguments[])
 {
     QGuiApplication App(ArgCount, Arguments);
 
+    ZeroMapper::ZAppController AppController;
+
     QQmlApplicationEngine Engine;
+
+    Engine.rootContext()->setContextProperty("appController", &AppController);
 
     QObject::connect(
         &Engine,
