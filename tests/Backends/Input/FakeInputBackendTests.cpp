@@ -265,3 +265,48 @@ TEST_CASE("FakeBackend ListDevices returns snapshot not internal reference", "[B
     // 清空返回值不应影响后端内部设备列表
     REQUIRE(Backend.ListDevices().size() == 1);
 }
+
+// ── 启动失败注入 ──
+
+TEST_CASE("FakeBackend SetStartError makes Start return failure", "[Backend][Fake]")
+{
+    ZFakeInputBackend Backend;
+
+    Backend.SetStartError("simulated failure");
+    auto Result = Backend.Start();
+
+    REQUIRE_FALSE(Result);
+    REQUIRE(Result.Failure().Message == "simulated failure");
+    REQUIRE_FALSE(Backend.IsRunning());
+}
+
+TEST_CASE("FakeBackend ClearStartError restores Start success", "[Backend][Fake]")
+{
+    ZFakeInputBackend Backend;
+
+    Backend.SetStartError("temporary");
+    (void)Backend.Start();
+    REQUIRE_FALSE(Backend.IsRunning());
+
+    Backend.ClearStartError();
+    auto Result = Backend.Start();
+
+    REQUIRE(Result);
+    REQUIRE(Backend.IsRunning());
+}
+
+TEST_CASE("FakeBackend SetStartError does not affect already running backend", "[Backend][Fake]")
+{
+    ZFakeInputBackend Backend;
+
+    (void)Backend.Start();
+    REQUIRE(Backend.IsRunning());
+
+    // 已 running 时设置 error 不影响当前状态
+    Backend.SetStartError("late error");
+
+    // 重复 Start 在 running 状态直接返回 Ok，不检查 injected error
+    auto Result = Backend.Start();
+    REQUIRE(Result);
+    REQUIRE(Backend.IsRunning());
+}

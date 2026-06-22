@@ -13,8 +13,13 @@ TResult<void> ZFakeInputBackend::Start()
 {
     if (bRunning)
     {
-        // 重复启动不视为错误，返回成功
         return TResult<void>::Ok();
+    }
+
+    if (InjectedStartError.has_value())
+    {
+        return TResult<void>::Err(
+            MakeError(EErrorCode::Unknown, InjectedStartError.value()));
     }
 
     bRunning = true;
@@ -34,6 +39,16 @@ bool ZFakeInputBackend::IsRunning() const noexcept
 TVector<SDeviceInfo> ZFakeInputBackend::ListDevices() const
 {
     return Devices;
+}
+
+void ZFakeInputBackend::SetStartError(StdString Message)
+{
+    InjectedStartError = std::move(Message);
+}
+
+void ZFakeInputBackend::ClearStartError()
+{
+    InjectedStartError.reset();
 }
 
 void ZFakeInputBackend::AddDevice(const SDeviceInfo& DeviceInfo)

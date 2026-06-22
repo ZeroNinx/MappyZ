@@ -27,6 +27,12 @@ public:
 
     // ── 测试注入接口 ──
 
+    // 设置 Start() 注入错误，后续 Start() 将返回此错误
+    void SetStartError(StdString Message);
+
+    // 清除注入错误，后续 Start() 恢复正常
+    void ClearStartError();
+
     // 向设备快照中添加设备。running 状态下同步触发 OnDeviceConnected。
     // 如果设备 ID 已存在，不重复添加、不触发回调，输出警告日志。
     void AddDevice(const SDeviceInfo& DeviceInfo);
@@ -41,6 +47,7 @@ public:
 
 private:
     bool bRunning = false;
+    TOptional<StdString> InjectedStartError;
     TVector<SDeviceInfo> Devices;
 };
 

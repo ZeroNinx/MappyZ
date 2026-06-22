@@ -159,6 +159,7 @@ add_library(MappyZRuntime STATIC
     source/Runtime/ProfileManager.cpp
     source/Runtime/BackendEventQueue.cpp
     source/Runtime/RuntimeEventPump.cpp
+    source/Runtime/RuntimeHost.cpp
 )
 
 target_link_libraries(MappyZRuntime
@@ -350,6 +351,7 @@ if(BUILD_TESTING)
         tests/Runtime/ProfileManagerTests.cpp
         tests/Runtime/BackendEventQueueTests.cpp
         tests/Runtime/RuntimeEventPumpTests.cpp
+        tests/Runtime/RuntimeHostTests.cpp
     )
 
     target_link_libraries(MappyZRuntimeTests
