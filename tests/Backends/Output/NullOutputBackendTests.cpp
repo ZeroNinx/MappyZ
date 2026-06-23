@@ -6,7 +6,7 @@
 #include "Backends/Output/NullOutputBackend.h"
 #include "Backends/Output/OutputBackend.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

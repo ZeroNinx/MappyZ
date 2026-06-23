@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 ZNullOutputBackend::ZNullOutputBackend()
@@ -80,4 +80,4 @@ void ZNullOutputBackend::SetError(StdString Message)
     CurrentStatus.Message = std::move(Message);
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

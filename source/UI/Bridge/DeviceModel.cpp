@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // ── 构造 ──
@@ -200,4 +200,4 @@ int ZDeviceModel::FindDeviceIndex(const SDeviceId& DeviceId) const
     return -1;
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

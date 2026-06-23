@@ -12,7 +12,7 @@
 #include "Core/InputEvent.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class ZInputRuntime
@@ -38,19 +38,19 @@ public:
     void Detach();
 
     // 查询是否已订阅后端回调
-    ZERO_NODISCARD bool IsAttached() const noexcept;
+    NODISCARD bool IsAttached() const noexcept;
 
     // 返回最近事件列表拷贝，调用方修改返回值不影响 runtime 内部状态
-    ZERO_NODISCARD TVector<SInputEvent> ListRecentEvents() const;
+    NODISCARD TVector<SInputEvent> ListRecentEvents() const;
 
     // 返回最近事件数量
-    ZERO_NODISCARD uint32 GetRecentEventCount() const noexcept;
+    NODISCARD uint32 GetRecentEventCount() const noexcept;
 
     // 按设备 ID 和控件 ID 查找当前控件状态，找到时返回事件副本，找不到时返回空
-    ZERO_NODISCARD TOptional<SInputEvent> FindControlState(const SDeviceId& DeviceId, StdStringView ControlId) const;
+    NODISCARD TOptional<SInputEvent> FindControlState(const SDeviceId& DeviceId, StdStringView ControlId) const;
 
     // 返回当前已追踪的控件数量
-    ZERO_NODISCARD uint32 GetTrackedControlCount() const noexcept;
+    NODISCARD uint32 GetTrackedControlCount() const noexcept;
 
     // 清空最近事件和当前控件状态，但不改变 attach 状态
     void Clear();
@@ -69,4 +69,4 @@ private:
     THashMap<StdString, SInputEvent> ControlStates;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

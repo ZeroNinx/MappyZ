@@ -236,7 +236,7 @@ Docs/
 
 #include "ZeroStyle.h"
 
-namespace ZeroMapper {
+namespace MappyZ {
 
 using Zero::EErrorCode;
 using Zero::SError;
@@ -253,7 +253,7 @@ using Zero::int32;
 using Zero::uint32;
 using Zero::uint64;
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ
 ```
 
 公共头文件中禁止 `using namespace Zero;`。
@@ -265,14 +265,14 @@ using Zero::uint64;
 
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper {
+namespace MappyZ {
 
 struct SDeviceId
 {
     StdString Value;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ
 ```
 
 ---
@@ -291,7 +291,7 @@ struct SDeviceId
 10. 所有平台资源必须 RAII 封装。
 11. 可恢复错误使用 `TResult<T>`。
 12. 查询为空使用 `TOptional<T>`。
-13. 返回状态、错误、资源或查询结果的函数必须使用 `ZERO_NODISCARD`。
+13. 返回状态、错误、资源或查询结果的函数必须使用 `NODISCARD`。
 
 ---
 
@@ -320,7 +320,7 @@ Core 包含：
 
 #include <chrono>
 
-namespace ZeroMapper {
+namespace MappyZ {
 
 enum class EInputControlType
 {
@@ -353,7 +353,7 @@ struct SInputEvent
     std::chrono::steady_clock::time_point Timestamp;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ
 ```
 
 ### 8.2 动作定义
@@ -365,7 +365,7 @@ struct SInputEvent
 
 #include <variant>
 
-namespace ZeroMapper {
+namespace MappyZ {
 
 enum class EActionType
 {
@@ -402,7 +402,7 @@ struct SAction
     TActionPayload Payload;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ
 ```
 
 ### 8.3 映射引擎
@@ -415,17 +415,17 @@ struct SAction
 #include "Core/MappingProfile.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper {
+namespace MappyZ {
 
 class ZMappingEngine
 {
 public:
-    ZERO_NODISCARD TVector<SAction> MapInput(
+    NODISCARD TVector<SAction> MapInput(
         const SInputEvent& Event,
         const SMappingProfile& Profile) const;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ
 ```
 
 `ZMappingEngine` 不允许：
@@ -535,17 +535,17 @@ Backend 是项目中最接近第三方库和平台 API 的部分。
 
 #include <functional>
 
-namespace ZeroMapper {
+namespace MappyZ {
 
 class IInputBackend
 {
 public:
     virtual ~IInputBackend() = default;
 
-    ZERO_NODISCARD virtual TResult<void> Start() = 0;
+    NODISCARD virtual TResult<void> Start() = 0;
     virtual void Stop() = 0;
 
-    ZERO_NODISCARD virtual TVector<SDeviceInfo> ListDevices() const = 0;
+    NODISCARD virtual TVector<SDeviceInfo> ListDevices() const = 0;
 
 public:
     std::function<void(const SInputEvent& Event)> OnInputEvent;
@@ -553,7 +553,7 @@ public:
     std::function<void(const SDeviceId& DeviceId)> OnDeviceDisconnected;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ
 ```
 
 MVP 输入后端：
@@ -581,7 +581,7 @@ ZSdlInputBackend
 #include "Core/Action.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper {
+namespace MappyZ {
 
 enum class EOutputBackendState
 {
@@ -601,11 +601,11 @@ class IOutputBackend
 public:
     virtual ~IOutputBackend() = default;
 
-    ZERO_NODISCARD virtual TResult<void> SendAction(const SAction& Action) = 0;
-    ZERO_NODISCARD virtual SOutputBackendStatus GetStatus() const = 0;
+    NODISCARD virtual TResult<void> SendAction(const SAction& Action) = 0;
+    NODISCARD virtual SOutputBackendStatus GetStatus() const = 0;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ
 ```
 
 MVP 输出后端：
@@ -792,10 +792,10 @@ MVP 使用 JSON。JSON 字段可以采用 `snake_case`，因为这是面向用�
 可能失败且需要错误信息的函数返回 `TResult<T>`：
 
 ```cpp
-ZERO_NODISCARD TResult<SMappingProfile> LoadProfile(const StdPath& ProfilePath);
-ZERO_NODISCARD TResult<void> SaveProfile(const SMappingProfile& Profile, const StdPath& ProfilePath);
-ZERO_NODISCARD TResult<void> Start();
-ZERO_NODISCARD TResult<void> SendAction(const SAction& Action);
+NODISCARD TResult<SMappingProfile> LoadProfile(const StdPath& ProfilePath);
+NODISCARD TResult<void> SaveProfile(const SMappingProfile& Profile, const StdPath& ProfilePath);
+NODISCARD TResult<void> Start();
+NODISCARD TResult<void> SendAction(const SAction& Action);
 ```
 
 调用方必须检查结果：
@@ -817,8 +817,8 @@ SMappingProfile Profile = std::move(ProfileResult).TakeValue();
 查询结果只有“有或没有”，且没有错误原因时使用 `TOptional<T>`：
 
 ```cpp
-ZERO_NODISCARD TOptional<SMappingRule> FindRuleByControlId(StdStringView ControlId) const;
-ZERO_NODISCARD TOptional<SDeviceInfo> FindDevice(const SDeviceId& DeviceId) const;
+NODISCARD TOptional<SMappingRule> FindRuleByControlId(StdStringView ControlId) const;
+NODISCARD TOptional<SDeviceInfo> FindDevice(const SDeviceId& DeviceId) const;
 ```
 
 ### 13.3 不忽略错误
@@ -884,7 +884,7 @@ public:
     ZWindowsHandle(ZWindowsHandle&& Other) noexcept;
     ZWindowsHandle& operator=(ZWindowsHandle&& Other) noexcept;
 
-    ZERO_NODISCARD bool IsValid() const noexcept;
+    NODISCARD bool IsValid() const noexcept;
 
 private:
     void* Handle = nullptr;
@@ -1061,7 +1061,7 @@ MSVC:
 3. 谨慎使用 `Get`、`Set`、`Process`、`Handle`、`Execute` 等泛化名称。
 4. 不修改对象状态的成员函数标记 `const`。
 5. 保证不抛异常的轻量函数可标记 `noexcept`。
-6. 返回错误、状态、资源、查询结果的函数必须使用 `ZERO_NODISCARD`。
+6. 返回错误、状态、资源、查询结果的函数必须使用 `NODISCARD`。
 7. 超过约 50 行的函数考虑拆分。
 8. 超过约 100 行的函数通常需要重构。
 

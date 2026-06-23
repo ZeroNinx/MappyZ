@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 namespace SendInputHelpers
 {
@@ -150,7 +150,7 @@ struct SSendInputCommand
 // 将平台无关的 key name 映射为 Windows Virtual-Key 码。
 // 大小写不敏感，"a" 和 "A" 映射到同一个 VK 码。
 // 返回空 optional 表示未知的 key name。
-ZERO_NODISCARD inline TOptional<uint32> MapKeyNameToVirtualKey(StdStringView KeyName)
+NODISCARD inline TOptional<uint32> MapKeyNameToVirtualKey(StdStringView KeyName)
 {
     if (KeyName.empty())
     {
@@ -218,7 +218,7 @@ ZERO_NODISCARD inline TOptional<uint32> MapKeyNameToVirtualKey(StdStringView Key
 // 将鼠标按钮编号映射为 Windows 鼠标事件标志。
 // Button: 0=左键, 1=右键, 2=中键。
 // 返回空 optional 表示未知的按钮编号。
-ZERO_NODISCARD inline TOptional<uint32> MapMouseButtonToFlags(int32 Button, bool bPressed)
+NODISCARD inline TOptional<uint32> MapMouseButtonToFlags(int32 Button, bool bPressed)
 {
     switch (Button)
     {
@@ -239,7 +239,7 @@ inline constexpr int32 WheelDeltaUnit = 120;
 // 将 SAction 转换为 SendInput 内部命令。
 // 执行全部验证：None 类型、type/payload 不匹配、未知 key、未知 button。
 // 失败返回 EErrorCode::InvalidArgument。
-ZERO_NODISCARD inline TResult<SSendInputCommand> BuildCommandFromAction(const SAction& Action)
+NODISCARD inline TResult<SSendInputCommand> BuildCommandFromAction(const SAction& Action)
 {
     if (Action.Type == EActionType::None)
     {
@@ -335,4 +335,4 @@ ZERO_NODISCARD inline TResult<SSendInputCommand> BuildCommandFromAction(const SA
 }
 
 }  // namespace SendInputHelpers
-}  // namespace ZeroMapper
+}  // namespace MappyZ

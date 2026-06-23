@@ -13,7 +13,7 @@
 #include "Core/ControlId.h"
 #include "UI/Bridge/AppController.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 测试用 factory 辅助 ──
 

@@ -9,7 +9,7 @@
 
 #include <variant>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 输出动作的类型
@@ -64,4 +64,4 @@ struct SAction
     TActionPayload Payload;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

@@ -19,6 +19,9 @@ endif()
 
 add_subdirectory(third_party/ZeroStyle)
 
+# 启用 ZeroStyle 短宏（NODISCARD 等），项目代码统一使用短名。
+add_compile_definitions(ZERO_ENABLE_SHORT_MACROS)
+
 find_package(Qt6 REQUIRED COMPONENTS Quick)
 
 qt_standard_project_setup(REQUIRES 6.5)

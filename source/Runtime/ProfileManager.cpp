@@ -10,7 +10,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 using Json = nlohmann::json;
@@ -677,4 +677,4 @@ TResult<void> ZProfileManager::SaveProfile(const SMappingProfile& Profile, const
     return TResult<void>::Ok();
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 ZDeviceManager::ZDeviceManager(IInputBackend& Backend)
@@ -138,4 +138,4 @@ void ZDeviceManager::HandleDeviceDisconnected(const SDeviceId& DeviceId)
     Devices.erase(Iterator);
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

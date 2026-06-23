@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 ZBackendEventQueue::ZBackendEventQueue(IInputBackend& Backend)
@@ -128,4 +128,4 @@ void ZBackendEventQueue::EnqueueInputEvent(const SInputEvent& Event)
     });
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

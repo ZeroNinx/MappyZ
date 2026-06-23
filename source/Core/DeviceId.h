@@ -9,7 +9,7 @@
 
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 设备在运行时的唯一标识，由后端生成，整个会话内保持稳定
@@ -53,4 +53,4 @@ inline bool operator!=(const SDeviceId& Left, const SDeviceId& Right)
     return !(Left == Right);
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

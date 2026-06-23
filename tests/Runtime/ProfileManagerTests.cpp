@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <fstream>
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 解析最小 profile ──
 

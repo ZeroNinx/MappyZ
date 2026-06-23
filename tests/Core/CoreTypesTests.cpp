@@ -9,7 +9,7 @@
 #include "Core/InputEvent.h"
 #include "Core/ProjectCore.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── SDeviceId ──
 

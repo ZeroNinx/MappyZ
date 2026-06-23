@@ -9,7 +9,7 @@
 
 #include "Backends/Input/InputBackend.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class ZFakeInputBackend final : public IInputBackend
@@ -20,10 +20,10 @@ public:
 
     // ── IInputBackend 实现 ──
 
-    ZERO_NODISCARD TResult<void> Start() override;
+    NODISCARD TResult<void> Start() override;
     void Stop() override;
-    ZERO_NODISCARD bool IsRunning() const noexcept override;
-    ZERO_NODISCARD TVector<SDeviceInfo> ListDevices() const override;
+    NODISCARD bool IsRunning() const noexcept override;
+    NODISCARD TVector<SDeviceInfo> ListDevices() const override;
 
     // ── 测试注入接口 ──
 
@@ -51,4 +51,4 @@ private:
     TVector<SDeviceInfo> Devices;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

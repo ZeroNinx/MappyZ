@@ -9,23 +9,23 @@
 #include "Core/MappingProfile.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class ZProfileManager final
 {
 public:
     // 从磁盘路径加载 profile
-    ZERO_NODISCARD TResult<SMappingProfile> LoadProfile(const StdPath& ProfilePath) const;
+    NODISCARD TResult<SMappingProfile> LoadProfile(const StdPath& ProfilePath) const;
 
     // 把 profile 序列化并写入磁盘路径
-    ZERO_NODISCARD TResult<void> SaveProfile(const SMappingProfile& Profile, const StdPath& ProfilePath) const;
+    NODISCARD TResult<void> SaveProfile(const SMappingProfile& Profile, const StdPath& ProfilePath) const;
 
     // 从 JSON 文本解析 profile
-    ZERO_NODISCARD TResult<SMappingProfile> ParseProfileJson(StdStringView JsonText) const;
+    NODISCARD TResult<SMappingProfile> ParseProfileJson(StdStringView JsonText) const;
 
     // 把 profile 序列化为 JSON 文本
-    ZERO_NODISCARD TResult<StdString> SerializeProfileJson(const SMappingProfile& Profile) const;
+    NODISCARD TResult<StdString> SerializeProfileJson(const SMappingProfile& Profile) const;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

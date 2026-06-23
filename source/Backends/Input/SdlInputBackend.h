@@ -11,7 +11,7 @@
 
 #include "Backends/Input/InputBackend.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class ZSdlInputBackend final : public IInputBackend
@@ -24,10 +24,10 @@ public:
 
     // ── IInputBackend 实现 ──
 
-    ZERO_NODISCARD TResult<void> Start() override;
+    NODISCARD TResult<void> Start() override;
     void Stop() override;
-    ZERO_NODISCARD bool IsRunning() const noexcept override;
-    ZERO_NODISCARD TVector<SDeviceInfo> ListDevices() const override;
+    NODISCARD bool IsRunning() const noexcept override;
+    NODISCARD TVector<SDeviceInfo> ListDevices() const override;
 
 private:
     // Pimpl：SDL handle、设备 map、轴缓存、worker 线程全部封装在 SImpl 中
@@ -35,4 +35,4 @@ private:
     TUniquePtr<SImpl> Impl;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

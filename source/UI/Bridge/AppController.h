@@ -14,7 +14,7 @@
 #include "App/ApplicationBootstrap.h"
 #include "UI/Bridge/DeviceModel.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class ZAppController final : public QObject
@@ -48,17 +48,17 @@ public:
 
     // ── QML 属性读取 ──
 
-    ZERO_NODISCARD QString RuntimeState() const;
-    ZERO_NODISCARD QString RuntimeMessage() const;
-    ZERO_NODISCARD QString OutputState() const;
-    ZERO_NODISCARD bool IsMappingEnabled() const;
+    NODISCARD QString RuntimeState() const;
+    NODISCARD QString RuntimeMessage() const;
+    NODISCARD QString OutputState() const;
+    NODISCARD bool IsMappingEnabled() const;
     void SetMappingEnabled(bool bEnabled);
-    ZERO_NODISCARD bool IsPumpTimerRunning() const;
-    ZERO_NODISCARD int LastDrainedEventCount() const;
-    ZERO_NODISCARD int LastInputEventCount() const;
-    ZERO_NODISCARD int LastMappedInputCount() const;
-    ZERO_NODISCARD int LastDispatchedInputCount() const;
-    ZERO_NODISCARD QObject* DeviceModel();
+    NODISCARD bool IsPumpTimerRunning() const;
+    NODISCARD int LastDrainedEventCount() const;
+    NODISCARD int LastInputEventCount() const;
+    NODISCARD int LastMappedInputCount() const;
+    NODISCARD int LastDispatchedInputCount() const;
+    NODISCARD QObject* DeviceModel();
 
     // ── QML invokable ──
 
@@ -99,4 +99,4 @@ private:
     ZDeviceModel DeviceModelInstance;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

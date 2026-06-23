@@ -6,7 +6,7 @@
 
 #include "Backends/Output/OutputBackend.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class ZNullOutputBackend final : public IOutputBackend
@@ -14,16 +14,16 @@ class ZNullOutputBackend final : public IOutputBackend
 public:
     ZNullOutputBackend();
 
-    ZERO_NODISCARD TResult<void> SendAction(const SAction& Action) override;
-    ZERO_NODISCARD SOutputBackendStatus GetStatus() const override;
+    NODISCARD TResult<void> SendAction(const SAction& Action) override;
+    NODISCARD SOutputBackendStatus GetStatus() const override;
 
     // ── 查询接口 ──
 
     // 返回已记录动作的快照拷贝
-    ZERO_NODISCARD TVector<SAction> ListActions() const;
+    NODISCARD TVector<SAction> ListActions() const;
 
     // 返回当前记录的动作数量
-    ZERO_NODISCARD uint32 GetActionCount() const noexcept;
+    NODISCARD uint32 GetActionCount() const noexcept;
 
     // ── 测试注入接口 ──
 
@@ -47,4 +47,4 @@ private:
     TVector<SAction> RecordedActions;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

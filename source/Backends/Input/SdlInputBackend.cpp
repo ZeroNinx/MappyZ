@@ -24,90 +24,90 @@
 // 确保 SdlInputHelpers 中的常量与 SDL3 实际定义一致
 
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::South == SDL_GAMEPAD_BUTTON_SOUTH,
+    MappyZ::SdlInputHelpers::SdlButton::South == SDL_GAMEPAD_BUTTON_SOUTH,
     "SdlButton::South mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::East == SDL_GAMEPAD_BUTTON_EAST,
+    MappyZ::SdlInputHelpers::SdlButton::East == SDL_GAMEPAD_BUTTON_EAST,
     "SdlButton::East mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::West == SDL_GAMEPAD_BUTTON_WEST,
+    MappyZ::SdlInputHelpers::SdlButton::West == SDL_GAMEPAD_BUTTON_WEST,
     "SdlButton::West mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::North == SDL_GAMEPAD_BUTTON_NORTH,
+    MappyZ::SdlInputHelpers::SdlButton::North == SDL_GAMEPAD_BUTTON_NORTH,
     "SdlButton::North mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::Back == SDL_GAMEPAD_BUTTON_BACK,
+    MappyZ::SdlInputHelpers::SdlButton::Back == SDL_GAMEPAD_BUTTON_BACK,
     "SdlButton::Back mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::Guide == SDL_GAMEPAD_BUTTON_GUIDE,
+    MappyZ::SdlInputHelpers::SdlButton::Guide == SDL_GAMEPAD_BUTTON_GUIDE,
     "SdlButton::Guide mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::Start == SDL_GAMEPAD_BUTTON_START,
+    MappyZ::SdlInputHelpers::SdlButton::Start == SDL_GAMEPAD_BUTTON_START,
     "SdlButton::Start mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::LeftStick == SDL_GAMEPAD_BUTTON_LEFT_STICK,
+    MappyZ::SdlInputHelpers::SdlButton::LeftStick == SDL_GAMEPAD_BUTTON_LEFT_STICK,
     "SdlButton::LeftStick mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::RightStick == SDL_GAMEPAD_BUTTON_RIGHT_STICK,
+    MappyZ::SdlInputHelpers::SdlButton::RightStick == SDL_GAMEPAD_BUTTON_RIGHT_STICK,
     "SdlButton::RightStick mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::LeftShoulder == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+    MappyZ::SdlInputHelpers::SdlButton::LeftShoulder == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
     "SdlButton::LeftShoulder mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::RightShoulder == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
+    MappyZ::SdlInputHelpers::SdlButton::RightShoulder == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
     "SdlButton::RightShoulder mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::DpadUp == SDL_GAMEPAD_BUTTON_DPAD_UP,
+    MappyZ::SdlInputHelpers::SdlButton::DpadUp == SDL_GAMEPAD_BUTTON_DPAD_UP,
     "SdlButton::DpadUp mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::DpadDown == SDL_GAMEPAD_BUTTON_DPAD_DOWN,
+    MappyZ::SdlInputHelpers::SdlButton::DpadDown == SDL_GAMEPAD_BUTTON_DPAD_DOWN,
     "SdlButton::DpadDown mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::DpadLeft == SDL_GAMEPAD_BUTTON_DPAD_LEFT,
+    MappyZ::SdlInputHelpers::SdlButton::DpadLeft == SDL_GAMEPAD_BUTTON_DPAD_LEFT,
     "SdlButton::DpadLeft mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlButton::DpadRight == SDL_GAMEPAD_BUTTON_DPAD_RIGHT,
+    MappyZ::SdlInputHelpers::SdlButton::DpadRight == SDL_GAMEPAD_BUTTON_DPAD_RIGHT,
     "SdlButton::DpadRight mismatch");
 
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlAxis::LeftX == SDL_GAMEPAD_AXIS_LEFTX,
+    MappyZ::SdlInputHelpers::SdlAxis::LeftX == SDL_GAMEPAD_AXIS_LEFTX,
     "SdlAxis::LeftX mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlAxis::LeftY == SDL_GAMEPAD_AXIS_LEFTY,
+    MappyZ::SdlInputHelpers::SdlAxis::LeftY == SDL_GAMEPAD_AXIS_LEFTY,
     "SdlAxis::LeftY mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlAxis::RightX == SDL_GAMEPAD_AXIS_RIGHTX,
+    MappyZ::SdlInputHelpers::SdlAxis::RightX == SDL_GAMEPAD_AXIS_RIGHTX,
     "SdlAxis::RightX mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlAxis::RightY == SDL_GAMEPAD_AXIS_RIGHTY,
+    MappyZ::SdlInputHelpers::SdlAxis::RightY == SDL_GAMEPAD_AXIS_RIGHTY,
     "SdlAxis::RightY mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlAxis::LeftTrigger == SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
+    MappyZ::SdlInputHelpers::SdlAxis::LeftTrigger == SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
     "SdlAxis::LeftTrigger mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlAxis::RightTrigger == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
+    MappyZ::SdlInputHelpers::SdlAxis::RightTrigger == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
     "SdlAxis::RightTrigger mismatch");
 
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlGamepadEvent::Added == SDL_EVENT_GAMEPAD_ADDED,
+    MappyZ::SdlInputHelpers::SdlGamepadEvent::Added == SDL_EVENT_GAMEPAD_ADDED,
     "SdlGamepadEvent::Added mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlGamepadEvent::Removed == SDL_EVENT_GAMEPAD_REMOVED,
+    MappyZ::SdlInputHelpers::SdlGamepadEvent::Removed == SDL_EVENT_GAMEPAD_REMOVED,
     "SdlGamepadEvent::Removed mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlGamepadEvent::Remapped == SDL_EVENT_GAMEPAD_REMAPPED,
+    MappyZ::SdlInputHelpers::SdlGamepadEvent::Remapped == SDL_EVENT_GAMEPAD_REMAPPED,
     "SdlGamepadEvent::Remapped mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlGamepadEvent::ButtonDown == SDL_EVENT_GAMEPAD_BUTTON_DOWN,
+    MappyZ::SdlInputHelpers::SdlGamepadEvent::ButtonDown == SDL_EVENT_GAMEPAD_BUTTON_DOWN,
     "SdlGamepadEvent::ButtonDown mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlGamepadEvent::ButtonUp == SDL_EVENT_GAMEPAD_BUTTON_UP,
+    MappyZ::SdlInputHelpers::SdlGamepadEvent::ButtonUp == SDL_EVENT_GAMEPAD_BUTTON_UP,
     "SdlGamepadEvent::ButtonUp mismatch");
 static_assert(
-    ZeroMapper::SdlInputHelpers::SdlGamepadEvent::AxisMotion == SDL_EVENT_GAMEPAD_AXIS_MOTION,
+    MappyZ::SdlInputHelpers::SdlGamepadEvent::AxisMotion == SDL_EVENT_GAMEPAD_AXIS_MOTION,
     "SdlGamepadEvent::AxisMotion mismatch");
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // ── 内部辅助函数 ──
@@ -712,4 +712,4 @@ TVector<SDeviceInfo> ZSdlInputBackend::ListDevices() const
     return Impl->Devices;
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

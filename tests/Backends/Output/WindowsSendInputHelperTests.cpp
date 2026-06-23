@@ -5,8 +5,8 @@
 
 #include "Backends/Output/WindowsSendInputHelpers.h"
 
-using namespace ZeroMapper;
-using namespace ZeroMapper::SendInputHelpers;
+using namespace MappyZ;
+using namespace MappyZ::SendInputHelpers;
 
 // ── 构造辅助 ──
 

@@ -9,7 +9,7 @@
 #include "Backends/Input/FakeInputBackend.h"
 #include "Runtime/BackendEventQueue.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

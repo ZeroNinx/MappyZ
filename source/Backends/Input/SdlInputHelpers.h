@@ -12,7 +12,7 @@
 
 #include <algorithm>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 namespace SdlInputHelpers
 {
@@ -90,7 +90,7 @@ struct SAxisMapping
 
 // 将 SDL 按钮枚举值映射为项目内部 ControlId 字符串。
 // 返回空 optional 表示不认识的按钮类型（如 MISC、PADDLE、TOUCHPAD）。
-ZERO_NODISCARD inline TOptional<StdStringView> MapButtonToControlId(int SdlButtonValue)
+NODISCARD inline TOptional<StdStringView> MapButtonToControlId(int SdlButtonValue)
 {
     switch (SdlButtonValue)
     {
@@ -131,7 +131,7 @@ ZERO_NODISCARD inline TOptional<StdStringView> MapButtonToControlId(int SdlButto
 
 // 将 SDL 轴枚举值映射为项目内部轴信息。
 // 返回空 optional 表示不认识的轴类型。
-ZERO_NODISCARD inline TOptional<SAxisMapping> MapAxisToMapping(int SdlAxisValue)
+NODISCARD inline TOptional<SAxisMapping> MapAxisToMapping(int SdlAxisValue)
 {
     switch (SdlAxisValue)
     {
@@ -178,7 +178,7 @@ ZERO_NODISCARD inline TOptional<SAxisMapping> MapAxisToMapping(int SdlAxisValue)
 
 // 将 SDL 摇杆原始轴值归一化到 [-1.0, 1.0]。
 // SDL 摇杆轴范围为 -32768 ~ 32767，正负方向分别除以不同的最大值以确保两端精确到达 ±1.0。
-ZERO_NODISCARD inline float32 NormalizeStickAxis(int16 RawValue)
+NODISCARD inline float32 NormalizeStickAxis(int16 RawValue)
 {
     if (RawValue >= 0)
     {
@@ -189,7 +189,7 @@ ZERO_NODISCARD inline float32 NormalizeStickAxis(int16 RawValue)
 
 // 将 SDL 扳机原始轴值归一化到 [0.0, 1.0]。
 // SDL 扳机轴范围为 0 ~ 32767，负值视为静止状态。
-ZERO_NODISCARD inline float32 NormalizeTriggerAxis(int16 RawValue)
+NODISCARD inline float32 NormalizeTriggerAxis(int16 RawValue)
 {
     if (RawValue <= 0)
     {
@@ -200,7 +200,7 @@ ZERO_NODISCARD inline float32 NormalizeTriggerAxis(int16 RawValue)
 
 // 更新摇杆轴缓存并返回合并后的双轴值。
 // SDL 分别发送 X 和 Y 轴事件，需要合并为完整的双轴值再发出。
-ZERO_NODISCARD inline SAxis2DValue MergeAxis2DCache(
+NODISCARD inline SAxis2DValue MergeAxis2DCache(
     SAxis2DValue& Cache,
     bool bIsXAxis,
     float32 NormalizedValue)
@@ -231,7 +231,7 @@ enum class ESdlGamepadAction
 
 // 将 SDL 事件类型映射为后端处理分类。
 // 用于事件分发和测试验证：只有 DeviceAdded 才触发 OnDeviceConnected 回调。
-ZERO_NODISCARD inline ESdlGamepadAction ClassifyGamepadEvent(uint32 SdlEventType)
+NODISCARD inline ESdlGamepadAction ClassifyGamepadEvent(uint32 SdlEventType)
 {
     switch (SdlEventType)
     {
@@ -252,4 +252,4 @@ ZERO_NODISCARD inline ESdlGamepadAction ClassifyGamepadEvent(uint32 SdlEventType
 }
 
 }  // namespace SdlInputHelpers
-}  // namespace ZeroMapper
+}  // namespace MappyZ

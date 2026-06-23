@@ -13,7 +13,7 @@
 #include "Core/DeviceId.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class ZDeviceModel final : public QAbstractListModel
@@ -39,13 +39,13 @@ public:
 
     // ── QAbstractListModel 必须实现 ──
 
-    ZERO_NODISCARD int rowCount(
+    NODISCARD int rowCount(
         const QModelIndex& Parent = QModelIndex()) const override;
 
-    ZERO_NODISCARD QVariant data(
+    NODISCARD QVariant data(
         const QModelIndex& Index, int Role = Qt::DisplayRole) const override;
 
-    ZERO_NODISCARD QHash<int, QByteArray> roleNames() const override;
+    NODISCARD QHash<int, QByteArray> roleNames() const override;
 
     // ── 批量与增量操作 ──
 
@@ -69,13 +69,13 @@ public:
     // ── C++ 辅助 ──
 
     // 返回当前设备列表的拷贝，调用方修改不影响 model
-    ZERO_NODISCARD TVector<SDeviceInfo> ListDevicesSnapshot() const;
+    NODISCARD TVector<SDeviceInfo> ListDevicesSnapshot() const;
 
 private:
     // 在 Devices 中查找与指定 DeviceId 匹配的索引，找不到返回 -1
-    ZERO_NODISCARD int FindDeviceIndex(const SDeviceId& DeviceId) const;
+    NODISCARD int FindDeviceIndex(const SDeviceId& DeviceId) const;
 
     TVector<SDeviceInfo> Devices;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

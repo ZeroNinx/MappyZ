@@ -7,8 +7,8 @@
 #include "Backends/Input/SdlInputHelpers.h"
 #include "Core/ControlId.h"
 
-using namespace ZeroMapper;
-using namespace ZeroMapper::SdlInputHelpers;
+using namespace MappyZ;
+using namespace MappyZ::SdlInputHelpers;
 
 // ── 构造辅助 ──
 

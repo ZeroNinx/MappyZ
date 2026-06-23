@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 ZInputRuntime::ZInputRuntime(IInputBackend& Backend)
@@ -116,4 +116,4 @@ StdString ZInputRuntime::MakeControlStateKey(const SDeviceId& DeviceId, StdStrin
     return Key;
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

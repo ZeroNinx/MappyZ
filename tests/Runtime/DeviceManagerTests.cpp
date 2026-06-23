@@ -6,7 +6,7 @@
 #include "Backends/Input/FakeInputBackend.h"
 #include "Runtime/DeviceManager.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

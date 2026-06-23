@@ -17,7 +17,7 @@
 
 #include <functional>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 单次 PumpOnce 的汇总统计
@@ -59,11 +59,11 @@ public:
     ZRuntimeEventPump& operator=(ZRuntimeEventPump&&) = delete;
 
     // 从 EventQueue drain 事件并逐个分发，返回本次汇总统计
-    ZERO_NODISCARD SRuntimeEventPumpSummary PumpOnce();
+    NODISCARD SRuntimeEventPumpSummary PumpOnce();
 
     // 处理外部提供的事件数组，不经过 EventQueue drain。
     // 用于测试注入手工构造的畸形事件，验证防御性路径。
-    ZERO_NODISCARD SRuntimeEventPumpSummary PumpEvents(TVector<SBackendEvent> Events);
+    NODISCARD SRuntimeEventPumpSummary PumpEvents(TVector<SBackendEvent> Events);
 
     // 设置设备连接事件回调
     void SetDeviceConnectedHandler(std::function<void(const SDeviceInfo&)> Handler);
@@ -75,10 +75,10 @@ public:
     void SetInputEventHandler(std::function<void(const SInputEvent&)> Handler);
 
     // 返回最近处理记录的快照拷贝
-    ZERO_NODISCARD TVector<SRuntimeEventPumpRecord> ListRecentRecords() const;
+    NODISCARD TVector<SRuntimeEventPumpRecord> ListRecentRecords() const;
 
     // 返回当前记录数量
-    ZERO_NODISCARD uint32 GetRecentRecordCount() const noexcept;
+    NODISCARD uint32 GetRecentRecordCount() const noexcept;
 
     // 清空处理记录，不影响 handlers、EventQueue 或 MappingSession
     void ClearRecentRecords();
@@ -100,4 +100,4 @@ private:
     TVector<SRuntimeEventPumpRecord> RecentRecords;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

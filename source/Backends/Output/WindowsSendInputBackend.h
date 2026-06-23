@@ -13,7 +13,7 @@
 
 #include <functional>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class ZWindowsSendInputBackend final : public IOutputBackend
@@ -28,8 +28,8 @@ public:
     // 注入自定义 sender 的测试构造
     explicit ZWindowsSendInputBackend(TNativeSender CustomSender);
 
-    ZERO_NODISCARD TResult<void> SendAction(const SAction& Action) override;
-    ZERO_NODISCARD SOutputBackendStatus GetStatus() const override;
+    NODISCARD TResult<void> SendAction(const SAction& Action) override;
+    NODISCARD SOutputBackendStatus GetStatus() const override;
 
 private:
     TNativeSender NativeSender;
@@ -40,4 +40,4 @@ private:
     float32 MouseResidualY = 0.0f;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

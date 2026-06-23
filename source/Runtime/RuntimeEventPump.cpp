@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 ZRuntimeEventPump::ZRuntimeEventPump(
@@ -196,4 +196,4 @@ void ZRuntimeEventPump::AppendRecord(SRuntimeEventPumpRecord Record)
     RecentRecords.push_back(std::move(Record));
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

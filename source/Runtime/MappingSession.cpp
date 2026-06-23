@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 ZMappingSession::ZMappingSession(ZActionDispatcher& Dispatcher)
@@ -99,4 +99,4 @@ void ZMappingSession::AppendRecord(SMappingSessionRecord Record)
     RecentRecords.push_back(std::move(Record));
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

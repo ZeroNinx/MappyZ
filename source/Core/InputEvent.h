@@ -9,7 +9,7 @@
 
 #include <chrono>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 控件的物理类型
@@ -62,4 +62,4 @@ struct SInputEvent
     std::chrono::steady_clock::time_point Timestamp;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

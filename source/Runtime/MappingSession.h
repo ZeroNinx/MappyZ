@@ -12,7 +12,7 @@
 #include "Core/ProjectCore.h"
 #include "Runtime/ActionDispatcher.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 单次映射处理结果
@@ -46,25 +46,25 @@ public:
     ZMappingSession& operator=(ZMappingSession&&) = delete;
 
     // 处理单个输入事件，执行映射和派发
-    ZERO_NODISCARD SMappingSessionResult HandleInputEvent(const SInputEvent& Event);
+    NODISCARD SMappingSessionResult HandleInputEvent(const SInputEvent& Event);
 
     // 替换当前 active profile 快照
     void ReplaceProfile(SMappingProfile Profile);
 
     // 返回当前 profile 快照拷贝
-    ZERO_NODISCARD SMappingProfile GetProfileSnapshot() const;
+    NODISCARD SMappingProfile GetProfileSnapshot() const;
 
     // 查询是否启用映射
-    ZERO_NODISCARD bool IsEnabled() const noexcept;
+    NODISCARD bool IsEnabled() const noexcept;
 
     // 设置是否启用映射
     void SetEnabled(bool bEnabled) noexcept;
 
     // 返回最近处理记录的快照拷贝
-    ZERO_NODISCARD TVector<SMappingSessionRecord> ListRecentRecords() const;
+    NODISCARD TVector<SMappingSessionRecord> ListRecentRecords() const;
 
     // 返回当前记录数量
-    ZERO_NODISCARD uint32 GetRecentRecordCount() const noexcept;
+    NODISCARD uint32 GetRecentRecordCount() const noexcept;
 
     // 清空处理记录，不改变 enabled 状态或 profile
     void ClearRecentRecords();
@@ -79,4 +79,4 @@ private:
     TVector<SMappingSessionRecord> RecentRecords;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

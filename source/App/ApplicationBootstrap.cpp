@@ -19,7 +19,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // ── 生产默认工厂 ──
@@ -286,4 +286,4 @@ TResult<TUniquePtr<IOutputBackend>> ZApplicationBootstrap::CreateOutputBackend(
     return OutputFactory();
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

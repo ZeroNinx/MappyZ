@@ -16,7 +16,7 @@
 #include <mutex>
 #include <variant>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 后端事件类型
@@ -62,13 +62,13 @@ public:
     void Detach();
 
     // 查询是否已订阅后端回调
-    ZERO_NODISCARD bool IsAttached() const noexcept;
+    NODISCARD bool IsAttached() const noexcept;
 
     // 按 FIFO 返回所有待处理事件并清空内部队列。线程安全。
-    ZERO_NODISCARD TVector<SBackendEvent> DrainEvents();
+    NODISCARD TVector<SBackendEvent> DrainEvents();
 
     // 返回当前待处理事件数量。线程安全。
-    ZERO_NODISCARD uint32 GetPendingEventCount() const;
+    NODISCARD uint32 GetPendingEventCount() const;
 
     // 丢弃所有待处理事件，不改变 attach 状态。线程安全。
     void Clear();
@@ -86,4 +86,4 @@ private:
     TVector<SBackendEvent> PendingEvents;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

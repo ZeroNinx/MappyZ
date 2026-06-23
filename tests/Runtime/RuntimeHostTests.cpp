@@ -10,7 +10,7 @@
 #include "Core/ControlId.h"
 #include "Runtime/RuntimeHost.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

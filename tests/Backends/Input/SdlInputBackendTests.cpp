@@ -9,7 +9,7 @@
 
 #include "Backends/Input/SdlInputBackend.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

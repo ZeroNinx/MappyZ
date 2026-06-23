@@ -14,7 +14,7 @@
 #include "Runtime/MappingSession.h"
 #include "Runtime/RuntimeEventPump.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

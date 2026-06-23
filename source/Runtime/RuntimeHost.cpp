@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 ZRuntimeHost::ZRuntimeHost(IInputBackend& InputBackend, IOutputBackend& OutputBackend)
@@ -154,4 +154,4 @@ ZActionDispatcher& ZRuntimeHost::GetActionDispatcher()
     return Dispatcher;
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

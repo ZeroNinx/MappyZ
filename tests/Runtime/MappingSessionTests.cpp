@@ -9,7 +9,7 @@
 #include "Runtime/ActionDispatcher.h"
 #include "Runtime/MappingSession.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

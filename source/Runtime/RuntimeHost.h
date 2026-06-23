@@ -17,7 +17,7 @@
 #include "Runtime/MappingSession.h"
 #include "Runtime/RuntimeEventPump.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 运行时宿主状态
@@ -57,38 +57,38 @@ public:
     ZRuntimeHost& operator=(ZRuntimeHost&&) = delete;
 
     // 启动运行时：按选项 attach event queue、启动 input backend、设置 mapping enabled
-    ZERO_NODISCARD TResult<void> Start(SRuntimeHostStartOptions Options = {});
+    NODISCARD TResult<void> Start(SRuntimeHostStartOptions Options = {});
 
     // 停止运行时：停止 input backend、detach event queue。幂等操作。
     void Stop();
 
     // 查询是否正在运行
-    ZERO_NODISCARD bool IsRunning() const noexcept;
+    NODISCARD bool IsRunning() const noexcept;
 
     // 返回当前状态快照
-    ZERO_NODISCARD SRuntimeHostStatus GetStatus() const;
+    NODISCARD SRuntimeHostStatus GetStatus() const;
 
     // 从 event queue drain 事件并分发。仅 Running 状态有效。
-    ZERO_NODISCARD SRuntimeEventPumpSummary PumpOnce();
+    NODISCARD SRuntimeEventPumpSummary PumpOnce();
 
     // 替换 active profile 快照
     void ReplaceProfile(SMappingProfile Profile);
 
     // 返回当前 profile 快照拷贝
-    ZERO_NODISCARD SMappingProfile GetProfileSnapshot() const;
+    NODISCARD SMappingProfile GetProfileSnapshot() const;
 
     // 设置是否启用映射
     void SetMappingEnabled(bool bEnabled);
 
     // 查询是否启用映射
-    ZERO_NODISCARD bool IsMappingEnabled() const noexcept;
+    NODISCARD bool IsMappingEnabled() const noexcept;
 
     // ── 内部组件访问器（测试和 UI bridge 使用，不转移所有权） ──
 
-    ZERO_NODISCARD ZBackendEventQueue& GetEventQueue();
-    ZERO_NODISCARD ZRuntimeEventPump& GetEventPump();
-    ZERO_NODISCARD ZMappingSession& GetMappingSession();
-    ZERO_NODISCARD ZActionDispatcher& GetActionDispatcher();
+    NODISCARD ZBackendEventQueue& GetEventQueue();
+    NODISCARD ZRuntimeEventPump& GetEventPump();
+    NODISCARD ZMappingSession& GetMappingSession();
+    NODISCARD ZActionDispatcher& GetActionDispatcher();
 
 private:
     IInputBackend& InputBackend;
@@ -105,4 +105,4 @@ private:
     bool bDidStartInputBackend = false;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

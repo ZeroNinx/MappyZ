@@ -9,7 +9,7 @@
 #include "Core/InputEvent.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 映射动作的触发模式
@@ -76,4 +76,4 @@ struct SMappingRule
     SMappingOutput Output;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

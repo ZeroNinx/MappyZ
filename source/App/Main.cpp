@@ -11,7 +11,7 @@ int main(int ArgCount, char* Arguments[])
 {
     QGuiApplication App(ArgCount, Arguments);
 
-    ZeroMapper::ZAppController AppController;
+    MappyZ::ZAppController AppController;
 
     QQmlApplicationEngine Engine;
 

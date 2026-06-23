@@ -6,7 +6,7 @@
 #include "Backends/Output/NullOutputBackend.h"
 #include "Runtime/ActionDispatcher.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

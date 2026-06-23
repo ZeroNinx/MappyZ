@@ -14,7 +14,7 @@
 
 // ── static_assert 校验镜像常量与 Win32 头文件一致 ──
 
-namespace ZeroMapper
+namespace MappyZ
 {
 namespace SendInputHelpers
 {
@@ -220,4 +220,4 @@ SOutputBackendStatus ZWindowsSendInputBackend::GetStatus() const
     return CurrentStatus;
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

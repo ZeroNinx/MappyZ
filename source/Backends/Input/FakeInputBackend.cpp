@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 TResult<void> ZFakeInputBackend::Start()
@@ -151,4 +151,4 @@ void ZFakeInputBackend::EmitInput(const SInputEvent& Event)
     OnInputEvent(Event);
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

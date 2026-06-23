@@ -12,7 +12,7 @@
 #include "UI/Bridge/AppController.h"
 #include "UI/Bridge/DeviceModel.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 测试用 factory 辅助 ──
 

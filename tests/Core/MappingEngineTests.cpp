@@ -7,7 +7,7 @@
 #include "Core/ControlId.h"
 #include "Core/MappingEngine.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

@@ -8,7 +8,7 @@
 #include "Core/MappingRule.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 设备匹配条件，用于 profile 与物理设备的关联
@@ -56,4 +56,4 @@ struct SMappingProfile
     TVector<SMappingRule> Rules;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

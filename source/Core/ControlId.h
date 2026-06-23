@@ -6,7 +6,7 @@
 
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 控件标识使用 StdStringView 常量，避免运行时分配
@@ -55,4 +55,4 @@ inline constexpr StdStringView DpadRight     = "dpad_right";
 
 }  // namespace ControlId
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

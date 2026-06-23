@@ -13,7 +13,7 @@
 #include "Core/ControlId.h"
 #include "Runtime/ProfileManager.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 测试用 factory 辅助 ──
 

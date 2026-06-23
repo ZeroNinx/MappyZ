@@ -12,7 +12,7 @@
 
 #include <functional>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class IInputBackend
@@ -27,16 +27,16 @@ public:
     IInputBackend& operator=(IInputBackend&&) = delete;
 
     // 启动后端，开始监听设备和输入事件。失败时通过 TResult 返回错误信息。
-    ZERO_NODISCARD virtual TResult<void> Start() = 0;
+    NODISCARD virtual TResult<void> Start() = 0;
 
     // 停止后端，释放所有后端资源。幂等操作，多次调用不应失败。
     virtual void Stop() = 0;
 
     // 查询后端是否正在运行
-    ZERO_NODISCARD virtual bool IsRunning() const noexcept = 0;
+    NODISCARD virtual bool IsRunning() const noexcept = 0;
 
     // 返回当前后端已知的设备快照。返回值为拷贝，调用方修改不影响后端内部状态。
-    ZERO_NODISCARD virtual TVector<SDeviceInfo> ListDevices() const = 0;
+    NODISCARD virtual TVector<SDeviceInfo> ListDevices() const = 0;
 
 public:
     // 设备连接回调，后端检测到新设备时触发
@@ -53,4 +53,4 @@ protected:
     IInputBackend() = default;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

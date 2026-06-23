@@ -12,7 +12,7 @@
 #include "Core/DeviceId.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 class ZDeviceManager
@@ -35,16 +35,16 @@ public:
     void Detach();
 
     // 查询是否已订阅后端回调
-    ZERO_NODISCARD bool IsAttached() const noexcept;
+    NODISCARD bool IsAttached() const noexcept;
 
     // 返回当前设备快照拷贝，调用方修改返回值不影响 manager 内部状态
-    ZERO_NODISCARD TVector<SDeviceInfo> ListDevices() const;
+    NODISCARD TVector<SDeviceInfo> ListDevices() const;
 
     // 按设备 ID 查找设备，找到时返回设备副本，找不到时返回空
-    ZERO_NODISCARD TOptional<SDeviceInfo> FindDevice(const SDeviceId& DeviceId) const;
+    NODISCARD TOptional<SDeviceInfo> FindDevice(const SDeviceId& DeviceId) const;
 
     // 返回当前已知设备数量
-    ZERO_NODISCARD uint32 GetDeviceCount() const noexcept;
+    NODISCARD uint32 GetDeviceCount() const noexcept;
 
 private:
     // 后端设备连接回调处理
@@ -58,4 +58,4 @@ private:
     TVector<SDeviceInfo> Devices;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

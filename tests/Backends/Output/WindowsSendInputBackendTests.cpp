@@ -7,8 +7,8 @@
 #include "Backends/Output/WindowsSendInputBackend.h"
 #include "Backends/Output/WindowsSendInputHelpers.h"
 
-using namespace ZeroMapper;
-using namespace ZeroMapper::SendInputHelpers;
+using namespace MappyZ;
+using namespace MappyZ::SendInputHelpers;
 
 // ── fake sender 辅助 ──
 

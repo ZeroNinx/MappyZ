@@ -6,7 +6,7 @@
 #include "Core/ControlId.h"
 #include "Core/MappingProfile.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 默认值 ──
 

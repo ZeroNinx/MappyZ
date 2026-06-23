@@ -14,7 +14,7 @@
 
 #include <functional>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 输入后端工厂函数类型
@@ -75,34 +75,34 @@ public:
 
     // 初始化：创建后端、加载 profile、构造 stopped 状态的 RuntimeHost。
     // Created/Error 状态下执行完整 setup；Ready/Running 状态下幂等返回 Ok。
-    ZERO_NODISCARD TResult<void> Initialize(SApplicationBootstrapOptions Options = {});
+    NODISCARD TResult<void> Initialize(SApplicationBootstrapOptions Options = {});
 
     // 启动运行时：调用 RuntimeHost::Start()，透传 options。
     // 要求已 Initialize()，否则返回错误。
-    ZERO_NODISCARD TResult<void> StartRuntime();
+    NODISCARD TResult<void> StartRuntime();
 
     // 停止运行时。幂等安全。
     // Created/Error 且 host 未构造时 no-op；Running 时停止后回到 Ready。
     void StopRuntime();
 
     // 从 event queue drain 事件并分发。仅 Running 状态委托给 host。
-    ZERO_NODISCARD SRuntimeEventPumpSummary PumpOnce();
+    NODISCARD SRuntimeEventPumpSummary PumpOnce();
 
     // 返回当前状态快照
-    ZERO_NODISCARD SApplicationBootstrapStatus GetStatus() const;
+    NODISCARD SApplicationBootstrapStatus GetStatus() const;
 
     // 返回当前输入后端已知的设备快照。
     // 未 initialize 或 InputBackend 为空时返回空 vector，不修改后端状态。
-    ZERO_NODISCARD TVector<SDeviceInfo> ListInputDevices() const;
+    NODISCARD TVector<SDeviceInfo> ListInputDevices() const;
 
     // 访问内部 RuntimeHost（供 UI Bridge 绑定和测试使用）。
     // 前置条件：Initialize() 已成功（状态为 Ready 或 Running）。
-    ZERO_NODISCARD ZRuntimeHost& GetRuntimeHost();
-    ZERO_NODISCARD const ZRuntimeHost& GetRuntimeHost() const;
+    NODISCARD ZRuntimeHost& GetRuntimeHost();
+    NODISCARD const ZRuntimeHost& GetRuntimeHost() const;
 
 private:
     // 创建输出后端，根据 bUseNullOutput 决定是否跳过 factory
-    ZERO_NODISCARD TResult<TUniquePtr<IOutputBackend>> CreateOutputBackend(
+    NODISCARD TResult<TUniquePtr<IOutputBackend>> CreateOutputBackend(
         bool bUseNullOutput);
 
     TInputBackendFactory InputFactory;
@@ -120,4 +120,4 @@ private:
     SApplicationBootstrapOptions CachedOptions;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

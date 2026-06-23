@@ -1,12 +1,12 @@
 // 项目公共基础头。
 // 所有 Core 模块头文件应首先包含此头，通过 using 声明获取 ZeroStyle 提供的类型别名和宏。
-// 业务代码统一使用 ZeroMapper 命名空间内的名称，不直接使用 Zero:: 或 std:: 前缀。
+// 业务代码统一使用 MappyZ 命名空间内的名称，不直接使用 Zero:: 或 std:: 前缀。
 
 #pragma once
 
 #include "ZeroStyle.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // ── 基础数值类型 ──
@@ -49,4 +49,4 @@ using Zero::EErrorCode;
 using Zero::SError;
 using Zero::TResult;
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

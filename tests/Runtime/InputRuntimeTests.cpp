@@ -7,7 +7,7 @@
 #include "Core/ControlId.h"
 #include "Runtime/InputRuntime.h"
 
-using namespace ZeroMapper;
+using namespace MappyZ;
 
 // ── 构造辅助 ──
 

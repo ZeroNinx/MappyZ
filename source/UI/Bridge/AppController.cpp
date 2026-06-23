@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // ── 构造与析构 ──
@@ -255,4 +255,4 @@ void ZAppController::RefreshDeviceModelFromBootstrap()
     DeviceModelInstance.ReplaceDevices(Bootstrap.ListInputDevices());
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

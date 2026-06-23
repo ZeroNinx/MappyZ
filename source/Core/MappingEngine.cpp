@@ -6,7 +6,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 TVector<SAction> ZMappingEngine::MapInput(const SInputEvent& Event, const SMappingProfile& Profile) const
@@ -242,4 +242,4 @@ TOptional<SAction> ZMappingEngine::BuildAnalogAction(const SInputEvent& Event, c
     return Action;
 }
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

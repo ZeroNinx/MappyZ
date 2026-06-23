@@ -10,7 +10,7 @@
 #include "Core/Action.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 单次派发记录
@@ -45,25 +45,25 @@ public:
     ZActionDispatcher& operator=(ZActionDispatcher&&) = delete;
 
     // 派发单个动作，成功返回 Ok，失败返回错误信息
-    ZERO_NODISCARD TResult<void> DispatchAction(const SAction& Action);
+    NODISCARD TResult<void> DispatchAction(const SAction& Action);
 
     // 批量派发动作，按顺序调用后端，中途失败继续派发剩余
-    ZERO_NODISCARD SActionDispatchSummary DispatchActions(const TVector<SAction>& Actions);
+    NODISCARD SActionDispatchSummary DispatchActions(const TVector<SAction>& Actions);
 
     // 查询是否启用派发
-    ZERO_NODISCARD bool IsEnabled() const noexcept;
+    NODISCARD bool IsEnabled() const noexcept;
 
     // 设置是否启用派发
     void SetEnabled(bool bEnabled) noexcept;
 
     // 透传输出后端当前状态
-    ZERO_NODISCARD SOutputBackendStatus GetOutputStatus() const;
+    NODISCARD SOutputBackendStatus GetOutputStatus() const;
 
     // 返回最近派发记录的快照拷贝
-    ZERO_NODISCARD TVector<SActionDispatchRecord> ListRecentRecords() const;
+    NODISCARD TVector<SActionDispatchRecord> ListRecentRecords() const;
 
     // 返回当前记录数量
-    ZERO_NODISCARD uint32 GetRecentRecordCount() const noexcept;
+    NODISCARD uint32 GetRecentRecordCount() const noexcept;
 
     // 清空派发记录，不改变 enabled 状态
     void ClearRecentRecords();
@@ -76,4 +76,4 @@ private:
     TVector<SActionDispatchRecord> RecentRecords;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ

@@ -9,7 +9,7 @@
 #include "Core/Action.h"
 #include "Core/ProjectCore.h"
 
-namespace ZeroMapper
+namespace MappyZ
 {
 
 // 输出后端运行状态
@@ -39,14 +39,14 @@ public:
     IOutputBackend& operator=(IOutputBackend&&) = delete;
 
     // 发送单个动作到输出端。失败时通过 TResult 返回错误信息。
-    ZERO_NODISCARD virtual TResult<void> SendAction(const SAction& Action) = 0;
+    NODISCARD virtual TResult<void> SendAction(const SAction& Action) = 0;
 
     // 查询后端当前状态快照
-    ZERO_NODISCARD virtual SOutputBackendStatus GetStatus() const = 0;
+    NODISCARD virtual SOutputBackendStatus GetStatus() const = 0;
 
 protected:
     // 只允许子类构造
     IOutputBackend() = default;
 };
 
-}  // namespace ZeroMapper
+}  // namespace MappyZ
