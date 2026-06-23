@@ -25,8 +25,8 @@ void ZInputCaptureModel::begin(QString deviceId)
     CapturedDeviceId.clear();
     CapturedControlId.clear();
 
-    emit CaptureResultChanged();
-    emit CaptureStateChanged();
+    emit captureResultChanged();
+    emit captureStateChanged();
 }
 
 void ZInputCaptureModel::cancel()
@@ -38,8 +38,8 @@ void ZInputCaptureModel::cancel()
 
     bActive = false;
 
-    emit CaptureStateChanged();
-    emit CaptureCancelled();
+    emit captureStateChanged();
+    emit captureCancelled();
 }
 
 // ── C++ 调用接口 ──
@@ -69,9 +69,9 @@ void ZInputCaptureModel::HandleInputEvent(const SInputEvent& Event)
     CapturedControlId = QString::fromStdString(Event.ControlId);
     bActive = false;
 
-    emit CaptureResultChanged();
-    emit CaptureStateChanged();
-    emit CaptureCompleted(CapturedDeviceId, CapturedControlId);
+    emit captureResultChanged();
+    emit captureStateChanged();
+    emit captureCompleted(CapturedDeviceId, CapturedControlId);
 }
 
 // ── 属性读取 ──

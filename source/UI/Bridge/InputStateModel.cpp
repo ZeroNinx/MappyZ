@@ -105,7 +105,7 @@ void ZInputStateModel::ApplyInputEvent(const SInputEvent& Event)
 
         QModelIndex ModelIndex = index(ExistingIndex);
         emit dataChanged(ModelIndex, ModelIndex);
-        emit ControlStateChanged(
+        emit controlStateChanged(
             QString::fromStdString(Event.DeviceId.Value),
             QString::fromStdString(Event.ControlId));
         return;
@@ -126,7 +126,7 @@ void ZInputStateModel::ApplyInputEvent(const SInputEvent& Event)
     States.push_back(std::move(NewState));
     endInsertRows();
 
-    emit ControlStateChanged(
+    emit controlStateChanged(
         QString::fromStdString(Event.DeviceId.Value),
         QString::fromStdString(Event.ControlId));
 }
@@ -149,7 +149,7 @@ void ZInputStateModel::RemoveDevice(const SDeviceId& DeviceId)
 
     if (bRemoved)
     {
-        emit DeviceStateRemoved(QString::fromStdString(DeviceId.Value));
+        emit deviceStateRemoved(QString::fromStdString(DeviceId.Value));
     }
 }
 
@@ -166,7 +166,7 @@ void ZInputStateModel::clear()
     States.clear();
     endResetModel();
 
-    emit InputStateReset();
+    emit inputStateReset();
 }
 
 bool ZInputStateModel::isPressed(QString deviceId, QString controlId) const

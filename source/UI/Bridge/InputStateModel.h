@@ -84,13 +84,13 @@ public:
 
 signals:
     // 指定设备的指定控件状态发生变化（插入新状态或更新已有状态）
-    void ControlStateChanged(QString deviceId, QString controlId);
+    void controlStateChanged(QString deviceId, QString controlId);
 
     // 指定设备的全部输入状态被移除
-    void DeviceStateRemoved(QString deviceId);
+    void deviceStateRemoved(QString deviceId);
 
     // 全部输入状态被清空
-    void InputStateReset();
+    void inputStateReset();
 
 private:
     // Trigger PressedRole 的固定阈值

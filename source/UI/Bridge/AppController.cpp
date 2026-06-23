@@ -73,7 +73,7 @@ void ZAppController::SetMappingEnabled(bool bEnabled)
         Bootstrap.GetRuntimeHost().SetMappingEnabled(bEnabled);
     }
 
-    emit MappingEnabledChanged();
+    emit mappingEnabledChanged();
 }
 
 bool ZAppController::IsPumpTimerRunning() const
@@ -101,17 +101,17 @@ int ZAppController::LastDispatchedInputCount() const
     return static_cast<int>(LastSummary.DispatchedInputCount);
 }
 
-QObject* ZAppController::DeviceModel()
+ZDeviceModel* ZAppController::DeviceModel()
 {
     return &DeviceModelInstance;
 }
 
-QObject* ZAppController::InputStateModel()
+ZInputStateModel* ZAppController::InputStateModel()
 {
     return &InputStateModelInstance;
 }
 
-QObject* ZAppController::InputCapture()
+ZInputCaptureModel* ZAppController::InputCapture()
 {
     return &InputCaptureInstance;
 }
@@ -136,8 +136,8 @@ bool ZAppController::initializeRuntime(bool useNullOutput)
         auto Message = QString::fromStdString(Result.Failure().Message);
         std::fprintf(stderr, "[AppController] 错误: 初始化失败: \"%s\"\n",
             Message.toUtf8().constData());
-        emit RuntimeStatusChanged();
-        emit RuntimeError(Message);
+        emit runtimeStatusChanged();
+        emit runtimeError(Message);
         return false;
     }
 
@@ -169,7 +169,7 @@ bool ZAppController::initializeRuntime(bool useNullOutput)
     // 初始化后立即刷新设备快照
     RefreshDeviceModelFromBootstrap();
 
-    emit RuntimeStatusChanged();
+    emit runtimeStatusChanged();
     return true;
 }
 
@@ -181,7 +181,7 @@ bool ZAppController::startRuntime()
         auto Message = QStringLiteral("必须先调用 initializeRuntime() 再调用 startRuntime()");
         std::fprintf(stderr, "[AppController] 错误: %s\n",
             Message.toUtf8().constData());
-        emit RuntimeError(Message);
+        emit runtimeError(Message);
         return false;
     }
 
@@ -192,8 +192,8 @@ bool ZAppController::startRuntime()
         auto Message = QString::fromStdString(Result.Failure().Message);
         std::fprintf(stderr, "[AppController] 错误: 启动运行时失败: \"%s\"\n",
             Message.toUtf8().constData());
-        emit RuntimeStatusChanged();
-        emit RuntimeError(Message);
+        emit runtimeStatusChanged();
+        emit runtimeError(Message);
         return false;
     }
 
@@ -204,7 +204,7 @@ bool ZAppController::startRuntime()
     // start 后重新刷新设备快照，覆盖真实后端 Start() 后才完成枚举的场景
     RefreshDeviceModelFromBootstrap();
 
-    emit RuntimeStatusChanged();
+    emit runtimeStatusChanged();
     return true;
 }
 
@@ -212,7 +212,7 @@ void ZAppController::stopRuntime()
 {
     stopPumpTimer();
     Bootstrap.StopRuntime();
-    emit RuntimeStatusChanged();
+    emit runtimeStatusChanged();
 }
 
 void ZAppController::pumpOnce()
@@ -228,7 +228,7 @@ void ZAppController::pumpOnce()
 
     if (bChanged)
     {
-        emit LastPumpSummaryChanged();
+        emit lastPumpSummaryChanged();
     }
 }
 
@@ -236,7 +236,7 @@ void ZAppController::startPumpTimer(int intervalMs)
 {
     PumpTimer.setInterval(intervalMs);
     PumpTimer.start();
-    emit PumpTimerRunningChanged();
+    emit pumpTimerRunningChanged();
 }
 
 void ZAppController::stopPumpTimer()
@@ -244,7 +244,7 @@ void ZAppController::stopPumpTimer()
     if (PumpTimer.isActive())
     {
         PumpTimer.stop();
-        emit PumpTimerRunningChanged();
+        emit pumpTimerRunningChanged();
     }
 }
 

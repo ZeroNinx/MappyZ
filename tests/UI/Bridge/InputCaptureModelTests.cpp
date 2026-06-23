@@ -105,7 +105,7 @@ TEST_CASE("InputCaptureModel begin enters active state and emits CaptureStateCha
 {
     ZInputCaptureModel Model;
 
-    QSignalSpy StateSpy(&Model, &ZInputCaptureModel::CaptureStateChanged);
+    QSignalSpy StateSpy(&Model, &ZInputCaptureModel::captureStateChanged);
 
     Model.begin("dev_1");
 
@@ -137,7 +137,7 @@ TEST_CASE("InputCaptureModel begin clears previous captured control",
     REQUIRE(Model.ControlId() == "button_south");
 
     // 重新 begin 应清空上一轮
-    QSignalSpy ResultSpy(&Model, &ZInputCaptureModel::CaptureResultChanged);
+    QSignalSpy ResultSpy(&Model, &ZInputCaptureModel::captureResultChanged);
 
     Model.begin("dev_1");
 
@@ -153,7 +153,7 @@ TEST_CASE("InputCaptureModel CaptureResultChanged emitted on capture completion"
     ZInputCaptureModel Model;
     Model.begin("dev_1");
 
-    QSignalSpy ResultSpy(&Model, &ZInputCaptureModel::CaptureResultChanged);
+    QSignalSpy ResultSpy(&Model, &ZInputCaptureModel::captureResultChanged);
 
     Model.HandleInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
@@ -171,8 +171,8 @@ TEST_CASE("InputCaptureModel cancel active capture emits CaptureStateChanged and
     ZInputCaptureModel Model;
     Model.begin("dev_1");
 
-    QSignalSpy StateSpy(&Model, &ZInputCaptureModel::CaptureStateChanged);
-    QSignalSpy CancelSpy(&Model, &ZInputCaptureModel::CaptureCancelled);
+    QSignalSpy StateSpy(&Model, &ZInputCaptureModel::captureStateChanged);
+    QSignalSpy CancelSpy(&Model, &ZInputCaptureModel::captureCancelled);
 
     Model.cancel();
 
@@ -186,8 +186,8 @@ TEST_CASE("InputCaptureModel cancel when inactive is no-op",
 {
     ZInputCaptureModel Model;
 
-    QSignalSpy StateSpy(&Model, &ZInputCaptureModel::CaptureStateChanged);
-    QSignalSpy CancelSpy(&Model, &ZInputCaptureModel::CaptureCancelled);
+    QSignalSpy StateSpy(&Model, &ZInputCaptureModel::captureStateChanged);
+    QSignalSpy CancelSpy(&Model, &ZInputCaptureModel::captureCancelled);
 
     Model.cancel();
 
@@ -202,7 +202,7 @@ TEST_CASE("InputCaptureModel HandleInputEvent when inactive is no-op",
 {
     ZInputCaptureModel Model;
 
-    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
     Model.HandleInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
@@ -216,7 +216,7 @@ TEST_CASE("InputCaptureModel HandleInputEvent ignores non-target device",
     ZInputCaptureModel Model;
     Model.begin("dev_1");
 
-    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
     Model.HandleInputEvent(
         MakeButtonEvent("dev_2", ControlId::ButtonSouth, EInputEventType::Pressed));
@@ -231,8 +231,8 @@ TEST_CASE("InputCaptureModel HandleInputEvent completes on target device button 
     ZInputCaptureModel Model;
     Model.begin("dev_1");
 
-    QSignalSpy StateSpy(&Model, &ZInputCaptureModel::CaptureStateChanged);
-    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy StateSpy(&Model, &ZInputCaptureModel::captureStateChanged);
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
     Model.HandleInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
@@ -252,7 +252,7 @@ TEST_CASE("InputCaptureModel begin with empty deviceId accepts any device",
     ZInputCaptureModel Model;
     Model.begin();
 
-    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
     Model.HandleInputEvent(
         MakeButtonEvent("any_dev", ControlId::ButtonNorth, EInputEventType::Pressed));
@@ -295,7 +295,7 @@ TEST_CASE("InputCaptureModel Hat Pressed completes capture",
     ZInputCaptureModel Model;
     Model.begin("dev_1");
 
-    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
     Model.HandleInputEvent(
         MakeHatEvent("dev_1", ControlId::DpadUp, EInputEventType::Pressed));
@@ -325,7 +325,7 @@ TEST_CASE("InputCaptureModel Trigger above threshold completes capture",
     ZInputCaptureModel Model;
     Model.begin("dev_1");
 
-    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
     Model.HandleInputEvent(
         MakeTriggerEvent("dev_1", ControlId::LeftTrigger, 0.51f));
@@ -355,7 +355,7 @@ TEST_CASE("InputCaptureModel Axis1D above deadzone completes capture",
     ZInputCaptureModel Model;
     Model.begin("dev_1");
 
-    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
     Model.HandleInputEvent(
         MakeAxis1DEvent("dev_1", "horizontal_axis", 0.71f));
@@ -413,7 +413,7 @@ TEST_CASE("InputCaptureModel Axis2D above deadzone completes capture",
     ZInputCaptureModel Model;
     Model.begin("dev_1");
 
-    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
     // sqrt(0.71^2 + 0.0^2) = 0.71 > 0.7
     Model.HandleInputEvent(
@@ -442,7 +442,7 @@ TEST_CASE("InputCaptureModel joystick micro-drift does not preempt capture",
     REQUIRE(Model.IsActive());
 
     // 真正的按钮按下才完成 capture
-    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
     Model.HandleInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
@@ -473,4 +473,15 @@ TEST_CASE("InputCaptureModel header has no SDL or Win32 dependencies",
 {
     ZInputCaptureModel Model;
     REQUIRE_FALSE(Model.IsActive());
+}
+
+TEST_CASE("InputCaptureModel signals use lowerCamelCase for QML Connections compatibility",
+    "[UI][InputCaptureModel]")
+{
+    const QMetaObject* Meta = &ZInputCaptureModel::staticMetaObject;
+
+    REQUIRE(Meta->indexOfSignal("captureStateChanged()") >= 0);
+    REQUIRE(Meta->indexOfSignal("captureResultChanged()") >= 0);
+    REQUIRE(Meta->indexOfSignal("captureCompleted(QString,QString)") >= 0);
+    REQUIRE(Meta->indexOfSignal("captureCancelled()") >= 0);
 }

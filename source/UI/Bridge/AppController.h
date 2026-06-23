@@ -25,18 +25,18 @@ class ZAppController final : public QObject
 
     // ── QML 属性 ──
 
-    Q_PROPERTY(QString runtimeState READ RuntimeState NOTIFY RuntimeStatusChanged)
-    Q_PROPERTY(QString runtimeMessage READ RuntimeMessage NOTIFY RuntimeStatusChanged)
-    Q_PROPERTY(QString outputState READ OutputState NOTIFY RuntimeStatusChanged)
-    Q_PROPERTY(bool mappingEnabled READ IsMappingEnabled WRITE SetMappingEnabled NOTIFY MappingEnabledChanged)
-    Q_PROPERTY(bool pumpTimerRunning READ IsPumpTimerRunning NOTIFY PumpTimerRunningChanged)
-    Q_PROPERTY(int lastDrainedEventCount READ LastDrainedEventCount NOTIFY LastPumpSummaryChanged)
-    Q_PROPERTY(int lastInputEventCount READ LastInputEventCount NOTIFY LastPumpSummaryChanged)
-    Q_PROPERTY(int lastMappedInputCount READ LastMappedInputCount NOTIFY LastPumpSummaryChanged)
-    Q_PROPERTY(int lastDispatchedInputCount READ LastDispatchedInputCount NOTIFY LastPumpSummaryChanged)
-    Q_PROPERTY(QObject* deviceModel READ DeviceModel CONSTANT)
-    Q_PROPERTY(QObject* inputStateModel READ InputStateModel CONSTANT)
-    Q_PROPERTY(QObject* inputCapture READ InputCapture CONSTANT)
+    Q_PROPERTY(QString runtimeState READ RuntimeState NOTIFY runtimeStatusChanged)
+    Q_PROPERTY(QString runtimeMessage READ RuntimeMessage NOTIFY runtimeStatusChanged)
+    Q_PROPERTY(QString outputState READ OutputState NOTIFY runtimeStatusChanged)
+    Q_PROPERTY(bool mappingEnabled READ IsMappingEnabled WRITE SetMappingEnabled NOTIFY mappingEnabledChanged)
+    Q_PROPERTY(bool pumpTimerRunning READ IsPumpTimerRunning NOTIFY pumpTimerRunningChanged)
+    Q_PROPERTY(int lastDrainedEventCount READ LastDrainedEventCount NOTIFY lastPumpSummaryChanged)
+    Q_PROPERTY(int lastInputEventCount READ LastInputEventCount NOTIFY lastPumpSummaryChanged)
+    Q_PROPERTY(int lastMappedInputCount READ LastMappedInputCount NOTIFY lastPumpSummaryChanged)
+    Q_PROPERTY(int lastDispatchedInputCount READ LastDispatchedInputCount NOTIFY lastPumpSummaryChanged)
+    Q_PROPERTY(ZDeviceModel* deviceModel READ DeviceModel CONSTANT)
+    Q_PROPERTY(ZInputStateModel* inputStateModel READ InputStateModel CONSTANT)
+    Q_PROPERTY(ZInputCaptureModel* inputCapture READ InputCapture CONSTANT)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -62,9 +62,9 @@ public:
     NODISCARD int LastInputEventCount() const;
     NODISCARD int LastMappedInputCount() const;
     NODISCARD int LastDispatchedInputCount() const;
-    NODISCARD QObject* DeviceModel();
-    NODISCARD QObject* InputStateModel();
-    NODISCARD QObject* InputCapture();
+    NODISCARD ZDeviceModel* DeviceModel();
+    NODISCARD ZInputStateModel* InputStateModel();
+    NODISCARD ZInputCaptureModel* InputCapture();
 
     // ── QML invokable ──
 
@@ -76,11 +76,11 @@ public:
     Q_INVOKABLE void stopPumpTimer();
 
 signals:
-    void RuntimeStatusChanged();
-    void MappingEnabledChanged();
-    void PumpTimerRunningChanged();
-    void LastPumpSummaryChanged();
-    void RuntimeError(QString message);
+    void runtimeStatusChanged();
+    void mappingEnabledChanged();
+    void pumpTimerRunningChanged();
+    void lastPumpSummaryChanged();
+    void runtimeError(QString message);
 
 private:
     // 将 EApplicationBootstrapState 转为 QML 稳定字符串

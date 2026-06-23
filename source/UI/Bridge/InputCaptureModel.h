@@ -27,10 +27,10 @@ class ZInputCaptureModel final : public QObject
 
     // ── QML 属性 ──
 
-    Q_PROPERTY(bool active READ IsActive NOTIFY CaptureStateChanged)
-    Q_PROPERTY(QString deviceId READ DeviceId NOTIFY CaptureResultChanged)
-    Q_PROPERTY(QString controlId READ ControlId NOTIFY CaptureResultChanged)
-    Q_PROPERTY(QString displayText READ DisplayText NOTIFY CaptureStateChanged)
+    Q_PROPERTY(bool active READ IsActive NOTIFY captureStateChanged)
+    Q_PROPERTY(QString deviceId READ DeviceId NOTIFY captureResultChanged)
+    Q_PROPERTY(QString controlId READ ControlId NOTIFY captureResultChanged)
+    Q_PROPERTY(QString displayText READ DisplayText NOTIFY captureStateChanged)
 
 public:
     explicit ZInputCaptureModel(QObject* Parent = nullptr);
@@ -59,16 +59,16 @@ public:
 
 signals:
     // capture 状态变化（active 或 displayText 变化时发出）
-    void CaptureStateChanged();
+    void captureStateChanged();
 
     // capture 结果变化（deviceId / controlId 属性变化时发出）
-    void CaptureResultChanged();
+    void captureResultChanged();
 
     // capture 完成，payload 为捕获到的 deviceId 和 controlId
-    void CaptureCompleted(QString deviceId, QString controlId);
+    void captureCompleted(QString deviceId, QString controlId);
 
     // capture 被用户取消
-    void CaptureCancelled();
+    void captureCancelled();
 
 private:
     // 判断输入事件是否满足有效 capture 过滤规则

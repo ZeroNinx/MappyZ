@@ -88,7 +88,7 @@ TEST_CASE("AppController initializeRuntime succeeds to ready",
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
 
-    QSignalSpy StatusSpy(&Controller, &ZAppController::RuntimeStatusChanged);
+    QSignalSpy StatusSpy(&Controller, &ZAppController::runtimeStatusChanged);
 
     bool bResult = Controller.initializeRuntime(true);
 
@@ -104,7 +104,7 @@ TEST_CASE("AppController startRuntime before initialize returns false and emits 
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
 
-    QSignalSpy ErrorSpy(&Controller, &ZAppController::RuntimeError);
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
     bool bResult = Controller.startRuntime();
 
@@ -121,7 +121,7 @@ TEST_CASE("AppController startRuntime succeeds after initialize",
 
     (void)Controller.initializeRuntime(true);
 
-    QSignalSpy StatusSpy(&Controller, &ZAppController::RuntimeStatusChanged);
+    QSignalSpy StatusSpy(&Controller, &ZAppController::runtimeStatusChanged);
 
     bool bResult = Controller.startRuntime();
 
@@ -180,7 +180,7 @@ TEST_CASE("AppController pumpOnce updates last summary when running",
     RawInputBackend->EmitInput(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
 
-    QSignalSpy SummarySpy(&Controller, &ZAppController::LastPumpSummaryChanged);
+    QSignalSpy SummarySpy(&Controller, &ZAppController::lastPumpSummaryChanged);
 
     Controller.pumpOnce();
 
@@ -209,7 +209,7 @@ TEST_CASE("AppController startPumpTimer starts timer and stopPumpTimer stops it"
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
 
-    QSignalSpy TimerSpy(&Controller, &ZAppController::PumpTimerRunningChanged);
+    QSignalSpy TimerSpy(&Controller, &ZAppController::pumpTimerRunningChanged);
 
     Controller.startPumpTimer(50);
 
@@ -244,7 +244,7 @@ TEST_CASE("AppController SetMappingEnabled before initialize caches value",
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
 
-    QSignalSpy MappingSpy(&Controller, &ZAppController::MappingEnabledChanged);
+    QSignalSpy MappingSpy(&Controller, &ZAppController::mappingEnabledChanged);
 
     Controller.SetMappingEnabled(false);
 
@@ -263,7 +263,7 @@ TEST_CASE("AppController SetMappingEnabled after initialize updates cache and em
     (void)Controller.initializeRuntime(true);
     (void)Controller.startRuntime();
 
-    QSignalSpy MappingSpy(&Controller, &ZAppController::MappingEnabledChanged);
+    QSignalSpy MappingSpy(&Controller, &ZAppController::mappingEnabledChanged);
 
     // 禁用 mapping
     Controller.SetMappingEnabled(false);
@@ -324,7 +324,7 @@ TEST_CASE("AppController emits RuntimeStatusChanged on lifecycle transitions",
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
 
-    QSignalSpy StatusSpy(&Controller, &ZAppController::RuntimeStatusChanged);
+    QSignalSpy StatusSpy(&Controller, &ZAppController::runtimeStatusChanged);
 
     (void)Controller.initializeRuntime(true);
     REQUIRE(StatusSpy.count() >= 1);
@@ -349,8 +349,8 @@ TEST_CASE("AppController initializeRuntime fails when input factory fails",
         MakeFailingInputFactory("input backend unavailable"),
         MakeNullOutputFactory());
 
-    QSignalSpy ErrorSpy(&Controller, &ZAppController::RuntimeError);
-    QSignalSpy StatusSpy(&Controller, &ZAppController::RuntimeStatusChanged);
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+    QSignalSpy StatusSpy(&Controller, &ZAppController::runtimeStatusChanged);
 
     bool bResult = Controller.initializeRuntime(true);
 
@@ -401,6 +401,18 @@ TEST_CASE("AppController header has no SDL or Win32 dependencies",
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
     REQUIRE(Controller.RuntimeState() == "created");
+}
+
+TEST_CASE("AppController signals use lowerCamelCase for QML Connections compatibility",
+    "[UI][AppController]")
+{
+    const QMetaObject* Meta = &ZAppController::staticMetaObject;
+
+    REQUIRE(Meta->indexOfSignal("runtimeStatusChanged()") >= 0);
+    REQUIRE(Meta->indexOfSignal("mappingEnabledChanged()") >= 0);
+    REQUIRE(Meta->indexOfSignal("pumpTimerRunningChanged()") >= 0);
+    REQUIRE(Meta->indexOfSignal("lastPumpSummaryChanged()") >= 0);
+    REQUIRE(Meta->indexOfSignal("runtimeError(QString)") >= 0);
 }
 
 // ── inputStateModel 属性 ──
@@ -591,7 +603,7 @@ TEST_CASE("AppController pumpOnce triggers InputStateModel ControlStateChanged",
     (void)Controller.startRuntime();
 
     auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
-    QSignalSpy Spy(Model, &ZInputStateModel::ControlStateChanged);
+    QSignalSpy Spy(Model, &ZInputStateModel::controlStateChanged);
 
     RawInputBackend->EmitInput(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
@@ -627,7 +639,7 @@ TEST_CASE("AppController device disconnect triggers InputStateModel DeviceStateR
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
     Controller.pumpOnce();
 
-    QSignalSpy Spy(InputModel, &ZInputStateModel::DeviceStateRemoved);
+    QSignalSpy Spy(InputModel, &ZInputStateModel::deviceStateRemoved);
 
     RawInputBackend->RemoveDevice(SDeviceId{.Value = "dev_1"});
     Controller.pumpOnce();
@@ -651,7 +663,7 @@ TEST_CASE("AppController device connect triggers DeviceModel DeviceAdded",
     (void)Controller.startRuntime();
 
     auto* DevModel = qobject_cast<ZDeviceModel*>(Controller.DeviceModel());
-    QSignalSpy AddedSpy(DevModel, &ZDeviceModel::DeviceAdded);
+    QSignalSpy AddedSpy(DevModel, &ZDeviceModel::deviceAdded);
 
     SDeviceInfo DevInfo;
     DevInfo.Id = SDeviceId{.Value = "hot_dev"};
@@ -688,8 +700,8 @@ TEST_CASE("AppController duplicate device connect triggers DeviceModel DeviceUpd
     REQUIRE(DevModel->rowCount() >= 1);
 
     // 再次添加相同 ID 但不同名称的设备，走 update 路径
-    QSignalSpy UpdatedSpy(DevModel, &ZDeviceModel::DeviceUpdated);
-    QSignalSpy AddedSpy(DevModel, &ZDeviceModel::DeviceAdded);
+    QSignalSpy UpdatedSpy(DevModel, &ZDeviceModel::deviceUpdated);
+    QSignalSpy AddedSpy(DevModel, &ZDeviceModel::deviceAdded);
 
     DevInfo.Name = "Updated Name";
     RawInputBackend->AddDevice(DevInfo);
@@ -724,7 +736,7 @@ TEST_CASE("AppController device disconnect triggers DeviceModel DeviceRemoved",
     RawInputBackend->AddDevice(DevInfo);
     Controller.pumpOnce();
 
-    QSignalSpy RemovedSpy(DevModel, &ZDeviceModel::DeviceRemoved);
+    QSignalSpy RemovedSpy(DevModel, &ZDeviceModel::deviceRemoved);
 
     RawInputBackend->RemoveDevice(SDeviceId{.Value = "rm_dev"});
     Controller.pumpOnce();
@@ -757,8 +769,8 @@ TEST_CASE("AppController device added without input then removed does not trigge
     RawInputBackend->AddDevice(DevInfo);
     Controller.pumpOnce();
 
-    QSignalSpy InputRemovedSpy(InputModel, &ZInputStateModel::DeviceStateRemoved);
-    QSignalSpy DevRemovedSpy(DevModel, &ZDeviceModel::DeviceRemoved);
+    QSignalSpy InputRemovedSpy(InputModel, &ZInputStateModel::deviceStateRemoved);
+    QSignalSpy DevRemovedSpy(DevModel, &ZDeviceModel::deviceRemoved);
 
     // 移除设备
     RawInputBackend->RemoveDevice(SDeviceId{.Value = "silent_dev"});
@@ -792,7 +804,7 @@ TEST_CASE("AppController re-initialize from Error triggers InputStateReset",
     Model->ApplyInputEvent(FakeEvent);
     REQUIRE(Model->rowCount() == 1);
 
-    QSignalSpy ResetSpy(Model, &ZInputStateModel::InputStateReset);
+    QSignalSpy ResetSpy(Model, &ZInputStateModel::inputStateReset);
 
     // 重新 initialize（仍会失败，但应先清理 InputStateModel）
     (void)Controller.initializeRuntime(true);
@@ -821,7 +833,7 @@ TEST_CASE("AppController idempotent initialize does not trigger InputStateReset"
     Controller.pumpOnce();
     REQUIRE(Model->rowCount() == 1);
 
-    QSignalSpy ResetSpy(Model, &ZInputStateModel::InputStateReset);
+    QSignalSpy ResetSpy(Model, &ZInputStateModel::inputStateReset);
 
     // 幂等 re-initialize（Ready 状态短路）
     (void)Controller.initializeRuntime(true);
@@ -861,7 +873,7 @@ TEST_CASE("AppController begin capture then pumpOnce completes capture",
     Capture->begin("dev_1");
     REQUIRE(Capture->IsActive());
 
-    QSignalSpy CompleteSpy(Capture, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(Capture, &ZInputCaptureModel::captureCompleted);
 
     RawInputBackend->EmitInput(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
@@ -892,7 +904,7 @@ TEST_CASE("AppController capture completion has InputStateModel snapshot already
 
     // 在 CaptureCompleted slot 中验证 InputStateModel 快照已更新
     bool bSnapshotUpdated = false;
-    QObject::connect(Capture, &ZInputCaptureModel::CaptureCompleted,
+    QObject::connect(Capture, &ZInputCaptureModel::captureCompleted,
         [InputModel, &bSnapshotUpdated](const QString& DeviceId, const QString& ControlId)
         {
             bSnapshotUpdated = InputModel->isPressed(DeviceId, ControlId);
@@ -924,7 +936,7 @@ TEST_CASE("AppController non-target device input does not complete capture",
 
     Capture->begin("dev_1");
 
-    QSignalSpy CompleteSpy(Capture, &ZInputCaptureModel::CaptureCompleted);
+    QSignalSpy CompleteSpy(Capture, &ZInputCaptureModel::captureCompleted);
 
     // 注入来自非 target device 的输入
     RawInputBackend->EmitInput(

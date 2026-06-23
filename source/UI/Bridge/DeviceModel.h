@@ -76,16 +76,16 @@ public:
 
 signals:
     // 新设备插入后发出，payload 为新设备的 DeviceId
-    void DeviceAdded(QString deviceId);
+    void deviceAdded(QString deviceId);
 
     // 已有设备信息更新后发出，payload 为被更新设备的 DeviceId
-    void DeviceUpdated(QString deviceId);
+    void deviceUpdated(QString deviceId);
 
     // 设备被移除后发出，payload 为被移除设备的 DeviceId
-    void DeviceRemoved(QString deviceId);
+    void deviceRemoved(QString deviceId);
 
     // 批量替换或全量清空后发出，表示设备列表整体变化
-    void DeviceModelReset();
+    void deviceModelReset();
 
 private:
     // 在 Devices 中查找与指定 DeviceId 匹配的索引，找不到返回 -1

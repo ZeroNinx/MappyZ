@@ -427,12 +427,22 @@ TEST_CASE("InputStateModel meta-object does not contain revision property",
     REQUIRE(Index < 0);
 }
 
+TEST_CASE("InputStateModel signals use lowerCamelCase for QML Connections compatibility",
+    "[UI][InputStateModel]")
+{
+    const QMetaObject* Meta = &ZInputStateModel::staticMetaObject;
+
+    REQUIRE(Meta->indexOfSignal("controlStateChanged(QString,QString)") >= 0);
+    REQUIRE(Meta->indexOfSignal("deviceStateRemoved(QString)") >= 0);
+    REQUIRE(Meta->indexOfSignal("inputStateReset()") >= 0);
+}
+
 TEST_CASE("InputStateModel ApplyInputEvent emits ControlStateChanged on insert",
     "[UI][InputStateModel]")
 {
     ZInputStateModel Model;
 
-    QSignalSpy Spy(&Model, &ZInputStateModel::ControlStateChanged);
+    QSignalSpy Spy(&Model, &ZInputStateModel::controlStateChanged);
 
     Model.ApplyInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
@@ -451,7 +461,7 @@ TEST_CASE("InputStateModel ApplyInputEvent emits ControlStateChanged on update",
     Model.ApplyInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
 
-    QSignalSpy Spy(&Model, &ZInputStateModel::ControlStateChanged);
+    QSignalSpy Spy(&Model, &ZInputStateModel::controlStateChanged);
 
     Model.ApplyInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Released));
@@ -470,7 +480,7 @@ TEST_CASE("InputStateModel ControlStateChanged snapshot is already updated in sl
     // 在 signal slot 中验证快照已包含新值
     bool bPressedInSlot = false;
     double ValueInSlot = -1.0;
-    QObject::connect(&Model, &ZInputStateModel::ControlStateChanged,
+    QObject::connect(&Model, &ZInputStateModel::controlStateChanged,
         [&Model, &bPressedInSlot, &ValueInSlot](const QString& DeviceId, const QString& ControlId)
         {
             bPressedInSlot = Model.isPressed(DeviceId, ControlId);
@@ -489,7 +499,7 @@ TEST_CASE("InputStateModel different devices emit distinguishable deviceId in Co
 {
     ZInputStateModel Model;
 
-    QSignalSpy Spy(&Model, &ZInputStateModel::ControlStateChanged);
+    QSignalSpy Spy(&Model, &ZInputStateModel::controlStateChanged);
 
     Model.ApplyInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
@@ -506,7 +516,7 @@ TEST_CASE("InputStateModel trigger update emits ControlStateChanged with trigger
 {
     ZInputStateModel Model;
 
-    QSignalSpy Spy(&Model, &ZInputStateModel::ControlStateChanged);
+    QSignalSpy Spy(&Model, &ZInputStateModel::controlStateChanged);
 
     Model.ApplyInputEvent(
         MakeTriggerEvent("dev_1", ControlId::LeftTrigger, 0.5f));
@@ -520,7 +530,7 @@ TEST_CASE("InputStateModel Axis2D update emits ControlStateChanged with stick co
 {
     ZInputStateModel Model;
 
-    QSignalSpy Spy(&Model, &ZInputStateModel::ControlStateChanged);
+    QSignalSpy Spy(&Model, &ZInputStateModel::controlStateChanged);
 
     Model.ApplyInputEvent(
         MakeAxis2DEvent("dev_1", ControlId::LeftStick, 0.1f, -0.2f));
@@ -539,7 +549,7 @@ TEST_CASE("InputStateModel RemoveDevice emits DeviceStateRemoved when states exi
     Model.ApplyInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonNorth, EInputEventType::Pressed));
 
-    QSignalSpy Spy(&Model, &ZInputStateModel::DeviceStateRemoved);
+    QSignalSpy Spy(&Model, &ZInputStateModel::deviceStateRemoved);
 
     Model.RemoveDevice(SDeviceId{.Value = "dev_1"});
 
@@ -555,7 +565,7 @@ TEST_CASE("InputStateModel RemoveDevice does not emit DeviceStateRemoved for unk
     Model.ApplyInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
 
-    QSignalSpy Spy(&Model, &ZInputStateModel::DeviceStateRemoved);
+    QSignalSpy Spy(&Model, &ZInputStateModel::deviceStateRemoved);
 
     Model.RemoveDevice(SDeviceId{.Value = "not_exist"});
 
@@ -570,7 +580,7 @@ TEST_CASE("InputStateModel clear emits InputStateReset for non-empty model",
     Model.ApplyInputEvent(
         MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
 
-    QSignalSpy Spy(&Model, &ZInputStateModel::InputStateReset);
+    QSignalSpy Spy(&Model, &ZInputStateModel::inputStateReset);
 
     Model.clear();
 
@@ -582,7 +592,7 @@ TEST_CASE("InputStateModel clear does not emit InputStateReset for empty model",
 {
     ZInputStateModel Model;
 
-    QSignalSpy Spy(&Model, &ZInputStateModel::InputStateReset);
+    QSignalSpy Spy(&Model, &ZInputStateModel::inputStateReset);
 
     Model.clear();
 
