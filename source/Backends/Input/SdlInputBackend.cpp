@@ -2,8 +2,8 @@
 // 通过 SDL3 Gamepad API 枚举手柄、监听热插拔和读取输入事件，
 // 将 SDL 事件转换为项目内部 SDeviceInfo 和 SInputEvent。
 //
-// SDL 初始化和设备枚举在 Start() 调用线程完成，
-// 事件轮询在独立 worker 线程中进行。
+// SDL 初始化和设备枚举、事件轮询全部在独立 worker 线程中完成，
+// 因为 SDL3 要求 SDL_PumpEvents 在 SDL_Init 所在线程调用。
 // 所有非预期路径都输出日志以方便定位问题。
 
 #include "Backends/Input/SdlInputBackend.h"
@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <future>
 #include <mutex>
 #include <thread>
 
@@ -197,6 +198,10 @@ struct ZSdlInputBackend::SImpl
     // SDL gamepad 子系统是否已初始化
     bool bSdlInitialized = false;
 
+    // SDL 初始化同步：worker 线程完成 SDL 初始化后通知 Start()
+    std::promise<bool> InitReady;
+    StdString InitError;
+
     explicit SImpl(ZSdlInputBackend& InOwner)
         : Owner(InOwner)
     {
@@ -234,6 +239,27 @@ struct ZSdlInputBackend::SImpl
 
 void ZSdlInputBackend::SImpl::WorkerMain(std::stop_token StopToken)
 {
+    // SDL3 要求 SDL_PumpEvents 在调用 SDL_Init 的线程执行，
+    // 因此 SDL 初始化、事件轮询、资源清理全部在 worker 线程完成
+
+    if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD))
+    {
+        const char* ErrorMessage = SDL_GetError();
+        std::fprintf(stderr,
+            "[SdlInputBackend] 错误: SDL gamepad 子系统初始化失败: %s\n",
+            ErrorMessage ? ErrorMessage : "unknown error");
+        InitError = StdString("SDL gamepad subsystem init failed: ")
+            + (ErrorMessage ? ErrorMessage : "unknown");
+        InitReady.set_value(false);
+        return;
+    }
+    bSdlInitialized = true;
+
+    EnumerateExistingGamepads();
+
+    // 通知 Start() 初始化已完成
+    InitReady.set_value(true);
+
     while (!StopToken.stop_requested())
     {
         SDL_Event Event;
@@ -248,12 +274,15 @@ void ZSdlInputBackend::SImpl::WorkerMain(std::stop_token StopToken)
             {
                 if (StopToken.stop_requested())
                 {
-                    return;
+                    break;
                 }
                 HandleSdlEvent(Event);
             }
         }
     }
+
+    // SDL 资源清理也在同一线程执行
+    CleanupSdl();
 }
 
 void ZSdlInputBackend::SImpl::HandleSdlEvent(const SDL_Event& Event)
@@ -607,24 +636,14 @@ TResult<void> ZSdlInputBackend::Start()
         return TResult<void>::Ok();
     }
 
-    // 初始化 SDL gamepad 子系统（不初始化 VIDEO，窗口由 Qt 管理）
-    if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD))
-    {
-        const char* ErrorMessage = SDL_GetError();
-        std::fprintf(stderr,
-            "[SdlInputBackend] 错误: SDL gamepad 子系统初始化失败: %s\n",
-            ErrorMessage ? ErrorMessage : "unknown error");
-        return TResult<void>::Err(MakeError(
-            EErrorCode::Unknown,
-            StdString("SDL gamepad subsystem init failed: ")
-                + (ErrorMessage ? ErrorMessage : "unknown")));
-    }
-    Impl->bSdlInitialized = true;
+    // 重置初始化同步状态
+    Impl->InitReady = std::promise<bool>();
+    Impl->InitError.clear();
 
-    // 枚举并打开当前已连接的手柄
-    Impl->EnumerateExistingGamepads();
+    auto Future = Impl->InitReady.get_future();
 
-    // 启动 worker 线程
+    // SDL3 要求事件轮询在 SDL_Init 所在线程执行，
+    // 因此 SDL 初始化和事件循环全部在 worker 线程完成
     try
     {
         Impl->WorkerThread = std::jthread(
@@ -635,14 +654,25 @@ TResult<void> ZSdlInputBackend::Start()
     }
     catch (const std::system_error& Exception)
     {
-        // worker 创建失败，回滚已打开的 SDL 资源
         std::fprintf(stderr,
             "[SdlInputBackend] 错误: 无法创建输入轮询线程: %s\n",
             Exception.what());
-        Impl->CleanupSdl();
         return TResult<void>::Err(MakeError(
             EErrorCode::Unknown,
             StdString("failed to create input worker thread: ") + Exception.what()));
+    }
+
+    // 等待 worker 线程完成 SDL 初始化
+    bool bInitSuccess = Future.get();
+
+    if (!bInitSuccess)
+    {
+        // 初始化失败，worker 线程已自行退出
+        if (Impl->WorkerThread.joinable())
+        {
+            Impl->WorkerThread.join();
+        }
+        return TResult<void>::Err(MakeError(EErrorCode::Unknown, Impl->InitError));
     }
 
     Impl->bRunning.store(true);
@@ -661,15 +691,12 @@ void ZSdlInputBackend::Stop()
 
     std::fprintf(stderr, "[SdlInputBackend] 信息: 正在停止 SDL 输入后端...\n");
 
-    // 请求 worker 停止并等待退出
+    // 请求 worker 停止并等待退出，SDL 资源由 WorkerMain 退出时清理
     if (Impl->WorkerThread.joinable())
     {
         Impl->WorkerThread.request_stop();
         Impl->WorkerThread.join();
     }
-
-    // worker 已停止，安全清理 SDL 资源
-    Impl->CleanupSdl();
 
     std::fprintf(stderr, "[SdlInputBackend] 信息: SDL 输入后端已停止\n");
 }

@@ -30,17 +30,25 @@ Window {
         readonly property color danger: "#f44747"
     }
 
-    property bool mappingEnabled: true
     property bool captureMode: false
-    property string selectedDevice: "Xbox Wireless Controller"
+    property string selectedDevice: ""
+    property string selectedDeviceDisplayName: ""
     property string selectedControl: "button_south"
     property string selectedAction: "Keyboard: Space"
 
-    ListModel {
-        id: devicesModel
+    Component.onCompleted: {
+        var ok = appController.initializeRuntime(true)
+        if (ok) {
+            ok = appController.startRuntime()
+        }
+        if (ok) {
+            appController.startPumpTimer(16)
+        }
+    }
 
-        ListElement { name: "Xbox Wireless Controller"; backend: "SDL3"; deviceState: "Ready"; profile: "Default FPS" }
-        ListElement { name: "8BitDo Ultimate"; backend: "SDL3"; deviceState: "Idle"; profile: "Desktop" }
+    onClosing: {
+        appController.stopPumpTimer()
+        appController.stopRuntime()
     }
 
     ListModel {
@@ -267,9 +275,9 @@ Window {
             }
 
             ActionButton {
-                label: root.mappingEnabled ? "Mapping On" : "Mapping Off"
-                primary: root.mappingEnabled
-                onClicked: root.mappingEnabled = !root.mappingEnabled
+                label: appController.mappingEnabled ? "Mapping On" : "Mapping Off"
+                primary: appController.mappingEnabled
+                onClicked: appController.mappingEnabled = !appController.mappingEnabled
             }
 
             ActionButton {
@@ -301,14 +309,24 @@ Window {
                 spacing: 10
 
                 Repeater {
-                    model: devicesModel
+                    id: deviceRepeater
+                    model: appController.deviceModel
+
+                    onCountChanged: {
+                        if (root.selectedDevice === "") return
+                        for (var i = 0; i < count; i++) {
+                            if (appController.deviceModel.deviceIdAt(i) === root.selectedDevice) return
+                        }
+                        root.selectedDevice = ""
+                        root.selectedDeviceDisplayName = ""
+                    }
 
                     Rectangle {
                         width: parent.width
-                        height: 88
+                        height: 110
                         radius: 4
-                        color: root.selectedDevice === name ? "#2d2d2d" : "#1f1f1f"
-                        border.color: root.selectedDevice === name ? theme.accent : theme.border
+                        color: root.selectedDevice === deviceId ? "#2d2d2d" : "#1f1f1f"
+                        border.color: root.selectedDevice === deviceId ? theme.accent : theme.border
                         border.width: 1
 
                         Text {
@@ -318,7 +336,7 @@ Window {
                             anchors.rightMargin: 8
                             anchors.top: parent.top
                             anchors.topMargin: 10
-                            text: name
+                            text: displayName
                             color: theme.text
                             font.pixelSize: 12
                             font.bold: true
@@ -332,8 +350,8 @@ Window {
                             anchors.rightMargin: 8
                             anchors.top: parent.top
                             anchors.topMargin: 8
-                            label: deviceState
-                            tone: deviceState === "Ready" ? theme.success : "#555555"
+                            label: appController.runtimeState
+                            tone: appController.runtimeState === "running" ? theme.success : "#555555"
                         }
 
                         FieldLabel {
@@ -359,7 +377,7 @@ Window {
                             anchors.leftMargin: 10
                             anchors.top: parent.top
                             anchors.topMargin: 58
-                            text: "Profile"
+                            text: "ID"
                         }
 
                         ValueText {
@@ -369,15 +387,44 @@ Window {
                             anchors.rightMargin: 10
                             anchors.top: parent.top
                             anchors.topMargin: 58
-                            text: profile
+                            text: vendorId + ":" + productId
+                        }
+
+                        FieldLabel {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.top: parent.top
+                            anchors.topMargin: 80
+                            text: "Profile"
+                        }
+
+                        ValueText {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 74
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                            anchors.top: parent.top
+                            anchors.topMargin: 80
+                            text: "Unassigned"
                         }
 
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.selectedDevice = name
+                            onClicked: {
+                                root.selectedDevice = deviceId
+                                root.selectedDeviceDisplayName = displayName
+                            }
                         }
                     }
+                }
+
+                Text {
+                    visible: deviceRepeater.count === 0
+                    text: "No gamepads connected"
+                    color: theme.muted
+                    font.pixelSize: 12
+                    topPadding: 8
                 }
 
                 Rectangle {
@@ -405,7 +452,7 @@ Window {
                         anchors.rightMargin: 10
                         anchors.top: parent.top
                         anchors.topMargin: 34
-                        text: "Input queue stable. Output backend ready."
+                        text: appController.runtimeMessage || "No runtime message"
                         color: theme.muted
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -442,7 +489,7 @@ Window {
                     anchors.leftMargin: 16
                     anchors.top: parent.top
                     anchors.topMargin: 14
-                    text: root.selectedDevice
+                    text: root.selectedDeviceDisplayName || "No device selected"
                     color: "#ffffff"
                     font.pixelSize: 15
                     font.bold: true
@@ -840,7 +887,7 @@ Window {
             anchors.left: parent.left
             anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            text: "Devices: " + devicesModel.count + "    Mapping: " + (root.mappingEnabled ? "enabled" : "paused") + "    Output: Windows SendInput ready"
+            text: "Devices: " + deviceRepeater.count + "    Runtime: " + appController.runtimeState + "    Mapping: " + (appController.mappingEnabled ? "enabled" : "paused") + "    Output: " + appController.outputState + "    Events: " + appController.lastDrainedEventCount
             color: "#ffffff"
             font.pixelSize: 11
         }
