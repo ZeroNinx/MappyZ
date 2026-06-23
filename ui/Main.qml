@@ -30,7 +30,7 @@ Window {
         readonly property color danger: "#f44747"
     }
 
-    property bool captureMode: false
+    property bool captureMode: appController.inputCapture.active
     property string selectedDevice: ""
     property string selectedDeviceDisplayName: ""
     property string selectedControl: "button_south"
@@ -154,6 +154,17 @@ Window {
 
         function onInputStateReset() {
             root.latestControlForSelectedDevice = ""
+        }
+    }
+
+    // capture 完成 signal 驱动 selectedControl 更新
+    Connections {
+        target: appController.inputCapture
+
+        function onCaptureCompleted(deviceId, controlId) {
+            if (deviceId === root.selectedDevice) {
+                root.selectedControl = controlId
+            }
         }
     }
 
@@ -369,7 +380,7 @@ Window {
             cursorShape: Qt.PointingHandCursor
             onClicked: {
                 root.selectedControl = controlDot.controlId
-                root.captureMode = false
+                appController.inputCapture.cancel()
             }
         }
     }
@@ -868,7 +879,9 @@ Window {
                         anchors.left: parent.left
                         anchors.leftMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.captureMode ? "Waiting for input..." : root.selectedControl
+                        text: root.captureMode
+                            ? appController.inputCapture.displayText
+                            : root.selectedControl
                         color: root.captureMode ? theme.warning : "#ffffff"
                         font.pixelSize: 13
                         font.bold: true
@@ -881,7 +894,13 @@ Window {
                     ActionButton {
                         label: "Capture Input"
                         primary: root.captureMode
-                        onClicked: root.captureMode = !root.captureMode
+                        onClicked: {
+                            if (root.captureMode) {
+                                appController.inputCapture.cancel()
+                            } else {
+                                appController.inputCapture.begin(root.selectedDevice)
+                            }
+                        }
                     }
 
                     ActionButton {

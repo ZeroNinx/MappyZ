@@ -13,6 +13,7 @@
 #include "Core/ControlId.h"
 #include "UI/Bridge/AppController.h"
 #include "UI/Bridge/DeviceModel.h"
+#include "UI/Bridge/InputCaptureModel.h"
 #include "UI/Bridge/InputStateModel.h"
 
 using namespace MappyZ;
@@ -827,4 +828,141 @@ TEST_CASE("AppController idempotent initialize does not trigger InputStateReset"
 
     REQUIRE(ResetSpy.count() == 0);
     REQUIRE(Model->rowCount() == 1);
+}
+
+// ══════════════════════════════════════════════════════════════
+// InputCapture 集成测试
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController inputCapture property returns non-null QObject",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.InputCapture() != nullptr);
+}
+
+TEST_CASE("AppController begin capture then pumpOnce completes capture",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* Capture = qobject_cast<ZInputCaptureModel*>(Controller.InputCapture());
+    REQUIRE(Capture != nullptr);
+
+    Capture->begin("dev_1");
+    REQUIRE(Capture->IsActive());
+
+    QSignalSpy CompleteSpy(Capture, &ZInputCaptureModel::CaptureCompleted);
+
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+
+    REQUIRE_FALSE(Capture->IsActive());
+    REQUIRE(CompleteSpy.count() == 1);
+    REQUIRE(CompleteSpy.at(0).at(0).toString() == "dev_1");
+    REQUIRE(CompleteSpy.at(0).at(1).toString() == "button_south");
+}
+
+TEST_CASE("AppController capture completion has InputStateModel snapshot already updated",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* Capture = qobject_cast<ZInputCaptureModel*>(Controller.InputCapture());
+    auto* InputModel = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+
+    // 在 CaptureCompleted slot 中验证 InputStateModel 快照已更新
+    bool bSnapshotUpdated = false;
+    QObject::connect(Capture, &ZInputCaptureModel::CaptureCompleted,
+        [InputModel, &bSnapshotUpdated](const QString& DeviceId, const QString& ControlId)
+        {
+            bSnapshotUpdated = InputModel->isPressed(DeviceId, ControlId);
+        });
+
+    Capture->begin("dev_1");
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+
+    REQUIRE(bSnapshotUpdated);
+}
+
+TEST_CASE("AppController non-target device input does not complete capture",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* Capture = qobject_cast<ZInputCaptureModel*>(Controller.InputCapture());
+
+    Capture->begin("dev_1");
+
+    QSignalSpy CompleteSpy(Capture, &ZInputCaptureModel::CaptureCompleted);
+
+    // 注入来自非 target device 的输入
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_2", ControlId::ButtonSouth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+
+    REQUIRE(Capture->IsActive());
+    REQUIRE(CompleteSpy.count() == 0);
+}
+
+TEST_CASE("AppController capture does not affect LastPumpSummary statistics",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* Capture = qobject_cast<ZInputCaptureModel*>(Controller.InputCapture());
+
+    // 不开启 capture 时 pump 一个事件，记录 summary
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+    int BaseInputCount = Controller.LastInputEventCount();
+
+    // 开启 capture 后 pump 另一个事件
+    Capture->begin("dev_1");
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonNorth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+
+    // capture 不影响统计计数
+    REQUIRE(Controller.LastInputEventCount() == BaseInputCount);
 }

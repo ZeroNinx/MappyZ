@@ -13,6 +13,7 @@
 
 #include "App/ApplicationBootstrap.h"
 #include "UI/Bridge/DeviceModel.h"
+#include "UI/Bridge/InputCaptureModel.h"
 #include "UI/Bridge/InputStateModel.h"
 
 namespace MappyZ
@@ -35,6 +36,7 @@ class ZAppController final : public QObject
     Q_PROPERTY(int lastDispatchedInputCount READ LastDispatchedInputCount NOTIFY LastPumpSummaryChanged)
     Q_PROPERTY(QObject* deviceModel READ DeviceModel CONSTANT)
     Q_PROPERTY(QObject* inputStateModel READ InputStateModel CONSTANT)
+    Q_PROPERTY(QObject* inputCapture READ InputCapture CONSTANT)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -62,6 +64,7 @@ public:
     NODISCARD int LastDispatchedInputCount() const;
     NODISCARD QObject* DeviceModel();
     NODISCARD QObject* InputStateModel();
+    NODISCARD QObject* InputCapture();
 
     // ── QML invokable ──
 
@@ -103,6 +106,9 @@ private:
 
     // 输入状态数据模型，供 QML 绑定
     ZInputStateModel InputStateModelInstance;
+
+    // 输入捕获状态模型，供 QML 绑定
+    ZInputCaptureModel InputCaptureInstance;
 };
 
 }  // namespace MappyZ

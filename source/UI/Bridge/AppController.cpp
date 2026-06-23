@@ -111,6 +111,11 @@ QObject* ZAppController::InputStateModel()
     return &InputStateModelInstance;
 }
 
+QObject* ZAppController::InputCapture()
+{
+    return &InputCaptureInstance;
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime(bool useNullOutput)
@@ -153,11 +158,12 @@ bool ZAppController::initializeRuntime(bool useNullOutput)
             InputStateModelInstance.RemoveDevice(Id);
         });
 
-    // 注册输入事件 handler，pump 分发输入事件时自动更新 InputStateModel
+    // 注册输入事件 handler，pump 分发输入事件时自动更新 InputStateModel 和 InputCapture
     Bootstrap.GetRuntimeHost().GetEventPump().SetInputEventHandler(
         [this](const SInputEvent& Event)
         {
             InputStateModelInstance.ApplyInputEvent(Event);
+            InputCaptureInstance.HandleInputEvent(Event);
         });
 
     // 初始化后立即刷新设备快照
