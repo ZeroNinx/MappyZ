@@ -64,14 +64,13 @@ void ZFakeInputBackend::AddDevice(const SDeviceInfo& DeviceInfo)
 
     if (Iterator != Devices.end())
     {
-        std::fprintf(
-            stderr,
-            "[FakeInputBackend] 警告: 设备 ID \"%s\" 已存在，跳过添加\n",
-            DeviceInfo.Id.Value.c_str());
-        return;
+        // 设备已存在：更新信息并重新触发回调（模拟设备重连或信息变更）
+        *Iterator = DeviceInfo;
     }
-
-    Devices.push_back(DeviceInfo);
+    else
+    {
+        Devices.push_back(DeviceInfo);
+    }
 
     if (!bRunning)
     {

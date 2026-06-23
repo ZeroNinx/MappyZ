@@ -35,6 +35,144 @@ Window {
     property string selectedDeviceDisplayName: ""
     property string selectedControl: "button_south"
     property string selectedAction: "Keyboard: Space"
+    property string latestControlForSelectedDevice: ""
+
+    // 输入控件状态代理：监听语义 signal，维护本地显式状态属性
+    component InputControlState: QtObject {
+        required property string deviceId
+        required property string controlId
+
+        property bool pressed: false
+        property double value: 0.0
+        property double axisX: 0.0
+        property double axisY: 0.0
+        property string displayValue: ""
+
+        function refresh() {
+            if (deviceId === "" || controlId === "") {
+                reset()
+                return
+            }
+            var model = appController.inputStateModel
+            pressed = model.isPressed(deviceId, controlId)
+            value = model.value(deviceId, controlId)
+            axisX = model.axisX(deviceId, controlId)
+            axisY = model.axisY(deviceId, controlId)
+            displayValue = model.displayValue(deviceId, controlId)
+        }
+
+        function reset() {
+            pressed = false
+            value = 0.0
+            axisX = 0.0
+            axisY = 0.0
+            displayValue = ""
+        }
+
+        onDeviceIdChanged: refresh()
+        onControlIdChanged: refresh()
+
+        property Connections _inputConn: Connections {
+            target: appController.inputStateModel
+
+            function onControlStateChanged(sigDeviceId, sigControlId) {
+                if (sigDeviceId === deviceId && sigControlId === controlId) {
+                    refresh()
+                }
+            }
+
+            function onDeviceStateRemoved(sigDeviceId) {
+                if (sigDeviceId === deviceId) {
+                    reset()
+                }
+            }
+
+            function onInputStateReset() {
+                reset()
+            }
+        }
+    }
+
+    // 设备生命周期 signal 驱动设备选择
+    Connections {
+        target: appController.deviceModel
+
+        function onDeviceAdded(deviceId) {
+            if (root.selectedDevice === "") {
+                var row = root._findDeviceRow(deviceId)
+                if (row >= 0) {
+                    root.selectedDevice = deviceId
+                    root.selectedDeviceDisplayName = appController.deviceModel.displayNameAt(row)
+                }
+            }
+        }
+
+        function onDeviceUpdated(deviceId) {
+            if (deviceId === root.selectedDevice) {
+                root.selectedDeviceDisplayName = appController.deviceModel.displayNameAt(
+                    _findDeviceRow(deviceId))
+            }
+        }
+
+        function onDeviceRemoved(deviceId) {
+            if (deviceId !== root.selectedDevice) return
+            if (appController.deviceModel.rowCount() > 0) {
+                root.selectedDevice = appController.deviceModel.deviceIdAt(0)
+                root.selectedDeviceDisplayName = appController.deviceModel.displayNameAt(0)
+            } else {
+                root.selectedDevice = ""
+                root.selectedDeviceDisplayName = ""
+            }
+        }
+
+        function onDeviceModelReset() {
+            if (appController.deviceModel.rowCount() > 0) {
+                root.selectedDevice = appController.deviceModel.deviceIdAt(0)
+                root.selectedDeviceDisplayName = appController.deviceModel.displayNameAt(0)
+            } else {
+                root.selectedDevice = ""
+                root.selectedDeviceDisplayName = ""
+            }
+        }
+    }
+
+    // 输入状态 signal 驱动 latestControl 更新
+    Connections {
+        target: appController.inputStateModel
+
+        function onControlStateChanged(deviceId, controlId) {
+            if (deviceId === root.selectedDevice) {
+                root.latestControlForSelectedDevice = controlId
+            }
+        }
+
+        function onDeviceStateRemoved(deviceId) {
+            if (deviceId === root.selectedDevice) {
+                root.latestControlForSelectedDevice = ""
+            }
+        }
+
+        function onInputStateReset() {
+            root.latestControlForSelectedDevice = ""
+        }
+    }
+
+    // 设备切换时从快照初始化 latestControl
+    onSelectedDeviceChanged: {
+        if (selectedDevice !== "") {
+            latestControlForSelectedDevice = appController.inputStateModel.latestControlId(selectedDevice)
+        } else {
+            latestControlForSelectedDevice = ""
+        }
+    }
+
+    function _findDeviceRow(deviceId) {
+        var model = appController.deviceModel
+        for (var i = 0; i < model.rowCount(); i++) {
+            if (model.deviceIdAt(i) === deviceId) return i
+        }
+        return -1
+    }
 
     Component.onCompleted: {
         var ok = appController.initializeRuntime(true)
@@ -200,17 +338,28 @@ Window {
         property string controlId: ""
         property string label: ""
 
+        InputControlState {
+            id: controlState
+            deviceId: root.selectedDevice
+            controlId: controlDot.controlId
+        }
+
+        property bool active: controlState.pressed
+
         width: 38
         height: 38
         radius: 19
-        color: root.selectedControl === controlId ? theme.accentSoft : theme.surface
-        border.color: root.selectedControl === controlId ? theme.accent : theme.border
+        color: active ? theme.accentSoft
+            : (root.selectedControl === controlId ? "#3a3a3a" : theme.surface)
+        border.color: active ? theme.accent
+            : (root.selectedControl === controlId ? theme.accent : theme.border)
         border.width: 1
 
         Text {
             anchors.centerIn: parent
             text: controlDot.label
-            color: root.selectedControl === controlDot.controlId ? "#ffffff" : theme.text
+            color: controlDot.active || root.selectedControl === controlDot.controlId
+                ? "#ffffff" : theme.text
             font.pixelSize: 12
             font.bold: true
         }
@@ -311,15 +460,6 @@ Window {
                 Repeater {
                     id: deviceRepeater
                     model: appController.deviceModel
-
-                    onCountChanged: {
-                        if (root.selectedDevice === "") return
-                        for (var i = 0; i < count; i++) {
-                            if (appController.deviceModel.deviceIdAt(i) === root.selectedDevice) return
-                        }
-                        root.selectedDevice = ""
-                        root.selectedDeviceDisplayName = ""
-                    }
 
                     Rectangle {
                         width: parent.width
@@ -500,7 +640,7 @@ Window {
                     anchors.leftMargin: 16
                     anchors.top: parent.top
                     anchors.topMargin: 38
-                    text: "Selected input: " + root.selectedControl
+                    text: "Selected input: " + (root.latestControlForSelectedDevice || root.selectedControl)
                     color: theme.muted
                     font.pixelSize: 12
                 }
@@ -527,19 +667,31 @@ Window {
                 }
 
                 ControlDot {
+                    InputControlState {
+                        id: leftStickState
+                        deviceId: root.selectedDevice
+                        controlId: "left_stick"
+                    }
+
                     anchors.left: controllerBody.left
-                    anchors.leftMargin: 92
+                    anchors.leftMargin: 92 + leftStickState.axisX * 16
                     anchors.top: controllerBody.top
-                    anchors.topMargin: 74
+                    anchors.topMargin: 74 + leftStickState.axisY * 16
                     label: "LS"
                     controlId: "left_stick"
                 }
 
                 ControlDot {
+                    InputControlState {
+                        id: rightStickState
+                        deviceId: root.selectedDevice
+                        controlId: "right_stick"
+                    }
+
                     anchors.right: controllerBody.right
-                    anchors.rightMargin: 132
+                    anchors.rightMargin: 132 - rightStickState.axisX * 16
                     anchors.top: controllerBody.top
-                    anchors.topMargin: 148
+                    anchors.topMargin: 148 + rightStickState.axisY * 16
                     label: "RS"
                     controlId: "right_stick"
                 }
@@ -627,15 +779,23 @@ Window {
                     spacing: 12
 
                     Rectangle {
+                        InputControlState {
+                            id: leftTriggerState
+                            deviceId: root.selectedDevice
+                            controlId: "left_trigger"
+                        }
+
                         width: (parent.width - 12) / 2
                         height: 28
                         radius: 4
-                        color: root.selectedControl === "left_trigger" ? theme.accentHover : "#333333"
-                        border.color: theme.border
+                        color: root.selectedControl === "left_trigger"
+                            ? theme.accentHover
+                            : Qt.rgba(0.2, 0.2, 0.2, 1.0 - leftTriggerState.value * 0.5 + 0.5)
+                        border.color: leftTriggerState.value > 0.5 ? theme.accent : theme.border
 
                         Text {
                             anchors.centerIn: parent
-                            text: "LT 0.18"
+                            text: "LT " + (leftTriggerState.displayValue || "0.00")
                             color: theme.text
                             font.pixelSize: 12
                         }
@@ -648,15 +808,23 @@ Window {
                     }
 
                     Rectangle {
+                        InputControlState {
+                            id: rightTriggerState
+                            deviceId: root.selectedDevice
+                            controlId: "right_trigger"
+                        }
+
                         width: (parent.width - 12) / 2
                         height: 28
                         radius: 4
-                        color: root.selectedControl === "right_trigger" ? theme.accentHover : "#333333"
-                        border.color: theme.border
+                        color: root.selectedControl === "right_trigger"
+                            ? theme.accentHover
+                            : Qt.rgba(0.2, 0.2, 0.2, 1.0 - rightTriggerState.value * 0.5 + 0.5)
+                        border.color: rightTriggerState.value > 0.5 ? theme.accent : theme.border
 
                         Text {
                             anchors.centerIn: parent
-                            text: "RT 0.74"
+                            text: "RT " + (rightTriggerState.displayValue || "0.00")
                             color: theme.text
                             font.pixelSize: 12
                         }

@@ -442,3 +442,156 @@ TEST_CASE("DeviceModel header has no SDL or Win32 dependencies",
     ZDeviceModel Model;
     REQUIRE(Model.rowCount() == 0);
 }
+
+// ══════════════════════════════════════════════════════════════
+// ZDeviceModel 语义 signal 测试
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("DeviceModel AddOrUpdateDevice emits DeviceAdded for new device",
+    "[UI][DeviceModel]")
+{
+    ZDeviceModel Model;
+
+    QSignalSpy AddedSpy(&Model, &ZDeviceModel::DeviceAdded);
+
+    Model.AddOrUpdateDevice(MakeDeviceInfo("dev_1", "Pad 1"));
+
+    REQUIRE(AddedSpy.count() == 1);
+    REQUIRE(AddedSpy.takeFirst().at(0).toString() == "dev_1");
+}
+
+TEST_CASE("DeviceModel AddOrUpdateDevice emits DeviceUpdated for existing device",
+    "[UI][DeviceModel]")
+{
+    ZDeviceModel Model;
+    Model.ReplaceDevices({MakeDeviceInfo("dev_1", "Original")});
+
+    QSignalSpy UpdatedSpy(&Model, &ZDeviceModel::DeviceUpdated);
+    QSignalSpy AddedSpy(&Model, &ZDeviceModel::DeviceAdded);
+
+    Model.AddOrUpdateDevice(MakeDeviceInfo("dev_1", "Updated"));
+
+    REQUIRE(UpdatedSpy.count() == 1);
+    REQUIRE(UpdatedSpy.takeFirst().at(0).toString() == "dev_1");
+    REQUIRE(AddedSpy.count() == 0);
+}
+
+TEST_CASE("DeviceModel RemoveDevice emits DeviceRemoved for existing device",
+    "[UI][DeviceModel]")
+{
+    ZDeviceModel Model;
+    Model.ReplaceDevices({MakeDeviceInfo("dev_1"), MakeDeviceInfo("dev_2")});
+
+    QSignalSpy RemovedSpy(&Model, &ZDeviceModel::DeviceRemoved);
+
+    Model.RemoveDevice(SDeviceId{.Value = "dev_1"});
+
+    REQUIRE(RemovedSpy.count() == 1);
+    REQUIRE(RemovedSpy.takeFirst().at(0).toString() == "dev_1");
+}
+
+TEST_CASE("DeviceModel RemoveDevice does not emit DeviceRemoved for non-existent device",
+    "[UI][DeviceModel]")
+{
+    ZDeviceModel Model;
+    Model.ReplaceDevices({MakeDeviceInfo("dev_1")});
+
+    QSignalSpy RemovedSpy(&Model, &ZDeviceModel::DeviceRemoved);
+
+    Model.RemoveDevice(SDeviceId{.Value = "not_exist"});
+
+    REQUIRE(RemovedSpy.count() == 0);
+}
+
+TEST_CASE("DeviceModel clear emits DeviceModelReset for non-empty model",
+    "[UI][DeviceModel]")
+{
+    ZDeviceModel Model;
+    Model.ReplaceDevices({MakeDeviceInfo("dev_1"), MakeDeviceInfo("dev_2")});
+
+    QSignalSpy ResetSpy(&Model, &ZDeviceModel::DeviceModelReset);
+
+    Model.clear();
+
+    REQUIRE(ResetSpy.count() == 1);
+}
+
+TEST_CASE("DeviceModel clear does not emit DeviceModelReset for empty model",
+    "[UI][DeviceModel]")
+{
+    ZDeviceModel Model;
+
+    QSignalSpy ResetSpy(&Model, &ZDeviceModel::DeviceModelReset);
+
+    Model.clear();
+
+    REQUIRE(ResetSpy.count() == 0);
+}
+
+TEST_CASE("DeviceModel ReplaceDevices emits DeviceModelReset",
+    "[UI][DeviceModel]")
+{
+    ZDeviceModel Model;
+
+    QSignalSpy ResetSpy(&Model, &ZDeviceModel::DeviceModelReset);
+
+    Model.ReplaceDevices({MakeDeviceInfo("dev_1")});
+
+    REQUIRE(ResetSpy.count() == 1);
+}
+
+TEST_CASE("DeviceModel DeviceRemoved signal fires after snapshot is updated",
+    "[UI][DeviceModel]")
+{
+    ZDeviceModel Model;
+    Model.ReplaceDevices({MakeDeviceInfo("dev_1"), MakeDeviceInfo("dev_2")});
+
+    // 在 DeviceRemoved slot 中验证快照已不包含被移除设备
+    bool bSnapshotCorrect = false;
+    QObject::connect(&Model, &ZDeviceModel::DeviceRemoved,
+        [&Model, &bSnapshotCorrect](const QString& RemovedId)
+        {
+            // 遍历 model，确认被移除的设备不在里面
+            for (int Row = 0; Row < Model.rowCount(); ++Row)
+            {
+                if (Model.deviceIdAt(Row) == RemovedId)
+                {
+                    bSnapshotCorrect = false;
+                    return;
+                }
+            }
+            bSnapshotCorrect = true;
+        });
+
+    Model.RemoveDevice(SDeviceId{.Value = "dev_1"});
+
+    REQUIRE(bSnapshotCorrect);
+}
+
+TEST_CASE("DeviceModel DeviceAdded and DeviceUpdated signals fire after snapshot is updated",
+    "[UI][DeviceModel]")
+{
+    ZDeviceModel Model;
+
+    // 验证 DeviceAdded 发出时可读到新设备的 displayName
+    QString CapturedDisplayName;
+    QObject::connect(&Model, &ZDeviceModel::DeviceAdded,
+        [&Model, &CapturedDisplayName](const QString&)
+        {
+            CapturedDisplayName = Model.displayNameAt(Model.rowCount() - 1);
+        });
+
+    Model.AddOrUpdateDevice(MakeDeviceInfo("dev_1", "New Pad"));
+    REQUIRE(CapturedDisplayName == "New Pad");
+
+    // 验证 DeviceUpdated 发出时可读到更新后的 displayName
+    QString CapturedUpdatedName;
+    QObject::connect(&Model, &ZDeviceModel::DeviceUpdated,
+        [&Model, &CapturedUpdatedName](const QString&)
+        {
+            CapturedUpdatedName = Model.displayNameAt(0);
+        });
+
+    Model.AddOrUpdateDevice(MakeDeviceInfo("dev_1", "Updated Pad"));
+    REQUIRE(CapturedUpdatedName == "Updated Pad");
+}

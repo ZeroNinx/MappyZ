@@ -12,6 +12,8 @@
 #include "Backends/Output/NullOutputBackend.h"
 #include "Core/ControlId.h"
 #include "UI/Bridge/AppController.h"
+#include "UI/Bridge/DeviceModel.h"
+#include "UI/Bridge/InputStateModel.h"
 
 using namespace MappyZ;
 
@@ -398,4 +400,431 @@ TEST_CASE("AppController header has no SDL or Win32 dependencies",
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
     REQUIRE(Controller.RuntimeState() == "created");
+}
+
+// ── inputStateModel 属性 ──
+
+TEST_CASE("AppController inputStateModel returns non-null QObject",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.InputStateModel() != nullptr);
+}
+
+// ── pumpOnce 后 InputStateModel 更新 ──
+
+TEST_CASE("AppController pumpOnce updates InputStateModel via input event handler",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+    REQUIRE(Model != nullptr);
+    REQUIRE(Model->rowCount() == 0);
+
+    // 注入输入事件
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+
+    Controller.pumpOnce();
+
+    REQUIRE(Model->rowCount() == 1);
+    REQUIRE(Model->isPressed("dev_1", "button_south") == true);
+}
+
+// ── 设备断开后 InputStateModel 清理 ──
+
+TEST_CASE("AppController device disconnect cleans up InputStateModel",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+
+    // 添加设备并注入事件
+    SDeviceInfo DevInfo;
+    DevInfo.Id = SDeviceId{.Value = "dev_1"};
+    DevInfo.Name = "Test Device";
+    RawInputBackend->AddDevice(DevInfo);
+
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+
+    Controller.pumpOnce();
+    REQUIRE(Model->rowCount() == 1);
+
+    // 移除设备
+    RawInputBackend->RemoveDevice(SDeviceId{.Value = "dev_1"});
+    Controller.pumpOnce();
+
+    REQUIRE(Model->rowCount() == 0);
+}
+
+// ── 幂等 initialize 不清理 InputStateModel ──
+
+TEST_CASE("AppController idempotent initialize does not clear InputStateModel",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+
+    // 注入事件
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+    REQUIRE(Model->rowCount() == 1);
+
+    // 幂等 re-initialize（Ready 状态短路）
+    (void)Controller.initializeRuntime(true);
+
+    // InputStateModel 保持不变
+    REQUIRE(Model->rowCount() == 1);
+}
+
+// ── Error 后重新 initialize 清理 InputStateModel ──
+
+TEST_CASE("AppController re-initialize from Error state clears InputStateModel",
+    "[UI][AppController]")
+{
+    // 第一次用正常工厂初始化并注入事件
+    int FactoryCallCount = 0;
+    auto InputFactory = [&FactoryCallCount]() -> TResult<TUniquePtr<IInputBackend>> {
+        ++FactoryCallCount;
+        if (FactoryCallCount == 1)
+        {
+            return TResult<TUniquePtr<IInputBackend>>::Ok(
+                std::make_unique<ZFakeInputBackend>());
+        }
+        // 第二次调用失败，模拟 Error 状态
+        return TResult<TUniquePtr<IInputBackend>>::Err(
+            MakeError(EErrorCode::Unknown, "factory fail"));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+
+    // 第一次初始化成功
+    (void)Controller.initializeRuntime(true);
+    REQUIRE(Controller.RuntimeState() == "ready");
+
+    // 手动通过 InputStateModel 添加状态来模拟有旧数据
+    auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+    SInputEvent FakeEvent;
+    FakeEvent.DeviceId = SDeviceId{.Value = "dev_1"};
+    FakeEvent.ControlId = "button_south";
+    FakeEvent.ControlType = EInputControlType::Button;
+    FakeEvent.EventType = EInputEventType::Pressed;
+    FakeEvent.Value = 1.0f;
+    Model->ApplyInputEvent(FakeEvent);
+    REQUIRE(Model->rowCount() == 1);
+
+    // 因为 Ready 状态幂等短路，需要先让 bootstrap 进入 Error
+    // 使用 StartRuntime 再让 factory 第二次失败
+    // 但 StartRuntime 不会调 factory... 需要另一种方式进入 Error
+    // 实际上 AppController 没有暴露直接进入 Error 的方法，
+    // 所以用另一个 controller 实例来测试 Error→re-init 路径
+
+    ZAppController Controller2(
+        MakeFailingInputFactory("first fail"),
+        MakeNullOutputFactory());
+
+    // 初始化失败 → Error 状态
+    (void)Controller2.initializeRuntime(true);
+    REQUIRE(Controller2.RuntimeState() == "error");
+
+    // 手动填充 InputStateModel
+    auto* Model2 = qobject_cast<ZInputStateModel*>(Controller2.InputStateModel());
+    Model2->ApplyInputEvent(FakeEvent);
+    REQUIRE(Model2->rowCount() == 1);
+
+    // 重新 initialize（仍会失败，但应先清理 InputStateModel）
+    (void)Controller2.initializeRuntime(true);
+
+    // Error 路径的 re-init 应已清理旧 InputStateModel
+    REQUIRE(Model2->rowCount() == 0);
+}
+
+// ══════════════════════════════════════════════════════════════
+// 语义 signal 集成测试
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController pumpOnce triggers InputStateModel ControlStateChanged",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+    QSignalSpy Spy(Model, &ZInputStateModel::ControlStateChanged);
+
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+
+    REQUIRE(Spy.count() == 1);
+    REQUIRE(Spy.at(0).at(0).toString() == "dev_1");
+    REQUIRE(Spy.at(0).at(1).toString() == "button_south");
+}
+
+TEST_CASE("AppController device disconnect triggers InputStateModel DeviceStateRemoved",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* InputModel = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+
+    // 注入输入事件使 InputStateModel 有该设备的数据
+    SDeviceInfo DevInfo;
+    DevInfo.Id = SDeviceId{.Value = "dev_1"};
+    DevInfo.Name = "Test Device";
+    RawInputBackend->AddDevice(DevInfo);
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+
+    QSignalSpy Spy(InputModel, &ZInputStateModel::DeviceStateRemoved);
+
+    RawInputBackend->RemoveDevice(SDeviceId{.Value = "dev_1"});
+    Controller.pumpOnce();
+
+    REQUIRE(Spy.count() == 1);
+    REQUIRE(Spy.takeFirst().at(0).toString() == "dev_1");
+}
+
+TEST_CASE("AppController device connect triggers DeviceModel DeviceAdded",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* DevModel = qobject_cast<ZDeviceModel*>(Controller.DeviceModel());
+    QSignalSpy AddedSpy(DevModel, &ZDeviceModel::DeviceAdded);
+
+    SDeviceInfo DevInfo;
+    DevInfo.Id = SDeviceId{.Value = "hot_dev"};
+    DevInfo.Name = "Hot Pad";
+    RawInputBackend->AddDevice(DevInfo);
+    Controller.pumpOnce();
+
+    REQUIRE(AddedSpy.count() == 1);
+    REQUIRE(AddedSpy.at(0).at(0).toString() == "hot_dev");
+}
+
+TEST_CASE("AppController duplicate device connect triggers DeviceModel DeviceUpdated",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* DevModel = qobject_cast<ZDeviceModel*>(Controller.DeviceModel());
+
+    // 首次添加设备
+    SDeviceInfo DevInfo;
+    DevInfo.Id = SDeviceId{.Value = "dup_dev"};
+    DevInfo.Name = "Original Name";
+    RawInputBackend->AddDevice(DevInfo);
+    Controller.pumpOnce();
+    REQUIRE(DevModel->rowCount() >= 1);
+
+    // 再次添加相同 ID 但不同名称的设备，走 update 路径
+    QSignalSpy UpdatedSpy(DevModel, &ZDeviceModel::DeviceUpdated);
+    QSignalSpy AddedSpy(DevModel, &ZDeviceModel::DeviceAdded);
+
+    DevInfo.Name = "Updated Name";
+    RawInputBackend->AddDevice(DevInfo);
+    Controller.pumpOnce();
+
+    REQUIRE(UpdatedSpy.count() == 1);
+    REQUIRE(UpdatedSpy.at(0).at(0).toString() == "dup_dev");
+    REQUIRE(AddedSpy.count() == 0);
+    REQUIRE(DevModel->displayNameAt(
+        DevModel->rowCount() - 1) == "Updated Name");
+}
+
+TEST_CASE("AppController device disconnect triggers DeviceModel DeviceRemoved",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* DevModel = qobject_cast<ZDeviceModel*>(Controller.DeviceModel());
+
+    SDeviceInfo DevInfo;
+    DevInfo.Id = SDeviceId{.Value = "rm_dev"};
+    DevInfo.Name = "Removable";
+    RawInputBackend->AddDevice(DevInfo);
+    Controller.pumpOnce();
+
+    QSignalSpy RemovedSpy(DevModel, &ZDeviceModel::DeviceRemoved);
+
+    RawInputBackend->RemoveDevice(SDeviceId{.Value = "rm_dev"});
+    Controller.pumpOnce();
+
+    REQUIRE(RemovedSpy.count() == 1);
+    REQUIRE(RemovedSpy.takeFirst().at(0).toString() == "rm_dev");
+}
+
+TEST_CASE("AppController device added without input then removed does not trigger DeviceStateRemoved",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* InputModel = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+    auto* DevModel = qobject_cast<ZDeviceModel*>(Controller.DeviceModel());
+
+    // 添加设备但不发送任何输入
+    SDeviceInfo DevInfo;
+    DevInfo.Id = SDeviceId{.Value = "silent_dev"};
+    DevInfo.Name = "Silent Pad";
+    RawInputBackend->AddDevice(DevInfo);
+    Controller.pumpOnce();
+
+    QSignalSpy InputRemovedSpy(InputModel, &ZInputStateModel::DeviceStateRemoved);
+    QSignalSpy DevRemovedSpy(DevModel, &ZDeviceModel::DeviceRemoved);
+
+    // 移除设备
+    RawInputBackend->RemoveDevice(SDeviceId{.Value = "silent_dev"});
+    Controller.pumpOnce();
+
+    // DeviceModel 一定会移除
+    REQUIRE(DevRemovedSpy.count() == 1);
+    // InputStateModel 没有该设备的状态，不发 DeviceStateRemoved
+    REQUIRE(InputRemovedSpy.count() == 0);
+}
+
+TEST_CASE("AppController re-initialize from Error triggers InputStateReset",
+    "[UI][AppController]")
+{
+    ZAppController Controller(
+        MakeFailingInputFactory("first fail"),
+        MakeNullOutputFactory());
+
+    // 初始化失败 → Error 状态
+    (void)Controller.initializeRuntime(true);
+    REQUIRE(Controller.RuntimeState() == "error");
+
+    // 手动填充 InputStateModel
+    auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+    SInputEvent FakeEvent;
+    FakeEvent.DeviceId = SDeviceId{.Value = "dev_1"};
+    FakeEvent.ControlId = "button_south";
+    FakeEvent.ControlType = EInputControlType::Button;
+    FakeEvent.EventType = EInputEventType::Pressed;
+    FakeEvent.Value = 1.0f;
+    Model->ApplyInputEvent(FakeEvent);
+    REQUIRE(Model->rowCount() == 1);
+
+    QSignalSpy ResetSpy(Model, &ZInputStateModel::InputStateReset);
+
+    // 重新 initialize（仍会失败，但应先清理 InputStateModel）
+    (void)Controller.initializeRuntime(true);
+
+    REQUIRE(ResetSpy.count() == 1);
+}
+
+TEST_CASE("AppController idempotent initialize does not trigger InputStateReset",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
+
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+    REQUIRE(Model->rowCount() == 1);
+
+    QSignalSpy ResetSpy(Model, &ZInputStateModel::InputStateReset);
+
+    // 幂等 re-initialize（Ready 状态短路）
+    (void)Controller.initializeRuntime(true);
+
+    REQUIRE(ResetSpy.count() == 0);
+    REQUIRE(Model->rowCount() == 1);
 }

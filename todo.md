@@ -1,178 +1,237 @@
-# TODO: UI Bridge InputStateModel Module
+# TODO: UI Bridge Semantic Input Notifications
 
 ## Next Step
 
-下一步实现 `source/UI/Bridge/InputStateModel.h/.cpp`，把运行时 `SInputEvent` 暴露给 QML，让 Gamepad View 能显示真实按钮、扳机、摇杆和方向键状态。
+下一步暂缓新功能，先修正 UI Bridge 输入状态刷新方案：移除 `revision` / `_inputRev` 这类隐藏 invalidation token，改成真实语义事件驱动的 UI 更新。
 
-优先做这个模块的理由：
+这轮目标不是重写 Core/Runtime，而是把 UI Bridge 从“事件进入 C++，QML 靠伪 int 触发重新查询”改成更清晰的模式：
 
-- [x] `ZDeviceModel` 已完成，设备列表已经接入真实 runtime。
-- [x] `ZAppController` 已通过 pump timer 持续驱动 `ZRuntimeEventPump`。
-- [x] `ZRuntimeEventPump` 已有 `SetInputEventHandler()`，可以在不修改 Backend/Core 的前提下把输入事件送到 UI Bridge。
-- [x] 当前 Gamepad View 仍显示静态 `LT 0.18`、`RT 0.74` 和固定高亮，用户还看不到实时输入。
-- [x] 实时输入状态是后续“等待输入进行绑定”和事件日志的基础。
+- [x] C++ 输入状态模型保存当前快照。
+- [x] C++ 在状态变化时发出有业务含义的 signal。
+- [x] QML 控件响应 signal，更新自己的显式状态属性。
+- [x] QML 只在设备切换、初始化、重置等边界场景主动读取快照。
+- [x] 不再用无业务含义的递增数字让 QML 绑定被动重算。
+
+## Problem Statement
+
+- [x] 当前 `revision` 能让 UI 刷新，但它不是领域数据。
+- [x] 删除看似“不重要”的 `revision` 会导致 UI 不更新，说明依赖关系被隐藏了。
+- [x] `Q_INVOKABLE isPressed()/value()/axisX()` 适合做快照查询，不适合作为 QML 绑定刷新机制。
+- [x] `dataChanged` 只天然服务于 model/delegate 绑定，不会自动驱动固定手柄布局里的函数查询。
+- [x] 固定手柄 UI 需要“某设备某控件变了”的真实事件，而不是“某个 int 变了”的间接信号。
 
 ## Scope
 
-本轮实现 UI Bridge 层输入状态 model，并把现有 QML Gamepad View 绑定到它。
-
 包含：
 
-- [ ] 新增 `source/UI/Bridge/InputStateModel.h`
-- [ ] 新增 `source/UI/Bridge/InputStateModel.cpp`
-- [ ] 新增 `tests/UI/Bridge/InputStateModelTests.cpp`
-- [ ] `ZInputStateModel : QAbstractListModel`
-- [ ] `ZAppController` 增加 `inputStateModel` 只读 Q_PROPERTY
-- [ ] AppController 初始化 runtime 后注册 `RuntimeEventPump` input event handler
-- [ ] AppController `pumpOnce()` 后输入状态随事件刷新
-- [ ] `ui/Main.qml` 的 Gamepad View 使用真实输入状态高亮按钮、扳机和摇杆
-- [ ] CMake 把 InputStateModel 加入 `MappyZUIBridge` 和 `MappyZUIBridgeTests`
+- [x] 给 `ZDeviceModel` 增加设备生命周期语义 signals。
+- [x] 修改 `ZInputStateModel`，移除 `revision` 机制。
+- [x] 给 `ZInputStateModel` 增加语义化 Qt signals。
+- [x] 调整 `ApplyInputEvent()` / `RemoveDevice()` / `clear()` 的 signal 语义。
+- [x] 调整 `ui/Main.qml`，用事件驱动的本地控件状态替代 `_inputRev` 查询辅助。
+- [x] 修正未选中设备时事件已到但 Gamepad View 不更新的交互问题。
+- [x] 更新 `InputStateModelTests` 和 `AppControllerTests`，覆盖 signal 语义和 UI Bridge 数据链路。
+- [x] 保持 Core、Runtime、Backend API 不变。
 
 不做：
 
-- [ ] 不实现 `ZLogModel`
-- [ ] 不实现 profile 列表、active profile 选择或自动匹配
-- [ ] 不创建、保存或应用新的 mapping rule
-- [ ] 不实现完整 Binding Editor 工作流
-- [ ] 不实现设备外观识别或真实手柄皮肤
-- [ ] 不让 QML 直接访问 `IInputBackend`、`ZRuntimeHost` 或 `ZRuntimeEventPump`
-- [ ] 不修改 Core、Runtime、Backend 的公开输入事件契约，除非发现必要缺口并先补测试
-- [ ] 不引入 Qt 到 Core、Runtime 或 Backend
+- [x] 不重构 `ZRuntimeEventPump`、`ZRuntimeHost`、backend queue 或 mapping engine。
+- [x] 不实现 Binding Editor 的完整 capture / save workflow。
+- [x] 不实现 `ZLogModel`。
+- [x] 不引入新的 profile 管理能力。
+- [x] 不把所有 UI 状态强行改成纯事件流；快照查询仍保留用于初始化和设备切换。
 
-## Architecture Boundary
+## Target Design
 
-- [ ] `ZInputStateModel` 属于 UI Bridge 层。
-- [ ] 依赖 Qt Core 和 Core `SInputEvent` 数据类型。
-- [ ] 不依赖 SDL、Win32、QML 文件或输出后端。
-- [ ] `ZInputStateModel` 不拥有 runtime，不调用 backend。
-- [ ] 输入事件来源是 `ZRuntimeEventPump` 已标准化的 `SInputEvent`。
-- [ ] QML 只通过 `appController.inputStateModel` 读取输入状态。
-- [ ] `ZDeviceModel` 继续只负责设备列表，不混入输入状态。
-- [ ] `ZAppController` 继续负责 runtime lifecycle、pump 调度和 UI Bridge models 的连接。
+采用 event-notified snapshot：
 
-## Proposed Types
+- [x] Device Snapshot：`ZDeviceModel` 继续保存当前设备列表。
+- [x] Input Snapshot：`ZInputStateModel` 继续保存每个 `(deviceId, controlId)` 的最后状态。
+- [x] Device Notification：设备列表变化时发出语义 signal，signal payload 说明哪个设备变化。
+- [x] Input Notification：输入状态变化时发出语义 signal，signal payload 说明哪个控件变化。
+- [x] UI State：QML 中每个可视控件维护自己的 `pressed/value/axisX/axisY/displayValue` 属性。
+- [x] Refresh Rule：QML 收到匹配当前设备和控件的 signal 后，只刷新对应控件。
+- [x] Boundary Reads：设备切换、应用启动、设备移除、reset 后允许调用快照查询函数重建 UI 状态。
 
-- [ ] 新增 `class ZInputStateModel final : public QAbstractListModel`
-- [ ] 每行表示一个 `(deviceId, controlId)` 的最近状态，重复输入更新同一行。
-- [ ] Roles：
-  - `DeviceIdRole`
-  - `ControlIdRole`
-  - `ControlTypeRole`
-  - `EventTypeRole`
-  - `ValueRole`
-  - `AxisXRole`
-  - `AxisYRole`
-  - `PressedRole`
-  - `DisplayValueRole`
-  - `SequenceRole`
-- [ ] Public API：
-  - `int rowCount(const QModelIndex& Parent = QModelIndex()) const override`
-  - `QVariant data(const QModelIndex& Index, int Role) const override`
-  - `QHash<int, QByteArray> roleNames() const override`
-  - `void ApplyInputEvent(const SInputEvent& Event)`
-  - `void RemoveDevice(const SDeviceId& DeviceId)`
-  - `void ClearDevice(const SDeviceId& DeviceId)`
-  - `Q_INVOKABLE void clear()`
-  - `Q_INVOKABLE bool isPressed(QString deviceId, QString controlId) const`
-  - `Q_INVOKABLE double value(QString deviceId, QString controlId) const`
-  - `Q_INVOKABLE double axisX(QString deviceId, QString controlId) const`
-  - `Q_INVOKABLE double axisY(QString deviceId, QString controlId) const`
-  - `Q_INVOKABLE QString displayValue(QString deviceId, QString controlId) const`
-  - `Q_INVOKABLE QString latestControlId(QString deviceId = QString()) const`
+核心原则：
 
-## Model Behavior
+- [x] signal 表示发生了什么，不表示“请重新算一遍”。
+- [x] query API 只读当前事实，不承担订阅语义。
+- [x] QML 绑定依赖真实属性，例如 `buttonSouthState.pressed`，不依赖隐藏 token。
+- [x] 如果一个属性被删除会破坏刷新，测试必须能明确失败。
 
-- [ ] `rowCount()` 返回当前已知控件状态数量。
-- [ ] `data()` 对无效 index、非 0 列或未知 role 返回空 `QVariant`。
-- [ ] `ApplyInputEvent()`：
-  - 新 `(deviceId, controlId)` 插入一行并发出 `rowsInserted`
-  - 已存在状态更新该行并发出 `dataChanged`
-  - 更新 `Sequence`，便于 UI 判断最近输入
-- [ ] `PressedRole`：
-  - Button/Hat 的 Pressed 为 true，Released 为 false
-  - Trigger 可按阈值 `Value > 0.5` 返回 true
-  - Axis/Axis2D 默认 false，避免把摇杆偏移误判为按钮按下
-- [ ] `DisplayValueRole`：
-  - Button/Hat 显示 `"pressed"` / `"released"`
-  - Trigger/Axis1D 显示归一化数值，保留 2 位小数
-  - Axis2D 显示 `"(x, y)"`，各保留 2 位小数
-- [ ] `RemoveDevice()` 删除该设备全部控件状态并发出正确 rowsRemoved/reset 信号。
-- [ ] `clear()` 清空所有状态，重复调用安全。
-- [ ] 查询 invokable 找不到设备或控件时返回安全默认值。
-- [ ] `latestControlId()` 默认返回全局最近输入；传入 deviceId 时返回该设备最近输入。
+## ZDeviceModel API Changes
 
-## AppController Integration
+新增 signals：
 
-- [ ] `ZAppController` 内部持有 `ZInputStateModel InputStateModelInstance`。
-- [ ] 新增 `Q_PROPERTY(QObject* inputStateModel READ InputStateModel CONSTANT)`。
-- [ ] 新增 `QObject* InputStateModel()`。
-- [ ] `initializeRuntime()` 成功后给 `GetRuntimeHost().GetEventPump()` 设置 input handler：
-  - input -> `InputStateModelInstance.ApplyInputEvent(Event)`
-- [ ] device disconnected handler 同时调用：
-  - `DeviceModelInstance.RemoveDevice(DeviceId)`
-  - `InputStateModelInstance.RemoveDevice(DeviceId)`
-- [ ] `stopRuntime()` 不清空 input state；停止运行时不等于忘记最后已知状态。
-- [ ] `initializeRuntime()` 失败时不修改 input state model。
-- [ ] 如果 runtime 被重新 initialize，先清理或重建 input state，避免旧设备状态误导 UI。
+- [x] `void DeviceAdded(QString deviceId);`
+- [x] `void DeviceUpdated(QString deviceId);`
+- [x] `void DeviceRemoved(QString deviceId);`
+- [x] `void DeviceModelReset();`
+
+行为：
+
+- [x] `AddOrUpdateDevice()` 插入新设备后发 `DeviceAdded(deviceId)`。
+- [x] `AddOrUpdateDevice()` 更新已有设备后发 `DeviceUpdated(deviceId)`。
+- [x] `RemoveDevice()` 找到并删除设备后发 `DeviceRemoved(deviceId)`。
+- [x] `RemoveDevice()` 找不到设备时不发 `DeviceRemoved`。
+- [x] `clear()` 只在确实清空非空 model 后发 `DeviceModelReset()`。
+- [x] `ReplaceDevices()` 继续执行 model reset，并在 reset 后发 `DeviceModelReset()`。
+- [x] `rowsInserted` / `dataChanged` / `rowsRemoved` / `modelReset` 继续保留，服务于 Qt view/model 机制。
+- [x] 语义 signals 必须在内部设备快照更新完成后发出；slot 内调用 `deviceIdAt()` / `displayNameAt()` / `ListDevicesSnapshot()` 应读到新状态。
+
+## ZInputStateModel API Changes
+
+移除：
+
+- [x] 移除 `Q_PROPERTY(int revision READ Revision NOTIFY RevisionChanged)`。
+- [x] 移除 `int Revision() const`。
+- [x] 移除 `void RevisionChanged()` signal。
+- [x] 移除 `int CurrentRevision`。
+- [x] 移除所有 `++CurrentRevision`。
+
+新增 signals：
+
+- [x] `void ControlStateChanged(QString deviceId, QString controlId);`
+- [x] `void DeviceStateRemoved(QString deviceId);`
+- [x] `void InputStateReset();`
+
+保留 snapshot 查询 API：
+
+- [x] `Q_INVOKABLE bool isPressed(QString deviceId, QString controlId) const`
+- [x] `Q_INVOKABLE double value(QString deviceId, QString controlId) const`
+- [x] `Q_INVOKABLE double axisX(QString deviceId, QString controlId) const`
+- [x] `Q_INVOKABLE double axisY(QString deviceId, QString controlId) const`
+- [x] `Q_INVOKABLE QString displayValue(QString deviceId, QString controlId) const`
+- [x] `Q_INVOKABLE QString latestControlId(QString deviceId = QString()) const`
+
+行为：
+
+- [x] `ApplyInputEvent()` 插入新状态后发 `ControlStateChanged(deviceId, controlId)`。
+- [x] `ApplyInputEvent()` 更新已有状态后发 `ControlStateChanged(deviceId, controlId)`。
+- [x] `RemoveDevice()` 只在确实删除了至少一条状态时发 `DeviceStateRemoved(deviceId)`。
+- [x] `clear()` 只在确实清空了非空状态时发 `InputStateReset()`。
+- [x] 继续保留 `rowsInserted` / `dataChanged` / `rowsRemoved` / `modelReset`，服务于未来 model/delegate 使用场景。
 
 ## QML Binding Plan
 
-- [ ] `Gamepad View` 标题仍来自选中设备 `displayName`。
-- [ ] 无选中设备时显示空状态，控件恢复未按下视觉。
-- [ ] Face buttons / shoulders / start / back / dpad 高亮读取 `inputStateModel.isPressed(selectedDevice, controlId)`。
-- [ ] LT/RT 文案读取 `inputStateModel.displayValue(selectedDevice, "left_trigger")` 和 `"right_trigger"`。
-- [ ] LT/RT 填充或高亮强度读取 `inputStateModel.value(...)`。
-- [ ] LS/RS 摇杆点位读取 `axisX/axisY`，保持在稳定边界内，不让布局跳动。
-- [ ] `Selected input` 可显示 `latestControlId(selectedDevice)`，但不创建绑定规则。
-- [ ] 保留静态 mapping/event mock 数据，标注为后续模块，不参与输入状态。
+移除：
+
+- [x] 移除 `property int _inputRev`。
+- [x] 移除所有 `void(_inputRev)`。
+- [x] 移除 `inputPressed()` / `inputValue()` / `inputAxisX()` / `inputAxisY()` / `inputDisplayValue()` 这类用于强制重算的 helper。
+- [x] 移除 `deviceRepeater.onCountChanged` 中的设备选择逻辑；设备选择改由 `DeviceModel` 语义 signal handlers 完全接管。
+
+新增一个 QML 侧小型状态绑定组件，名称暂定 `InputControlState`：
+
+- [x] 暴露 `deviceId`、`controlId`。
+- [x] 暴露 `pressed`、`value`、`axisX`、`axisY`、`displayValue`。
+- [x] `refresh()` 从 `appController.inputStateModel` 读取当前快照。
+- [x] `reset()` 把状态恢复默认值。
+- [x] `deviceId` 或 `controlId` 变化时调用 `refresh()`。
+- [x] 监听 `inputStateModel.ControlStateChanged`，只有 device/control 匹配时调用 `refresh()`。
+- [x] 监听 `inputStateModel.DeviceStateRemoved`，如果 device 匹配则调用 `reset()`；这个 signal 只表示该设备已有输入状态被清理，不表示设备一定断开。
+- [x] 监听 `inputStateModel.InputStateReset`，调用 `reset()`。
+
+实现细节：
+
+- [x] 优先在 `Main.qml` 内用局部 `component InputControlState` 实现。
+- [x] 如果 `QtObject` 不能承载 `Connections`，使用 `Item { visible: false }` 作为无视觉状态对象。
+- [x] `ControlDot.active` 改为绑定到对应 `InputControlState.pressed`。
+- [x] LT/RT 文案和强度绑定到对应 `InputControlState.displayValue/value`。
+- [x] LS/RS 点位绑定到对应 `InputControlState.axisX/axisY`。
+- [x] `Selected input` 维护显式 `latestControlForSelectedDevice` 属性，收到当前设备的 `ControlStateChanged` 时直接使用 signal payload 的 `controlId` 更新。
+- [x] `ControlStateChanged` handler 不为 latest control 反查 `latestControlId()`；只有设备切换、初始化、reset 后恢复边界状态时才调用 `latestControlId(selectedDevice)`。
+
+## Device Selection Fix
+
+当前如果没有选中设备，事件计数会变，但 Gamepad View 必然显示默认状态。这个行为容易被误判为输入状态没刷新。
+
+已具备前置条件：
+
+- [x] `ZDeviceModel` 已提供 `Q_INVOKABLE QString displayNameAt(int Row) const`。
+- [x] 当前 QML 自动选择首个设备时已经使用 `displayNameAt(0)`，不需要再新增该 API。
+
+- [x] 设备选择逻辑由 `ZDeviceModel` 语义 signals 驱动，而不是从 `onCountChanged` 推断业务事件。
+- [x] `DeviceAdded(deviceId)` 到达时，如果当前无选中设备，自动选择该设备。
+- [x] `DeviceAdded(deviceId)` 到达时，如果当前已有选中设备，不切换选择。
+- [x] `DeviceUpdated(deviceId)` 到达时，如果更新的是当前选中设备，同步刷新 `selectedDeviceDisplayName`。
+- [x] `DeviceRemoved(deviceId)` 到达时，如果移除的不是当前选中设备，不切换选择。
+- [x] `DeviceRemoved(deviceId)` 到达时，如果移除的是当前选中设备，自动选择剩余第 0 行；如果没有剩余设备，则清空选择。
+- [x] `DeviceModelReset()` 到达时，重新选择第 0 行；如果没有设备，则清空选择。
+- [x] 原因：设备连接后如果从未产生输入，`InputStateModel` 没有可删除状态，`DeviceStateRemoved` 不会触发；但 `DeviceModel.DeviceRemoved` 一定能表达设备生命周期变化。
+- [x] `InputStateModel.DeviceStateRemoved` 只服务于 `InputControlState.reset()`，不承担设备选择职责。
+- [x] 自动选择后立即刷新所有 `InputControlState`。
+- [x] 保留手动点击设备切换选择的行为。
+- [x] 自动选择时使用 `deviceIdAt(0)` 和 `displayNameAt(0)` 同步更新 `selectedDevice` / `selectedDeviceDisplayName`。
 
 ## Tests
 
-- [ ] `ZInputStateModel` 默认 rowCount 为 0。
-- [ ] `ApplyInputEvent()` 新控件插入一行并提供所有 roles。
-- [ ] `ApplyInputEvent()` 同一 `(deviceId, controlId)` 更新行并发出 dataChanged。
-- [ ] 不同 device 的同名 control 分成不同行。
-- [ ] Button Pressed/Released 正确更新 `PressedRole` 和 `DisplayValueRole`。
-- [ ] Trigger value 正确更新 `ValueRole`、`PressedRole` 和 `DisplayValueRole`。
-- [ ] Axis2D 正确更新 `AxisXRole`、`AxisYRole` 和 `DisplayValueRole`。
-- [ ] `latestControlId()` 返回最近输入，按 deviceId 过滤时正确。
-- [ ] `RemoveDevice()` 删除指定设备所有状态。
-- [ ] `clear()` 清空 model 并发出 reset。
-- [ ] 查询 invokable 对未知设备/控件返回安全默认值。
-- [ ] `ZAppController::inputStateModel` 返回非空 QObject。
-- [ ] AppController start 后 fake backend `EmitInput` + `pumpOnce` 更新 InputStateModel。
-- [ ] AppController fake backend RemoveDevice + pumpOnce 清理该设备输入状态。
-- [ ] header 不包含 SDL 或 Win32 头。
+`ZDeviceModel`：
 
-## Manual Test Checklist
+- [x] `AddOrUpdateDevice()` 插入新设备时发一次 `DeviceAdded(deviceId)`。
+- [x] `AddOrUpdateDevice()` 更新已有设备时发一次 `DeviceUpdated(deviceId)`。
+- [x] `RemoveDevice()` 删除已有设备时发一次 `DeviceRemoved(deviceId)`。
+- [x] `RemoveDevice()` 找不到设备时不发 `DeviceRemoved`。
+- [x] `clear()` 清空非空 model 时发一次 `DeviceModelReset()`。
+- [x] `clear()` 空 model 时不发 `DeviceModelReset()`。
+- [x] `ReplaceDevices()` 发一次 `DeviceModelReset()`。
+- [x] `DeviceRemoved` 发射时设备快照已经更新；slot 内遍历 `deviceIdAt()` 不应再找到被移除设备。
+- [x] `DeviceAdded` / `DeviceUpdated` 发射时设备快照已经更新；slot 内调用 `displayNameAt()` 应读到新值。
 
-- [ ] 无手柄启动，Gamepad View 显示空状态，应用不崩溃。
-- [ ] 连接手柄后点击设备，Gamepad View 显示该设备名称。
-- [ ] 按 A/B/X/Y，按钮高亮随按下和松开变化。
-- [ ] 按 LT/RT，数值和高亮强度随扳机变化。
-- [ ] 推动左右摇杆，LS/RS 指示点随轴值移动。
-- [ ] 按 D-pad，上下左右高亮正确。
-- [ ] 切换选中设备时，Gamepad View 显示对应设备的输入状态。
-- [ ] 拔出当前设备后，Gamepad View 回到无选择/空状态。
-- [ ] Mapping On/Off 不影响原始输入状态显示。
-- [ ] 关闭应用后 runtime 停止，终端无明显析构/线程错误。
+`ZInputStateModel`：
+
+- [x] meta-object 中不存在 `revision` property。
+- [x] `ApplyInputEvent()` 插入新控件时发一次 `ControlStateChanged(deviceId, controlId)`。
+- [x] `ApplyInputEvent()` 更新已有控件时发一次 `ControlStateChanged(deviceId, controlId)`。
+- [x] `ControlStateChanged` 发射时快照已经写入；在 signal slot 内调用 `isPressed()` / `value()` / `axisX()` / `axisY()` / `displayValue()` 应读到新值而不是旧值。
+- [x] 不同设备同名控件发出的 `deviceId` 可区分。
+- [x] Trigger 更新时 signal payload 为对应 trigger control id。
+- [x] Axis2D 更新时 signal payload 为对应 stick control id。
+- [x] `RemoveDevice()` 删除已有状态时发一次 `DeviceStateRemoved(deviceId)`。
+- [x] `RemoveDevice()` 找不到设备时不发 `DeviceStateRemoved`。
+- [x] `clear()` 清空非空 model 时发一次 `InputStateReset()`。
+- [x] `clear()` 空 model 时不发 `InputStateReset()`。
+- [x] snapshot 查询函数行为保持不变。
+
+`ZAppController`：
+
+- [x] fake backend `EmitInput` + `pumpOnce()` 会触发 `InputStateModel.ControlStateChanged`。
+- [x] fake backend `RemoveDevice` + `pumpOnce()` 会触发 `InputStateModel.DeviceStateRemoved`。
+- [x] fake backend `AddDevice` + `pumpOnce()` 会触发 `DeviceModel.DeviceAdded`。
+- [x] fake backend duplicate/update path 如果走 `AddOrUpdateDevice()` 更新已有设备，会触发 `DeviceModel.DeviceUpdated`。
+- [x] fake backend `RemoveDevice` + `pumpOnce()` 会触发 `DeviceModel.DeviceRemoved`。
+- [x] fake backend 添加设备但不发送输入，再 `RemoveDevice` + `pumpOnce()` 时，`DeviceModel` 会移除设备；`InputStateModel.DeviceStateRemoved` 不触发，这是预期行为。
+- [x] Error 后重新 initialize 清理状态时触发 `InputStateReset()`。
+- [x] 幂等 initialize 不清理状态，也不触发 `InputStateReset()`。
+
+QML 手工验证：
+
+- [x] 启动后连接一台手柄，UI 自动选中该设备。
+- [x] 不点击设备卡片也能看到按钮、LT/RT、摇杆随输入变化。
+- [x] 切换设备后，显示切换到对应设备的快照状态。
+- [x] 拔出非当前设备后，当前选择不变化。
+- [x] 拔出当前设备后自动选择剩余设备；无剩余设备则回到空状态。
+- [x] 连接一台设备但不按任何输入，直接拔出该设备，当前选择仍能正确清空或切到剩余设备。
+- [x] 设备名称更新时，如果更新的是当前设备，Gamepad View 标题同步刷新。
+- [x] 删除 `revision` 相关代码后 UI 仍然更新。
 
 ## Acceptance Criteria
 
-- [ ] QML 可通过 `appController.inputStateModel` 读取实时输入状态。
-- [ ] `ui/Main.qml` 的 Gamepad View 不再使用静态 LT/RT 数值。
-- [ ] 选中设备的按钮、扳机、摇杆和 D-pad 能随真实输入变化。
-- [ ] QML 不直接访问 backend/runtime 内部对象。
-- [ ] Core、Runtime、Backend 不依赖 Qt。
-- [ ] `cmake --build build --config Debug` 通过。
-- [ ] `ctest --test-dir build --output-on-failure -C Debug` 通过。
-- [ ] `git diff --check` 通过。
-- [ ] 新增和修改的文本文件使用 CRLF 行尾。
+- [x] `revision` / `_inputRev` 从 C++ 和 QML 中完全移除。
+- [x] 设备选择刷新依赖 `DeviceAdded` / `DeviceUpdated` / `DeviceRemoved` / `DeviceModelReset` 等真实 device lifecycle signal。
+- [x] 输入状态刷新依赖 `ControlStateChanged` / `DeviceStateRemoved` / `InputStateReset` 等真实 signal。
+- [x] QML 可视控件绑定到明确命名的本地状态属性，而不是绑定到 `Q_INVOKABLE` + hidden token。
+- [x] 按键事件、LT/RT 数值和摇杆位置在不手动点击设备卡片的情况下也能更新。
+- [x] 设备切换和设备拔出不会显示 stale input state。
+- [x] `cmake --build build --config Debug` 通过。
+- [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
+- [x] `git diff --check` 通过。
+- [x] 新增和修改的文本文件使用 CRLF 行尾。
 
 ## Follow-Up Module
 
-- [ ] 后续实现 `ZLogModel` 或轻量 event log bridge。
-- [ ] 后续实现 Binding Capture：等待下一次输入并填充 Binding Editor。
-- [ ] 后续实现 profile directory/active profile 管理。
-- [ ] 后续实现绑定 UI：选择输出动作、创建规则、保存 profile。
-- [ ] 后续增加真实输出开关，允许 UI 从 NullOutput 切换到 Windows SendInput。
+- [ ] 后续实现 Binding Capture，用同一套 `ControlStateChanged` 事件捕获下一次输入。
+- [ ] 后续实现 `ZLogModel`，把 runtime pump records 暴露给事件日志。
+- [ ] 后续实现 Binding Editor 的 rule 创建和 profile 保存。
+- [ ] 后续考虑把 `InputControlState` 从 QML 局部组件提升为可复用 QML 文件或 C++ QObject proxy。

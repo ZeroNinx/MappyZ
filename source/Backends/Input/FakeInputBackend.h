@@ -34,7 +34,7 @@ public:
     void ClearStartError();
 
     // 向设备快照中添加设备。running 状态下同步触发 OnDeviceConnected。
-    // 如果设备 ID 已存在，不重复添加、不触发回调，输出警告日志。
+    // 如果设备 ID 已存在，更新设备信息并重新触发回调（模拟设备重连或信息变更）。
     void AddDevice(const SDeviceInfo& DeviceInfo);
 
     // 从设备快照中移除设备。running 状态下同步触发 OnDeviceDisconnected。

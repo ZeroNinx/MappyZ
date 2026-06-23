@@ -118,6 +118,8 @@ void ZDeviceModel::ReplaceDevices(TVector<SDeviceInfo> NewDevices)
     beginResetModel();
     Devices = std::move(Deduplicated);
     endResetModel();
+
+    emit DeviceModelReset();
 }
 
 void ZDeviceModel::AddOrUpdateDevice(const SDeviceInfo& DeviceInfo)
@@ -131,6 +133,7 @@ void ZDeviceModel::AddOrUpdateDevice(const SDeviceInfo& DeviceInfo)
 
         QModelIndex ModelIndex = index(ExistingIndex);
         emit dataChanged(ModelIndex, ModelIndex);
+        emit DeviceUpdated(QString::fromStdString(DeviceInfo.Id.Value));
         return;
     }
 
@@ -139,6 +142,8 @@ void ZDeviceModel::AddOrUpdateDevice(const SDeviceInfo& DeviceInfo)
     beginInsertRows(QModelIndex(), InsertRow, InsertRow);
     Devices.push_back(DeviceInfo);
     endInsertRows();
+
+    emit DeviceAdded(QString::fromStdString(DeviceInfo.Id.Value));
 }
 
 void ZDeviceModel::RemoveDevice(const SDeviceId& DeviceId)
@@ -154,6 +159,8 @@ void ZDeviceModel::RemoveDevice(const SDeviceId& DeviceId)
     beginRemoveRows(QModelIndex(), ExistingIndex, ExistingIndex);
     Devices.erase(Devices.begin() + ExistingIndex);
     endRemoveRows();
+
+    emit DeviceRemoved(QString::fromStdString(DeviceId.Value));
 }
 
 // ── QML invokable ──
@@ -168,6 +175,8 @@ void ZDeviceModel::clear()
     beginResetModel();
     Devices.clear();
     endResetModel();
+
+    emit DeviceModelReset();
 }
 
 QString ZDeviceModel::deviceIdAt(int Row) const
@@ -177,6 +186,20 @@ QString ZDeviceModel::deviceIdAt(int Row) const
         return {};
     }
     return QString::fromStdString(Devices[static_cast<size_t>(Row)].Id.Value);
+}
+
+QString ZDeviceModel::displayNameAt(int Row) const
+{
+    if (Row < 0 || Row >= static_cast<int>(Devices.size()))
+    {
+        return {};
+    }
+    const SDeviceInfo& Info = Devices[static_cast<size_t>(Row)];
+    if (!Info.Name.empty())
+    {
+        return QString::fromStdString(Info.Name);
+    }
+    return QString::fromStdString(Info.Id.Value);
 }
 
 // ── C++ 辅助 ──

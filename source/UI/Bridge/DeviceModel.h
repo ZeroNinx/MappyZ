@@ -66,10 +66,26 @@ public:
     // 返回指定行的 DeviceId 字符串，越界返回空串
     Q_INVOKABLE QString deviceIdAt(int Row) const;
 
+    // 返回指定行的显示名称，越界返回空串
+    Q_INVOKABLE QString displayNameAt(int Row) const;
+
     // ── C++ 辅助 ──
 
     // 返回当前设备列表的拷贝，调用方修改不影响 model
     NODISCARD TVector<SDeviceInfo> ListDevicesSnapshot() const;
+
+signals:
+    // 新设备插入后发出，payload 为新设备的 DeviceId
+    void DeviceAdded(QString deviceId);
+
+    // 已有设备信息更新后发出，payload 为被更新设备的 DeviceId
+    void DeviceUpdated(QString deviceId);
+
+    // 设备被移除后发出，payload 为被移除设备的 DeviceId
+    void DeviceRemoved(QString deviceId);
+
+    // 批量替换或全量清空后发出，表示设备列表整体变化
+    void DeviceModelReset();
 
 private:
     // 在 Devices 中查找与指定 DeviceId 匹配的索引，找不到返回 -1

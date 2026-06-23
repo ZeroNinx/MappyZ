@@ -122,7 +122,7 @@ TEST_CASE("FakeBackend AddDevice while stopped does not trigger callback", "[Bac
     REQUIRE(Backend.ListDevices().size() == 1);
 }
 
-TEST_CASE("FakeBackend duplicate DeviceId does not add or trigger callback", "[Backend][Fake]")
+TEST_CASE("FakeBackend duplicate DeviceId updates info and re-triggers callback", "[Backend][Fake]")
 {
     ZFakeInputBackend Backend;
     (void)Backend.Start();
@@ -134,11 +134,11 @@ TEST_CASE("FakeBackend duplicate DeviceId does not add or trigger callback", "[B
     };
 
     Backend.AddDevice(MakeDevice("dev_1", "Controller A"));
-    Backend.AddDevice(MakeDevice("dev_1", "Controller A Duplicate"));
+    Backend.AddDevice(MakeDevice("dev_1", "Controller A Updated"));
 
-    REQUIRE(ConnectedCount == 1);
+    REQUIRE(ConnectedCount == 2);
     REQUIRE(Backend.ListDevices().size() == 1);
-    REQUIRE(Backend.ListDevices()[0].Name == "Controller A");
+    REQUIRE(Backend.ListDevices()[0].Name == "Controller A Updated");
 }
 
 TEST_CASE("FakeBackend AddDevice with null OnDeviceConnected does not crash", "[Backend][Fake]")

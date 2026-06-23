@@ -106,10 +106,21 @@ QObject* ZAppController::DeviceModel()
     return &DeviceModelInstance;
 }
 
+QObject* ZAppController::InputStateModel()
+{
+    return &InputStateModelInstance;
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime(bool useNullOutput)
 {
+    // 真实重建路径：Error 状态下 Bootstrap 会走完整 setup，先清理旧输入状态
+    if (Bootstrap.GetStatus().State == EApplicationBootstrapState::Error)
+    {
+        InputStateModelInstance.clear();
+    }
+
     auto Result = Bootstrap.Initialize({
         .bUseNullOutput = useNullOutput,
         .bEnableMapping = bCachedMappingEnabled,
@@ -139,6 +150,14 @@ bool ZAppController::initializeRuntime(bool useNullOutput)
         [this](const SDeviceId& Id)
         {
             DeviceModelInstance.RemoveDevice(Id);
+            InputStateModelInstance.RemoveDevice(Id);
+        });
+
+    // 注册输入事件 handler，pump 分发输入事件时自动更新 InputStateModel
+    Bootstrap.GetRuntimeHost().GetEventPump().SetInputEventHandler(
+        [this](const SInputEvent& Event)
+        {
+            InputStateModelInstance.ApplyInputEvent(Event);
         });
 
     // 初始化后立即刷新设备快照

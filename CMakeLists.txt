@@ -204,6 +204,7 @@ endif()
 add_library(MappyZUIBridge STATIC
     source/UI/Bridge/AppController.cpp
     source/UI/Bridge/DeviceModel.cpp
+    source/UI/Bridge/InputStateModel.cpp
 )
 
 target_link_libraries(MappyZUIBridge
@@ -442,6 +443,7 @@ if(BUILD_TESTING)
         tests/UI/Bridge/Main.cpp
         tests/UI/Bridge/AppControllerTests.cpp
         tests/UI/Bridge/DeviceModelTests.cpp
+        tests/UI/Bridge/InputStateModelTests.cpp
     )
 
     target_link_libraries(MappyZUIBridgeTests
