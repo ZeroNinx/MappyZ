@@ -247,6 +247,17 @@ SApplicationBootstrapStatus ZApplicationBootstrap::GetStatus() const
     return Status;
 }
 
+// ── 设备列表 ──
+
+TVector<SDeviceInfo> ZApplicationBootstrap::ListInputDevices() const
+{
+    if (!InputBackend)
+    {
+        return {};
+    }
+    return InputBackend->ListDevices();
+}
+
 // ── RuntimeHost 访问器 ──
 
 ZRuntimeHost& ZApplicationBootstrap::GetRuntimeHost()

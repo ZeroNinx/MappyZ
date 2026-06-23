@@ -12,6 +12,7 @@
 #include <QTimer>
 
 #include "App/ApplicationBootstrap.h"
+#include "UI/Bridge/DeviceModel.h"
 
 namespace ZeroMapper
 {
@@ -31,6 +32,7 @@ class ZAppController final : public QObject
     Q_PROPERTY(int lastInputEventCount READ LastInputEventCount NOTIFY LastPumpSummaryChanged)
     Q_PROPERTY(int lastMappedInputCount READ LastMappedInputCount NOTIFY LastPumpSummaryChanged)
     Q_PROPERTY(int lastDispatchedInputCount READ LastDispatchedInputCount NOTIFY LastPumpSummaryChanged)
+    Q_PROPERTY(QObject* deviceModel READ DeviceModel CONSTANT)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -56,6 +58,7 @@ public:
     ZERO_NODISCARD int LastInputEventCount() const;
     ZERO_NODISCARD int LastMappedInputCount() const;
     ZERO_NODISCARD int LastDispatchedInputCount() const;
+    ZERO_NODISCARD QObject* DeviceModel();
 
     // ── QML invokable ──
 
@@ -80,6 +83,9 @@ private:
     // 将 EOutputBackendState 转为 QML 稳定字符串
     static QString OutputStateToString(EOutputBackendState State);
 
+    // 从 Bootstrap 刷新设备快照到 DeviceModel
+    void RefreshDeviceModelFromBootstrap();
+
     ZApplicationBootstrap Bootstrap;
     QTimer PumpTimer;
 
@@ -88,6 +94,9 @@ private:
 
     // 上一次 PumpOnce 的 summary 缓存
     SRuntimeEventPumpSummary LastSummary;
+
+    // 设备列表数据模型，供 QML 绑定
+    ZDeviceModel DeviceModelInstance;
 };
 
 }  // namespace ZeroMapper

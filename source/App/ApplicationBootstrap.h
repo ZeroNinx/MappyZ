@@ -91,6 +91,10 @@ public:
     // 返回当前状态快照
     ZERO_NODISCARD SApplicationBootstrapStatus GetStatus() const;
 
+    // 返回当前输入后端已知的设备快照。
+    // 未 initialize 或 InputBackend 为空时返回空 vector，不修改后端状态。
+    ZERO_NODISCARD TVector<SDeviceInfo> ListInputDevices() const;
+
     // 访问内部 RuntimeHost（供 UI Bridge 绑定和测试使用）。
     // 前置条件：Initialize() 已成功（状态为 Ready 或 Running）。
     ZERO_NODISCARD ZRuntimeHost& GetRuntimeHost();

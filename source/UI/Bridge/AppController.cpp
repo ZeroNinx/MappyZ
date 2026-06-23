@@ -101,6 +101,11 @@ int ZAppController::LastDispatchedInputCount() const
     return static_cast<int>(LastSummary.DispatchedInputCount);
 }
 
+QObject* ZAppController::DeviceModel()
+{
+    return &DeviceModelInstance;
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime(bool useNullOutput)
@@ -122,6 +127,22 @@ bool ZAppController::initializeRuntime(bool useNullOutput)
 
     // 应用缓存的 mapping enabled 到 host，保证 stopped host 与 UI 状态一致
     Bootstrap.GetRuntimeHost().SetMappingEnabled(bCachedMappingEnabled);
+
+    // 注册设备热插拔 handler，pump 分发设备事件时自动更新 DeviceModel
+    Bootstrap.GetRuntimeHost().GetEventPump().SetDeviceConnectedHandler(
+        [this](const SDeviceInfo& Info)
+        {
+            DeviceModelInstance.AddOrUpdateDevice(Info);
+        });
+
+    Bootstrap.GetRuntimeHost().GetEventPump().SetDeviceDisconnectedHandler(
+        [this](const SDeviceId& Id)
+        {
+            DeviceModelInstance.RemoveDevice(Id);
+        });
+
+    // 初始化后立即刷新设备快照
+    RefreshDeviceModelFromBootstrap();
 
     emit RuntimeStatusChanged();
     return true;
@@ -154,6 +175,9 @@ bool ZAppController::startRuntime()
     // 覆盖 Host.Start() 中 Session.SetEnabled() 的默认值，
     // 确保 initialize 与 start 之间用户切换 mapping enabled 不丢失
     Bootstrap.GetRuntimeHost().SetMappingEnabled(bCachedMappingEnabled);
+
+    // start 后重新刷新设备快照，覆盖真实后端 Start() 后才完成枚举的场景
+    RefreshDeviceModelFromBootstrap();
 
     emit RuntimeStatusChanged();
     return true;
@@ -224,6 +248,11 @@ QString ZAppController::OutputStateToString(EOutputBackendState State)
     }
 
     return QStringLiteral("unknown");
+}
+
+void ZAppController::RefreshDeviceModelFromBootstrap()
+{
+    DeviceModelInstance.ReplaceDevices(Bootstrap.ListInputDevices());
 }
 
 }  // namespace ZeroMapper
