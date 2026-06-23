@@ -12,88 +12,21 @@ Window {
     title: "MappyZ"
     color: theme.window
 
-    QtObject {
-        id: theme
+    Theme { id: theme }
 
-        readonly property color window: "#1e1e1e"
-        readonly property color panel: "#252526"
-        readonly property color panelHeader: "#2d2d30"
-        readonly property color surface: "#2a2d2e"
-        readonly property color border: "#3f3f46"
-        readonly property color text: "#cccccc"
-        readonly property color muted: "#808080"
-        readonly property color accent: "#007acc"
-        readonly property color accentSoft: "#0e639c"
-        readonly property color accentHover: "#094771"
-        readonly property color success: "#73c991"
-        readonly property color warning: "#f48771"
-        readonly property color danger: "#f44747"
-    }
+    // context property 别名：避免子组件 required property 同名遮蔽
+    readonly property var _appController: appController
 
-    property bool captureMode: appController.inputCapture.active
+    // ── 应用级状态 ──
+
     property string selectedDevice: ""
     property string selectedDeviceDisplayName: ""
     property string selectedControl: "button_south"
     property string selectedAction: "Keyboard: Space"
     property string latestControlForSelectedDevice: ""
 
-    // 输入控件状态代理：监听语义 signal，维护本地显式状态属性
-    component InputControlState: QtObject {
-        required property string deviceId
-        required property string controlId
+    // ── 设备生命周期 signal 驱动设备选择 ──
 
-        property bool pressed: false
-        property double value: 0.0
-        property double axisX: 0.0
-        property double axisY: 0.0
-        property string displayValue: ""
-
-        function refresh() {
-            if (deviceId === "" || controlId === "") {
-                reset()
-                return
-            }
-            var model = appController.inputStateModel
-            pressed = model.isPressed(deviceId, controlId)
-            value = model.value(deviceId, controlId)
-            axisX = model.axisX(deviceId, controlId)
-            axisY = model.axisY(deviceId, controlId)
-            displayValue = model.displayValue(deviceId, controlId)
-        }
-
-        function reset() {
-            pressed = false
-            value = 0.0
-            axisX = 0.0
-            axisY = 0.0
-            displayValue = ""
-        }
-
-        onDeviceIdChanged: refresh()
-        onControlIdChanged: refresh()
-
-        property Connections _inputConn: Connections {
-            target: appController.inputStateModel
-
-            function onControlStateChanged(sigDeviceId, sigControlId) {
-                if (sigDeviceId === deviceId && sigControlId === controlId) {
-                    refresh()
-                }
-            }
-
-            function onDeviceStateRemoved(sigDeviceId) {
-                if (sigDeviceId === deviceId) {
-                    reset()
-                }
-            }
-
-            function onInputStateReset() {
-                reset()
-            }
-        }
-    }
-
-    // 设备生命周期 signal 驱动设备选择
     Connections {
         target: appController.deviceModel
 
@@ -136,7 +69,8 @@ Window {
         }
     }
 
-    // 输入状态 signal 驱动 latestControl 更新
+    // ── 输入状态 signal 驱动 latestControl 更新 ──
+
     Connections {
         target: appController.inputStateModel
 
@@ -157,7 +91,8 @@ Window {
         }
     }
 
-    // capture 完成 signal 驱动 selectedControl 更新
+    // ── capture 完成 signal 驱动 selectedControl 更新 ──
+
     Connections {
         target: appController.inputCapture
 
@@ -168,7 +103,8 @@ Window {
         }
     }
 
-    // 设备切换时从快照初始化 latestControl
+    // ── 设备切换时从快照初始化 latestControl ──
+
     onSelectedDeviceChanged: {
         if (selectedDevice !== "") {
             latestControlForSelectedDevice = appController.inputStateModel.latestControlId(selectedDevice)
@@ -185,6 +121,8 @@ Window {
         return -1
     }
 
+    // ── 生命周期 ──
+
     Component.onCompleted: {
         var ok = appController.initializeRuntime(true)
         if (ok) {
@@ -199,6 +137,8 @@ Window {
         appController.stopPumpTimer()
         appController.stopRuntime()
     }
+
+    // ── Demo models ──
 
     ListModel {
         id: mappingModel
@@ -218,243 +158,26 @@ Window {
         ListElement { time: "00:14.021"; level: "Output"; message: "SendInput keyboard action completed" }
     }
 
-    component Panel: Rectangle {
-        id: panel
+    // ── 布局编排 ──
 
-        property string heading: ""
-        property alias content: contentHost.data
-
-        color: theme.panel
-        radius: 4
-        border.width: 0
-        clip: true
-
-        Rectangle {
-            id: titleBar
-
-            anchors.left: parent.left
-            anchors.leftMargin: 1
-            anchors.right: parent.right
-            anchors.rightMargin: 1
-            anchors.top: parent.top
-            anchors.topMargin: 1
-            height: 33
-            color: theme.panelHeader
-
-            Text {
-                anchors.left: parent.left
-                anchors.leftMargin: 11
-                anchors.verticalCenter: parent.verticalCenter
-                text: panel.heading
-                color: theme.text
-                font.pixelSize: 12
-                font.bold: true
-            }
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: 1
-                color: theme.border
-            }
-        }
-
-        Item {
-            id: contentHost
-
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: titleBar.bottom
-            anchors.bottom: parent.bottom
-            anchors.margins: 12
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            radius: panel.radius
-            color: "transparent"
-            border.color: theme.border
-            border.width: 1
-            z: 100
-        }
-    }
-
-    component ActionButton: Rectangle {
-        id: button
-
-        property string label: ""
-        property bool primary: false
-        signal clicked()
-
-        width: labelText.implicitWidth + 28
-        height: 30
-        radius: 3
-        color: mouseArea.containsMouse ? theme.accentHover : (primary ? theme.accentSoft : theme.surface)
-        border.color: primary ? theme.accent : theme.border
-        border.width: 1
-
-        Text {
-            id: labelText
-
-            anchors.centerIn: parent
-            text: button.label
-            color: "#ffffff"
-            font.pixelSize: 12
-        }
-
-        MouseArea {
-            id: mouseArea
-
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: button.clicked()
-        }
-    }
-
-    component Tag: Rectangle {
-        property string label: ""
-        property color tone: theme.accentSoft
-
-        width: labelText.implicitWidth + 16
-        height: 22
-        radius: 11
-        color: tone
-
-        Text {
-            id: labelText
-
-            anchors.centerIn: parent
-            text: parent.label
-            color: "#ffffff"
-            font.pixelSize: 11
-        }
-    }
-
-    component FieldLabel: Text {
-        color: theme.muted
-        font.pixelSize: 11
-    }
-
-    component ValueText: Text {
-        color: theme.text
-        font.pixelSize: 12
-        elide: Text.ElideRight
-    }
-
-    component ControlDot: Rectangle {
-        id: controlDot
-
-        property string controlId: ""
-        property string label: ""
-
-        InputControlState {
-            id: controlState
-            deviceId: root.selectedDevice
-            controlId: controlDot.controlId
-        }
-
-        property bool active: controlState.pressed
-
-        width: 38
-        height: 38
-        radius: 19
-        color: active ? theme.accentSoft
-            : (root.selectedControl === controlId ? "#3a3a3a" : theme.surface)
-        border.color: active ? theme.accent
-            : (root.selectedControl === controlId ? theme.accent : theme.border)
-        border.width: 1
-
-        Text {
-            anchors.centerIn: parent
-            text: controlDot.label
-            color: controlDot.active || root.selectedControl === controlDot.controlId
-                ? "#ffffff" : theme.text
-            font.pixelSize: 12
-            font.bold: true
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                root.selectedControl = controlDot.controlId
-                appController.inputCapture.cancel()
-            }
-        }
-    }
-
-    Rectangle {
+    TopBar {
         id: topBar
 
+        theme: theme
+        appController: root._appController
+        eventModel: eventModel
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: 54
-        color: theme.panelHeader
-
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: 1
-            color: theme.border
-        }
-
-        Text {
-            id: productName
-
-            anchors.left: parent.left
-            anchors.leftMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
-            text: "MappyZ"
-            color: "#ffffff"
-            font.pixelSize: 18
-            font.bold: true
-        }
-
-        Text {
-            anchors.left: productName.right
-            anchors.leftMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Gamepad remapping runtime"
-            color: theme.muted
-            font.pixelSize: 12
-        }
-
-        Row {
-            anchors.right: parent.right
-            anchors.rightMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 10
-
-            Tag {
-                label: "Default FPS"
-                tone: "#3c3c3c"
-            }
-
-            ActionButton {
-                label: appController.mappingEnabled ? "Mapping On" : "Mapping Off"
-                primary: appController.mappingEnabled
-                onClicked: appController.mappingEnabled = !appController.mappingEnabled
-            }
-
-            ActionButton {
-                label: "Save Profile"
-                onClicked: eventModel.insert(0, {
-                    "time": "now",
-                    "level": "Profile",
-                    "message": "Profile save requested"
-                })
-            }
-        }
     }
 
-    Panel {
+    DevicesPanel {
         id: devicePanel
 
-        heading: "Devices"
+        theme: theme
+        appController: root._appController
+        selectedDevice: root.selectedDevice
+        selectedDeviceDisplayName: root.selectedDeviceDisplayName
         anchors.left: parent.left
         anchors.leftMargin: 12
         anchors.top: topBar.bottom
@@ -463,160 +186,21 @@ Window {
         anchors.bottomMargin: 12
         width: 260
 
-        content: [
-            Column {
-                anchors.fill: parent
-                spacing: 10
-
-                Repeater {
-                    id: deviceRepeater
-                    model: appController.deviceModel
-
-                    Rectangle {
-                        width: parent.width
-                        height: 110
-                        radius: 4
-                        color: root.selectedDevice === deviceId ? "#2d2d2d" : "#1f1f1f"
-                        border.color: root.selectedDevice === deviceId ? theme.accent : theme.border
-                        border.width: 1
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.right: stateTag.left
-                            anchors.rightMargin: 8
-                            anchors.top: parent.top
-                            anchors.topMargin: 10
-                            text: displayName
-                            color: theme.text
-                            font.pixelSize: 12
-                            font.bold: true
-                            elide: Text.ElideRight
-                        }
-
-                        Tag {
-                            id: stateTag
-
-                            anchors.right: parent.right
-                            anchors.rightMargin: 8
-                            anchors.top: parent.top
-                            anchors.topMargin: 8
-                            label: appController.runtimeState
-                            tone: appController.runtimeState === "running" ? theme.success : "#555555"
-                        }
-
-                        FieldLabel {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.top: parent.top
-                            anchors.topMargin: 36
-                            text: "Backend"
-                        }
-
-                        ValueText {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 74
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            anchors.top: parent.top
-                            anchors.topMargin: 36
-                            text: backend
-                        }
-
-                        FieldLabel {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.top: parent.top
-                            anchors.topMargin: 58
-                            text: "ID"
-                        }
-
-                        ValueText {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 74
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            anchors.top: parent.top
-                            anchors.topMargin: 58
-                            text: vendorId + ":" + productId
-                        }
-
-                        FieldLabel {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.top: parent.top
-                            anchors.topMargin: 80
-                            text: "Profile"
-                        }
-
-                        ValueText {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 74
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            anchors.top: parent.top
-                            anchors.topMargin: 80
-                            text: "Unassigned"
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                root.selectedDevice = deviceId
-                                root.selectedDeviceDisplayName = displayName
-                            }
-                        }
-                    }
-                }
-
-                Text {
-                    visible: deviceRepeater.count === 0
-                    text: "No gamepads connected"
-                    color: theme.muted
-                    font.pixelSize: 12
-                    topPadding: 8
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 78
-                    radius: 4
-                    color: "#1f1f1f"
-                    border.color: theme.border
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 10
-                        anchors.top: parent.top
-                        anchors.topMargin: 10
-                        text: "Runtime"
-                        color: theme.text
-                        font.pixelSize: 12
-                        font.bold: true
-                    }
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 10
-                        anchors.right: parent.right
-                        anchors.rightMargin: 10
-                        anchors.top: parent.top
-                        anchors.topMargin: 34
-                        text: appController.runtimeMessage || "No runtime message"
-                        color: theme.muted
-                        font.pixelSize: 11
-                        wrapMode: Text.WordWrap
-                    }
-                }
-            }
-        ]
+        onDeviceSelected: function(deviceId, displayName) {
+            root.selectedDevice = deviceId
+            root.selectedDeviceDisplayName = displayName
+        }
     }
 
-    Panel {
+    GamepadView {
         id: gamepadPanel
 
-        heading: "Gamepad View"
+        theme: theme
+        appController: root._appController
+        selectedDevice: root.selectedDevice
+        selectedDeviceDisplayName: root.selectedDeviceDisplayName
+        selectedControl: root.selectedControl
+        latestControlForSelectedDevice: root.latestControlForSelectedDevice
         anchors.left: devicePanel.right
         anchors.leftMargin: 12
         anchors.right: bindingPanel.left
@@ -624,384 +208,42 @@ Window {
         anchors.top: devicePanel.top
         anchors.bottom: devicePanel.bottom
 
-        content: [
-            Item {
-                anchors.fill: parent
+        onControlSelected: function(controlId) {
+            root.selectedControl = controlId
+            appController.inputCapture.cancel()
+        }
 
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 4
-                    color: "#1f1f1f"
-                    border.color: theme.border
-                }
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 16
-                    anchors.top: parent.top
-                    anchors.topMargin: 14
-                    text: root.selectedDeviceDisplayName || "No device selected"
-                    color: "#ffffff"
-                    font.pixelSize: 15
-                    font.bold: true
-                }
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 16
-                    anchors.top: parent.top
-                    anchors.topMargin: 38
-                    text: "Selected input: " + (root.latestControlForSelectedDevice || root.selectedControl)
-                    color: theme.muted
-                    font.pixelSize: 12
-                }
-
-                Rectangle {
-                    id: controllerBody
-
-                    anchors.centerIn: parent
-                    width: Math.min(parent.width - 80, 520)
-                    height: 260
-                    radius: 74
-                    color: theme.surface
-                    border.color: theme.border
-                    border.width: 1
-                }
-
-                Rectangle {
-                    anchors.centerIn: controllerBody
-                    width: controllerBody.width * 0.46
-                    height: 114
-                    radius: 24
-                    color: "#1a1a1a"
-                    border.color: theme.border
-                }
-
-                ControlDot {
-                    InputControlState {
-                        id: leftStickState
-                        deviceId: root.selectedDevice
-                        controlId: "left_stick"
-                    }
-
-                    anchors.left: controllerBody.left
-                    anchors.leftMargin: 92 + leftStickState.axisX * 16
-                    anchors.top: controllerBody.top
-                    anchors.topMargin: 74 + leftStickState.axisY * 16
-                    label: "LS"
-                    controlId: "left_stick"
-                }
-
-                ControlDot {
-                    InputControlState {
-                        id: rightStickState
-                        deviceId: root.selectedDevice
-                        controlId: "right_stick"
-                    }
-
-                    anchors.right: controllerBody.right
-                    anchors.rightMargin: 132 - rightStickState.axisX * 16
-                    anchors.top: controllerBody.top
-                    anchors.topMargin: 148 + rightStickState.axisY * 16
-                    label: "RS"
-                    controlId: "right_stick"
-                }
-
-                Grid {
-                    anchors.left: controllerBody.left
-                    anchors.leftMargin: 78
-                    anchors.bottom: controllerBody.bottom
-                    anchors.bottomMargin: 42
-                    columns: 3
-                    rows: 3
-                    spacing: 4
-
-                    Item { width: 30; height: 30 }
-                    ControlDot { width: 30; height: 30; radius: 4; label: "U"; controlId: "dpad_up" }
-                    Item { width: 30; height: 30 }
-                    ControlDot { width: 30; height: 30; radius: 4; label: "L"; controlId: "dpad_left" }
-                    Rectangle { width: 30; height: 30; radius: 4; color: "#333333"; border.color: theme.border }
-                    ControlDot { width: 30; height: 30; radius: 4; label: "R"; controlId: "dpad_right" }
-                    Item { width: 30; height: 30 }
-                    ControlDot { width: 30; height: 30; radius: 4; label: "D"; controlId: "dpad_down" }
-                    Item { width: 30; height: 30 }
-                }
-
-                ControlDot {
-                    anchors.right: controllerBody.right
-                    anchors.rightMargin: 82
-                    anchors.top: controllerBody.top
-                    anchors.topMargin: 68
-                    label: "Y"
-                    controlId: "button_north"
-                }
-
-                ControlDot {
-                    anchors.right: controllerBody.right
-                    anchors.rightMargin: 42
-                    anchors.top: controllerBody.top
-                    anchors.topMargin: 108
-                    label: "B"
-                    controlId: "button_east"
-                }
-
-                ControlDot {
-                    anchors.right: controllerBody.right
-                    anchors.rightMargin: 122
-                    anchors.top: controllerBody.top
-                    anchors.topMargin: 108
-                    label: "X"
-                    controlId: "button_west"
-                }
-
-                ControlDot {
-                    anchors.right: controllerBody.right
-                    anchors.rightMargin: 82
-                    anchors.top: controllerBody.top
-                    anchors.topMargin: 148
-                    label: "A"
-                    controlId: "button_south"
-                }
-
-                Row {
-                    anchors.horizontalCenter: controllerBody.horizontalCenter
-                    anchors.top: controllerBody.top
-                    anchors.topMargin: 92
-                    spacing: 10
-
-                    ActionButton {
-                        label: "Back"
-                        onClicked: root.selectedControl = "button_back"
-                    }
-
-                    ActionButton {
-                        label: "Start"
-                        onClicked: root.selectedControl = "button_start"
-                    }
-                }
-
-                Row {
-                    anchors.left: controllerBody.left
-                    anchors.leftMargin: 96
-                    anchors.right: controllerBody.right
-                    anchors.rightMargin: 96
-                    anchors.bottom: controllerBody.top
-                    anchors.bottomMargin: 14
-                    spacing: 12
-
-                    Rectangle {
-                        InputControlState {
-                            id: leftTriggerState
-                            deviceId: root.selectedDevice
-                            controlId: "left_trigger"
-                        }
-
-                        width: (parent.width - 12) / 2
-                        height: 28
-                        radius: 4
-                        color: root.selectedControl === "left_trigger"
-                            ? theme.accentHover
-                            : Qt.rgba(0.2, 0.2, 0.2, 1.0 - leftTriggerState.value * 0.5 + 0.5)
-                        border.color: leftTriggerState.value > 0.5 ? theme.accent : theme.border
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "LT " + (leftTriggerState.displayValue || "0.00")
-                            color: theme.text
-                            font.pixelSize: 12
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.selectedControl = "left_trigger"
-                        }
-                    }
-
-                    Rectangle {
-                        InputControlState {
-                            id: rightTriggerState
-                            deviceId: root.selectedDevice
-                            controlId: "right_trigger"
-                        }
-
-                        width: (parent.width - 12) / 2
-                        height: 28
-                        radius: 4
-                        color: root.selectedControl === "right_trigger"
-                            ? theme.accentHover
-                            : Qt.rgba(0.2, 0.2, 0.2, 1.0 - rightTriggerState.value * 0.5 + 0.5)
-                        border.color: rightTriggerState.value > 0.5 ? theme.accent : theme.border
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "RT " + (rightTriggerState.displayValue || "0.00")
-                            color: theme.text
-                            font.pixelSize: 12
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.selectedControl = "right_trigger"
-                        }
-                    }
-                }
-            }
-        ]
+        onActionButtonControlSelected: function(controlId) {
+            root.selectedControl = controlId
+        }
     }
 
-    Panel {
+    BindingEditor {
         id: bindingPanel
 
-        heading: "Binding Editor"
+        theme: theme
+        appController: root._appController
+        selectedDevice: root.selectedDevice
+        selectedControl: root.selectedControl
+        selectedAction: root.selectedAction
+        mappingModel: mappingModel
         anchors.right: parent.right
         anchors.rightMargin: 12
         anchors.top: devicePanel.top
         anchors.bottom: devicePanel.bottom
         width: 300
 
-        content: [
-            Column {
-                anchors.fill: parent
-                spacing: 12
-
-                FieldLabel { text: "Selected control" }
-
-                Rectangle {
-                    width: parent.width
-                    height: 44
-                    radius: 4
-                    color: "#1f1f1f"
-                    border.color: root.captureMode ? theme.warning : theme.border
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.captureMode
-                            ? appController.inputCapture.displayText
-                            : root.selectedControl
-                        color: root.captureMode ? theme.warning : "#ffffff"
-                        font.pixelSize: 13
-                        font.bold: true
-                    }
-                }
-
-                Row {
-                    spacing: 8
-
-                    ActionButton {
-                        label: "Capture Input"
-                        primary: root.captureMode
-                        onClicked: {
-                            if (root.captureMode) {
-                                appController.inputCapture.cancel()
-                            } else {
-                                appController.inputCapture.begin(root.selectedDevice)
-                            }
-                        }
-                    }
-
-                    ActionButton {
-                        label: "Clear"
-                        onClicked: root.selectedControl = ""
-                    }
-                }
-
-                FieldLabel { text: "Action output" }
-
-                Rectangle {
-                    width: parent.width
-                    height: 44
-                    radius: 4
-                    color: "#1f1f1f"
-                    border.color: theme.border
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.selectedAction
-                        color: theme.text
-                        font.pixelSize: 13
-                    }
-                }
-
-                Row {
-                    spacing: 8
-
-                    ActionButton {
-                        label: "Keyboard"
-                        onClicked: root.selectedAction = "Keyboard: Space"
-                    }
-
-                    ActionButton {
-                        label: "Mouse"
-                        onClicked: root.selectedAction = "Mouse: Left Click"
-                    }
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 1
-                    color: theme.border
-                }
-
-                Text {
-                    text: "Current mappings"
-                    color: theme.text
-                    font.pixelSize: 12
-                    font.bold: true
-                }
-
-                Repeater {
-                    model: mappingModel
-
-                    Rectangle {
-                        width: parent.width
-                        height: 40
-                        radius: 4
-                        color: "#1f1f1f"
-                        border.color: theme.border
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: input
-                            color: theme.text
-                            font.pixelSize: 12
-                        }
-
-                        Text {
-                            anchors.right: typeTag.left
-                            anchors.rightMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: output
-                            color: theme.muted
-                            font.pixelSize: 11
-                        }
-
-                        Tag {
-                            id: typeTag
-
-                            anchors.right: parent.right
-                            anchors.rightMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            label: actionKind
-                            tone: actionKind === "Mouse" ? "#c4710c" : theme.accentSoft
-                        }
-                    }
-                }
-            }
-        ]
+        onClearControlRequested: root.selectedControl = ""
+        onSelectedActionChangedByUi: function(actionText) {
+            root.selectedAction = actionText
+        }
     }
 
-    Panel {
+    EventLogPanel {
         id: eventPanel
 
-        heading: "Event Log"
+        theme: theme
+        eventModel: eventModel
         anchors.left: parent.left
         anchors.leftMargin: 12
         anchors.right: parent.right
@@ -1009,74 +251,16 @@ Window {
         anchors.bottom: statusBar.top
         anchors.bottomMargin: 12
         height: 158
-
-        content: [
-            Column {
-                anchors.fill: parent
-                spacing: 6
-
-                Repeater {
-                    model: eventModel
-
-                    Rectangle {
-                        width: parent.width
-                        height: 24
-                        color: index % 2 === 0 ? "#1f1f1f" : theme.panel
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 70
-                            text: time
-                            color: theme.muted
-                            font.pixelSize: 11
-                        }
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 86
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 58
-                            text: level
-                            color: level === "Output" ? theme.success : (level === "Map" ? theme.accent : theme.text)
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 152
-                            anchors.right: parent.right
-                            anchors.rightMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: message
-                            color: theme.text
-                            font.pixelSize: 11
-                            elide: Text.ElideRight
-                        }
-                    }
-                }
-            }
-        ]
     }
 
-    Rectangle {
+    StatusBar {
         id: statusBar
 
+        theme: theme
+        appController: root._appController
+        deviceCount: devicePanel.deviceCount
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: 28
-        color: theme.accentHover
-
-        Text {
-            anchors.left: parent.left
-            anchors.leftMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Devices: " + deviceRepeater.count + "    Runtime: " + appController.runtimeState + "    Mapping: " + (appController.mappingEnabled ? "enabled" : "paused") + "    Output: " + appController.outputState + "    Events: " + appController.lastDrainedEventCount
-            color: "#ffffff"
-            font.pixelSize: 11
-        }
     }
 }

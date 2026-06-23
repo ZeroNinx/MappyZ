@@ -1,181 +1,226 @@
-# TODO: UI Bridge Binding Capture
+# TODO: QML Main Split
 
 ## Next Step
 
-下一步实现轻量 Binding Capture：当用户点击 `Capture Input` 后，UI 进入等待输入状态；下一次来自当前设备的真实输入会填充 `selectedControl`，并退出 capture。
+下一步只做 `ui/Main.qml` 的合理拆分，把当前单文件 UI 拆成若干职责清晰的 QML 组件，降低后续维护成本。
 
-这轮只做“捕获输入控件”这一层，不创建 mapping rule，不保存 profile。
+本轮目标是结构整理，不改交互语义、不加新功能、不改 C++ API。
 
 优先做这个模块的理由：
 
-- [x] `ZInputStateModel` 已有 `ControlStateChanged(deviceId, controlId)` 语义 signal。
-- [x] QML 已经用真实输入状态驱动 Gamepad View。
-- [x] Binding Editor 目前有 `Capture Input` 按钮和 `selectedControl` 展示，但还只是静态/手动选择。
-- [x] 捕获下一次输入是后续创建映射规则的前置步骤。
+- [x] `Main.qml` 已经包含主题、通用控件、状态代理、设备面板、手柄视图、绑定编辑器、事件日志和状态栏，职责过多。
+- [x] 后续 Binding Editor / Log / Profile UI 都会继续膨胀，继续堆在 `Main.qml` 会增加误改风险。
+- [x] 近期已经修过 QML signal 绑定问题，拆分时需要显式梳理组件边界和依赖，避免再次依赖隐藏上下文。
 
 ## Scope
 
 包含：
 
-- [x] 新增 UI Bridge 层 capture 状态对象，暂定 `ZInputCaptureModel`。
-- [x] `ZAppController` 持有并暴露 `inputCapture` 只读 Q_PROPERTY。
-- [x] `ZAppController` 在 input event handler 中同时更新 `InputStateModel` 和 capture 状态。
-- [x] QML `Capture Input` 按钮改为调用 capture API，而不是直接切换本地 bool。
-- [x] QML `selectedControl` 在 capture 完成后更新为捕获到的 `controlId`。
-- [x] QML 在 capture active 时显示等待态。
-- [x] 增加单元测试覆盖 capture 生命周期和 AppController 集成。
-- [x] 更新 CMake。
+- [x] 新增独立 QML 组件文件。
+- [x] 将 `Main.qml` 中的 inline reusable components 移出。
+- [x] 将主要区域面板拆成独立文件。
+- [x] `Main.qml` 保留应用级状态、生命周期调用、全局 Connections 和整体布局编排。
+- [x] 更新 `CMakeLists.txt` 的 `qt_add_qml_module(QML_FILES ...)`。
+- [x] 保持现有 UI 外观、布局、按钮行为、输入刷新行为不变。
+- [x] 构建、测试、QML offscreen 启动验证。
 
 不做：
 
-- [x] 不创建、修改或保存 `SMappingRule`。
-- [x] 不修改 profile 文件。
-- [x] 不实现 action output capture。
-- [x] 不实现组合键、长按、双击或宏输入。
-- [x] 不修改 Core、Runtime、Backend 的输入事件契约。
-- [x] 不把 capture 逻辑放进 Core/Runtime；它属于 UI Bridge workflow。
+- [x] 不修改 `ZAppController`、`ZDeviceModel`、`ZInputStateModel`、`ZInputCaptureModel`。
+- [x] 不新增 C++ 类。
+- [x] 不实现 mapping rule 创建、profile 保存、日志模型或真实 mapping 列表。
+- [x] 不重做视觉设计。
+- [x] 不改 signal 名称、QML 事件流或 capture 行为。
+- [x] 不引入 Qt Quick Controls 依赖。
 
-## Proposed Types
+## Target File Layout
 
-新增 `source/UI/Bridge/InputCaptureModel.h/.cpp`：
+新增文件建议放在 `ui/` 下，先保持一层目录，避免本轮额外处理 import/path 复杂度：
 
-- [x] `class ZInputCaptureModel final : public QObject`
-- [x] QML properties：
-  - `bool active READ IsActive NOTIFY CaptureStateChanged`
-  - `QString deviceId READ DeviceId NOTIFY CaptureCompleted`
-  - `QString controlId READ ControlId NOTIFY CaptureCompleted`
-  - `QString displayText READ DisplayText NOTIFY CaptureStateChanged`
-- [x] Public API：
-  - `Q_INVOKABLE void begin(QString deviceId = QString())`
-  - `Q_INVOKABLE void cancel()`
-  - `void HandleInputEvent(const SInputEvent& Event)`
-  - `bool IsActive() const`
-  - `QString DeviceId() const`
-  - `QString ControlId() const`
-  - `QString DisplayText() const`
-- [x] Signals：
-  - `void CaptureStateChanged()`
-  - `void CaptureCompleted(QString deviceId, QString controlId)`
-  - `void CaptureCancelled()`
+- [x] `ui/Theme.qml`
+- [x] `ui/Panel.qml`
+- [x] `ui/ActionButton.qml`
+- [x] `ui/Tag.qml`
+- [x] `ui/FieldLabel.qml`
+- [x] `ui/ValueText.qml`
+- [x] `ui/InputControlState.qml`
+- [x] `ui/ControlDot.qml`
+- [x] `ui/TopBar.qml`
+- [x] `ui/DevicesPanel.qml`
+- [x] `ui/GamepadView.qml`
+- [x] `ui/BindingEditor.qml`
+- [x] `ui/EventLogPanel.qml`
+- [x] `ui/StatusBar.qml`
 
-内部状态：
+`Main.qml` 目标职责：
 
-- [x] `bool bActive = false`
-- [x] `QString TargetDeviceId`
-- [x] `QString CapturedDeviceId`
-- [x] `QString CapturedControlId`
+- [x] 创建 `Window`。
+- [x] 持有 app-level state：`selectedDevice`、`selectedDeviceDisplayName`、`selectedControl`、`selectedAction`、`latestControlForSelectedDevice`。
+- [x] 持有临时 demo models：`mappingModel`、`eventModel`。
+- [x] 处理 `appController.initializeRuntime()` / `startRuntime()` / `startPumpTimer()` / shutdown。
+- [x] 处理设备选择和 latest input 的顶层 `Connections`。
+- [x] 组合 `TopBar`、`DevicesPanel`、`GamepadView`、`BindingEditor`、`EventLogPanel`、`StatusBar`。
 
-## Behavior
+## Component Contracts
 
-- [x] `begin(deviceId)`：
-  - 设置 active 为 true。
-  - 记录 target device；空字符串表示接受任意设备输入。
-  - 清空上一轮 captured device/control。
-  - 发 `CaptureStateChanged()`。
-- [x] `cancel()`：
-  - 如果 inactive，no-op。
-  - 如果 active，切回 inactive，发 `CaptureStateChanged()` 和 `CaptureCancelled()`。
-- [x] `HandleInputEvent(Event)`：
-  - inactive 时 no-op。
-  - target device 非空且不匹配时 no-op，继续等待。
-  - target device 匹配后，先判断是否是有效 capture 输入；无效输入 no-op，继续等待。
-  - 有效输入才记录 `Event.DeviceId.Value` 和 `Event.ControlId`。
-  - 设置 active 为 false。
-  - 先发 `CaptureStateChanged()`，再发 `CaptureCompleted(deviceId, controlId)`。
-- [x] 有效 capture 输入过滤规则：
-  - Button / Hat：仅 `Pressed` 事件触发 capture，`Released` 忽略。
-  - Trigger：`Value > 0.5` 才触发 capture。
-  - Axis1D：`abs(Value) > 0.7` 才触发 capture。
-  - Axis2D：向量幅度 `sqrt(X*X + Y*Y) > 0.7` 才触发 capture。
-  - 其他未知类型默认忽略。
-- [x] 过滤规则应封装为私有 helper，暂定 `static bool IsCaptureWorthyInput(const SInputEvent& Event)`，避免散落在 `HandleInputEvent()` 中。
-- [x] capture 完成只捕获 control id，不判断 mapping 是否存在。
-- [x] capture 不吞掉输入事件；Gamepad View 仍然正常更新输入状态。
-- [x] `DisplayText()`：
-  - active 且有 target device：`Waiting for input...`
-  - active 且无 target device：`Waiting for any device input...`
-  - inactive 且已有 captured control：返回 captured control id。
-  - inactive 且未捕获：返回空字符串。
+`Theme.qml`：
 
-## AppController Integration
+- [x] 使用 `QtObject`。
+- [x] 暴露当前颜色属性：`window`、`panel`、`panelHeader`、`surface`、`border`、`text`、`muted`、`accent`、`accentSoft`、`accentHover`、`success`、`warning`、`danger`。
+- [x] 不做 singleton，先由 `Main.qml` 实例化并作为 `theme` property 传给子组件。
 
-- [x] `ZAppController` 内部持有 `ZInputCaptureModel InputCaptureInstance`。
-- [x] 新增 `Q_PROPERTY(QObject* inputCapture READ InputCapture CONSTANT)`。
-- [x] 新增 `QObject* InputCapture()`。
-- [x] input event handler 中调用顺序：
-  - `InputStateModelInstance.ApplyInputEvent(Event)`
-  - `InputCaptureInstance.HandleInputEvent(Event)`
-- [x] 顺序理由：capture 完成时，QML 读取 `inputStateModel` 快照应已经是新状态。
-- [x] `stopRuntime()` 不自动取消 capture；用户可停运行时后继续保持等待态。
-- [x] `initializeRuntime()` Error 重建路径不需要清空 capture，除非后续发现 UX 问题。
+`Panel.qml`：
 
-## QML Binding Plan
+- [x] 从 inline `component Panel` 提取。
+- [x] `required property var theme`。
+- [x] `property string heading`。
+- [x] `default property alias content: contentHost.data`，让调用处可以直接嵌套内容。
+- [x] 保持标题栏、边框、内边距和 clipping 不变。
 
-- [x] 移除本地 `captureMode` 作为权威状态。
-- [x] `Capture Input` 按钮调用 `appController.inputCapture.begin(root.selectedDevice)`。
-- [x] `Cancel` 或再次点击 active 状态按钮调用 `appController.inputCapture.cancel()`。
-- [x] selected control 文案：
-  - active 时显示 `appController.inputCapture.displayText`
-  - inactive 时显示 `root.selectedControl`
-- [x] 监听 `appController.inputCapture.CaptureCompleted(deviceId, controlId)`：
-  - 如果 `deviceId === root.selectedDevice`，设置 `root.selectedControl = controlId`。
-  - 如果捕获来自其他设备且当前没有选中设备，可选择该设备；本轮先不做跨设备自动切换。
-- [x] `ControlDot` 点击仍可手动设置 `selectedControl`，并取消 capture。
-- [x] 设备切换时不自动取消 capture；capture 以 begin 时传入的 target device 为准。
+`ActionButton.qml`：
 
-## Tests
+- [x] 从 inline `component ActionButton` 提取。
+- [x] `required property var theme`。
+- [x] `property string label`。
+- [x] `property bool primary`。
+- [x] `signal clicked()`。
+- [x] 保持 hover、颜色、尺寸和 cursor 行为不变。
 
-`ZInputCaptureModel`：
+`Tag.qml`：
 
-- [x] 默认 inactive，device/control/displayText 为空。
-- [x] `begin("dev_1")` 进入 active，发一次 `CaptureStateChanged()`。
-- [x] active 时 `HandleInputEvent()` 对非 target device no-op。
-- [x] active 时 `HandleInputEvent()` 对 target device 完成 capture。
-- [x] Button Released 不完成 capture。
-- [x] Hat Released 不完成 capture。
-- [x] Trigger `Value <= 0.5` 不完成 capture，`Value > 0.5` 完成 capture。
-- [x] Axis1D `abs(Value) <= 0.7` 不完成 capture，超过阈值完成 capture。
-- [x] Axis2D 向量幅度 `<= 0.7` 不完成 capture，超过阈值完成 capture。
-- [x] 摇杆微小漂移事件不会抢先完成 capture。
-- [x] capture 完成后 active 为 false，device/control 可查询。
-- [x] capture 完成时发 `CaptureStateChanged()` 和 `CaptureCompleted(deviceId, controlId)`。
-- [x] inactive 时 `HandleInputEvent()` 不发信号。
-- [x] `cancel()` active capture 时发 `CaptureStateChanged()` 和 `CaptureCancelled()`。
-- [x] `cancel()` inactive 时 no-op。
-- [x] `begin()` 覆盖上一轮 captured control。
+- [x] 从 inline `component Tag` 提取。
+- [x] `required property var theme`。
+- [x] `property string label`。
+- [x] `property color tone`。
+- [x] 保持尺寸、圆角和文字样式不变。
 
-`ZAppController`：
+`FieldLabel.qml` / `ValueText.qml`：
 
-- [x] `inputCapture` property 返回非空 QObject。
-- [x] begin capture 后，fake backend `EmitInput` + `pumpOnce()` 完成 capture。
-- [x] capture 完成时 `InputStateModel` 快照已更新。
-- [x] 非 target device 输入不会完成 capture。
-- [x] capture 不影响 `LastPumpSummary` 统计。
+- [x] 从 inline `component FieldLabel` / `ValueText` 提取。
+- [x] `required property var theme`。
+- [x] 保持当前字体、颜色和 elide 行为。
 
-QML 手工验证：
+`InputControlState.qml`：
 
-- [ ] 点击 `Capture Input` 后显示等待态。
-- [ ] 按当前设备 A/B/X/Y 后，Selected control 更新为对应 control id。
-- [ ] 按 LT/RT 后，Selected control 更新为对应 trigger id。
-- [ ] capture 等待期间 Gamepad View 仍实时高亮。
-- [ ] 点击手柄图上的控件会取消 capture 并手动选择该控件。
-- [ ] 当前设备未选中时，点击 capture 不崩溃；本轮可保持等待任意输入或提示等待状态。
+- [x] 从 inline `component InputControlState` 提取。
+- [x] `required property var inputStateModel`。
+- [x] `required property string deviceId`。
+- [x] `required property string controlId`。
+- [x] 保留 `pressed`、`value`、`axisX`、`axisY`、`displayValue`。
+- [x] 保留 `refresh()` / `reset()`。
+- [x] `Connections.target` 使用传入的 `inputStateModel`，不直接引用 `appController`。
+- [x] signal handler 继续只在 device/control 匹配时刷新。
 
-## Acceptance Criteria
+`ControlDot.qml`：
 
-- [x] Capture workflow 不依赖 `revision`、polling 或 magic int。
-- [x] Capture workflow 使用真实输入事件，而不是从 UI 高亮状态反推。
-- [x] 捕获完成后 `selectedControl` 能由真实输入更新。
-- [x] 不产生任何 mapping rule 或 profile 写入。
-- [x] Core、Runtime、Backend 不依赖 Qt。
+- [x] 从 inline `component ControlDot` 提取。
+- [x] `required property var theme`。
+- [x] `required property var inputStateModel`。
+- [x] `required property string selectedDevice`。
+- [x] `required property string selectedControl`。
+- [x] `property string controlId`。
+- [x] `property string label`。
+- [x] `signal selected(string controlId)`。
+- [x] 内部使用 `InputControlState` 驱动 active。
+- [x] 点击时只发 `selected(controlId)`，由父组件决定是否取消 capture 或更新 selected control。
+
+`TopBar.qml`：
+
+- [x] 接收 `theme`、`appController`、`eventModel`。
+- [x] 保持产品名、runtime subtitle、profile tag、mapping toggle、Save Profile 行为不变。
+- [x] 不持有 app state。
+
+`DevicesPanel.qml`：
+
+- [x] 接收 `theme`、`appController`、`selectedDevice`、`selectedDeviceDisplayName`。
+- [x] 暴露 `signal deviceSelected(string deviceId, string displayName)`。
+- [x] 内部保留 `Repeater { model: appController.deviceModel }`。
+- [x] 点击设备卡片时发 `deviceSelected(...)`。
+- [x] 保留 runtime message 卡片。
+- [x] 暴露 `property int deviceCount`，供 `StatusBar` 或 `Main.qml` 使用；或由 `Main.qml` 直接读 `appController.deviceModel.rowCount()`，二选一即可。
+
+`GamepadView.qml`：
+
+- [x] 接收 `theme`、`appController`、`selectedDevice`、`selectedDeviceDisplayName`、`selectedControl`、`latestControlForSelectedDevice`。
+- [x] 暴露 `signal controlSelected(string controlId)`。
+- [x] 暴露 `signal actionButtonControlSelected(string controlId)`，用于 Back / Start 这类非 `ControlDot` 控件。
+- [x] 内部使用 `ControlDot` 和 `InputControlState`。
+- [x] 控件点击只发 `controlSelected(controlId)`。
+- [x] 父级 `Main.qml` 收到后设置 `selectedControl` 并调用 `appController.inputCapture.cancel()`，保持当前行为。
+- [x] Back / Start 按钮继续只更新 `selectedControl`，不取消 capture；父级 `Main.qml` 收到 `actionButtonControlSelected(controlId)` 后只设置 `selectedControl`。
+- [x] 保持手柄布局、LT/RT 数值显示、stick 偏移逻辑不变。
+
+`BindingEditor.qml`：
+
+- [x] 接收 `theme`、`appController`、`selectedDevice`、`selectedControl`、`selectedAction`、`mappingModel`。
+- [x] 暴露 `signal clearControlRequested()`，Clear 按钮不直接写父级状态。
+- [x] 暴露 `signal selectedActionChangedByUi(string actionText)`，Keyboard / Mouse 按钮不直接写父级状态。
+- [x] Capture 按钮仍调用 `appController.inputCapture.begin(selectedDevice)` / `cancel()`。
+- [x] Clear 按钮发 `clearControlRequested()`，由 `Main.qml` 设置 `selectedControl = ""`。
+- [x] Keyboard / Mouse 按钮发 `selectedActionChangedByUi(...)`，由 `Main.qml` 更新 `selectedAction`。
+- [x] 保持 current mappings demo list 不变。
+
+`EventLogPanel.qml`：
+
+- [x] 接收 `theme`、`eventModel`。
+- [x] 保持现有 demo log list 渲染不变。
+- [x] 不新增真实 log 数据源。
+
+`StatusBar.qml`：
+
+- [x] 接收 `theme`、`appController`、`deviceCount`。
+- [x] 保持 status text 内容不变。
+- [x] 不直接依赖 `deviceRepeater` id。
+
+## Main.qml Refactor Plan
+
+- [x] 保留 `Window` 根对象和尺寸、标题、背景颜色。
+- [x] 用 `Theme { id: theme }` 替换 inline `QtObject theme`。
+- [x] 删除 inline `component Panel`、`ActionButton`、`Tag`、`FieldLabel`、`ValueText`、`InputControlState`、`ControlDot`。
+- [x] 用组件实例替换 `topBar`、`devicePanel`、`gamepadPanel`、`bindingPanel`、`eventPanel`、`statusBar` 的内部实现。
+- [x] 组件之间不要互相读取兄弟组件 id；布局锚点仍由 `Main.qml` 管理。
+- [x] `Main.qml` 继续作为 app state owner，子组件通过 signals 请求状态变更。
+- [x] `Main.qml` 继续持有 `_findDeviceRow()`，除非 `DevicesPanel` 内部需要私有查找；避免重复逻辑。
+- [x] 所有跨组件数据依赖都通过 `required property` 或 signal 显式传递。
+
+## CMake Plan
+
+- [x] 更新 `qt_add_qml_module(MappyZ QML_FILES ...)`，加入所有新增 QML 文件。
+- [x] 为 `ui/*.qml` 设置 `QT_RESOURCE_ALIAS` 到模块根文件名，保持 `MappyZUI` 模块内组件名稳定并避免 Qt QTP0004 extra directory warning。
+- [x] 不移动 QML module URI，继续使用 `MappyZUI 1.0`。
+
+## Tests And Verification
+
+自动验证：
+
 - [x] `cmake --build build --config Debug` 通过。
 - [x] `ctest --test-dir build --output-on-failure -C Debug` 通过。
 - [x] `git diff --check` 通过。
 - [x] 新增和修改的文本文件使用 CRLF 行尾。
+- [x] `QT_QPA_PLATFORM=offscreen` 启动 `MappyZ.exe`，stderr 不出现 QML import/component/property/binding 错误。
+
+QML 手工验证：
+
+- [x] 应用启动后窗口布局与拆分前一致。
+- [x] 设备列表显示和点击选择行为不变。
+- [x] 手柄输入高亮、LT/RT 数值、摇杆偏移仍更新。
+- [x] `Capture Input`、capture 完成、点击 `ControlDot` 取消 capture 行为不变。
+- [x] Mapping On/Off 按钮行为不变。
+- [x] Save Profile demo 日志插入行为不变。
+- [x] Event Log 和 Status Bar 显示内容不变。
+
+## Acceptance Criteria
+
+- [x] `Main.qml` 明显缩小，主要负责 app state、lifecycle、Connections 和页面布局。
+- [x] 可复用控件不再作为 `Main.qml` inline component 存在。
+- [x] 每个新 QML 文件职责单一，依赖通过 `required property` / `signal` 表达。
+- [x] 没有新增业务行为、视觉改版或 C++ API 改动。
+- [x] QML startup 无 binding/import/signal handler warning。
+- [x] 所有验证命令通过。
 
 ## Follow-Up Module
 
-- [ ] 后续实现 Binding Editor 创建 `SMappingRule`。
-- [ ] 后续实现 active profile 修改和保存。
-- [ ] 后续实现 `ZLogModel`，把 runtime pump records 暴露给事件日志。
-- [ ] 后续考虑把 QML 局部 `InputControlState` 提升为可复用 QML 文件或 C++ QObject proxy。
+- [x] 后续再做 Binding Editor 的真实 rule 创建。
+- [x] 后续再做 active profile 修改和保存。
+- [x] 后续再做 `ZLogModel` 和真实事件日志。
+- [x] 如果拆分后组件边界稳定，再考虑把 `Theme.qml` 改成 QML singleton。

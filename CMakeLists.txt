@@ -231,16 +231,41 @@ set_target_properties(MappyZ
         WIN32_EXECUTABLE TRUE
 )
 
-set_source_files_properties(ui/Main.qml
-    PROPERTIES
-        QT_RESOURCE_ALIAS Main.qml
-)
+set_source_files_properties(ui/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
+set_source_files_properties(ui/Theme.qml PROPERTIES QT_RESOURCE_ALIAS Theme.qml)
+set_source_files_properties(ui/Panel.qml PROPERTIES QT_RESOURCE_ALIAS Panel.qml)
+set_source_files_properties(ui/ActionButton.qml PROPERTIES QT_RESOURCE_ALIAS ActionButton.qml)
+set_source_files_properties(ui/Tag.qml PROPERTIES QT_RESOURCE_ALIAS Tag.qml)
+set_source_files_properties(ui/FieldLabel.qml PROPERTIES QT_RESOURCE_ALIAS FieldLabel.qml)
+set_source_files_properties(ui/ValueText.qml PROPERTIES QT_RESOURCE_ALIAS ValueText.qml)
+set_source_files_properties(ui/InputControlState.qml PROPERTIES QT_RESOURCE_ALIAS InputControlState.qml)
+set_source_files_properties(ui/ControlDot.qml PROPERTIES QT_RESOURCE_ALIAS ControlDot.qml)
+set_source_files_properties(ui/TopBar.qml PROPERTIES QT_RESOURCE_ALIAS TopBar.qml)
+set_source_files_properties(ui/DevicesPanel.qml PROPERTIES QT_RESOURCE_ALIAS DevicesPanel.qml)
+set_source_files_properties(ui/GamepadView.qml PROPERTIES QT_RESOURCE_ALIAS GamepadView.qml)
+set_source_files_properties(ui/BindingEditor.qml PROPERTIES QT_RESOURCE_ALIAS BindingEditor.qml)
+set_source_files_properties(ui/EventLogPanel.qml PROPERTIES QT_RESOURCE_ALIAS EventLogPanel.qml)
+set_source_files_properties(ui/StatusBar.qml PROPERTIES QT_RESOURCE_ALIAS StatusBar.qml)
 
 qt_add_qml_module(MappyZ
     URI MappyZUI
     VERSION 1.0
     QML_FILES
         ui/Main.qml
+        ui/Theme.qml
+        ui/Panel.qml
+        ui/ActionButton.qml
+        ui/Tag.qml
+        ui/FieldLabel.qml
+        ui/ValueText.qml
+        ui/InputControlState.qml
+        ui/ControlDot.qml
+        ui/TopBar.qml
+        ui/DevicesPanel.qml
+        ui/GamepadView.qml
+        ui/BindingEditor.qml
+        ui/EventLogPanel.qml
+        ui/StatusBar.qml
 )
 
 target_compile_features(MappyZ PRIVATE cxx_std_20)

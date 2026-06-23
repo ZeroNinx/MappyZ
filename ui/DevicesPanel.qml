@@ -1,0 +1,181 @@
+import QtQuick
+
+// 设备列表面板：显示已连接设备和运行时消息
+Panel {
+    id: devicesPanel
+
+    required property var appController
+    required property string selectedDevice
+    required property string selectedDeviceDisplayName
+
+    heading: "Devices"
+
+    // 供 StatusBar 等外部组件读取设备数量
+    readonly property int deviceCount: deviceRepeater.count
+
+    signal deviceSelected(string deviceId, string displayName)
+
+    Column {
+        anchors.fill: parent
+        spacing: 10
+
+        Repeater {
+            id: deviceRepeater
+
+            model: devicesPanel.appController ? devicesPanel.appController.deviceModel : null
+
+            Rectangle {
+                required property string deviceId
+                required property string displayName
+                required property string backend
+                required property string vendorId
+                required property string productId
+
+                width: parent.width
+                height: 110
+                radius: 4
+                color: devicesPanel.selectedDevice === deviceId ? "#2d2d2d" : "#1f1f1f"
+                border.color: devicesPanel.selectedDevice === deviceId
+                    ? devicesPanel.theme.accent : devicesPanel.theme.border
+                border.width: 1
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.right: stateTag.left
+                    anchors.rightMargin: 8
+                    anchors.top: parent.top
+                    anchors.topMargin: 10
+                    text: displayName
+                    color: devicesPanel.theme.text
+                    font.pixelSize: 12
+                    font.bold: true
+                    elide: Text.ElideRight
+                }
+
+                Tag {
+                    id: stateTag
+
+                    theme: devicesPanel.theme
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.top: parent.top
+                    anchors.topMargin: 8
+                    label: devicesPanel.appController
+                        ? devicesPanel.appController.runtimeState : ""
+                    tone: devicesPanel.appController
+                            && devicesPanel.appController.runtimeState === "running"
+                        ? devicesPanel.theme.success : "#555555"
+                }
+
+                FieldLabel {
+                    theme: devicesPanel.theme
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.top: parent.top
+                    anchors.topMargin: 36
+                    text: "Backend"
+                }
+
+                ValueText {
+                    theme: devicesPanel.theme
+                    anchors.left: parent.left
+                    anchors.leftMargin: 74
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.top: parent.top
+                    anchors.topMargin: 36
+                    text: backend
+                }
+
+                FieldLabel {
+                    theme: devicesPanel.theme
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.top: parent.top
+                    anchors.topMargin: 58
+                    text: "ID"
+                }
+
+                ValueText {
+                    theme: devicesPanel.theme
+                    anchors.left: parent.left
+                    anchors.leftMargin: 74
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.top: parent.top
+                    anchors.topMargin: 58
+                    text: vendorId + ":" + productId
+                }
+
+                FieldLabel {
+                    theme: devicesPanel.theme
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.top: parent.top
+                    anchors.topMargin: 80
+                    text: "Profile"
+                }
+
+                ValueText {
+                    theme: devicesPanel.theme
+                    anchors.left: parent.left
+                    anchors.leftMargin: 74
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.top: parent.top
+                    anchors.topMargin: 80
+                    text: "Unassigned"
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: devicesPanel.deviceSelected(deviceId, displayName)
+                }
+            }
+        }
+
+        Text {
+            visible: deviceRepeater.count === 0
+            text: "No gamepads connected"
+            color: devicesPanel.theme.muted
+            font.pixelSize: 12
+            topPadding: 8
+        }
+
+        Rectangle {
+            width: parent.width
+            height: 78
+            radius: 4
+            color: "#1f1f1f"
+            border.color: devicesPanel.theme.border
+
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                anchors.top: parent.top
+                anchors.topMargin: 10
+                text: "Runtime"
+                color: devicesPanel.theme.text
+                font.pixelSize: 12
+                font.bold: true
+            }
+
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                anchors.top: parent.top
+                anchors.topMargin: 34
+                text: devicesPanel.appController
+                    ? (devicesPanel.appController.runtimeMessage || "No runtime message")
+                    : "No runtime message"
+                color: devicesPanel.theme.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+        }
+    }
+}
