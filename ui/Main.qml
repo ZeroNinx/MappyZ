@@ -6,8 +6,8 @@ Window {
 
     width: 1120
     height: 720
-    minimumWidth: 960
-    minimumHeight: 620
+    minimumWidth: 1040
+    minimumHeight: 700
     visible: true
     title: "MappyZ"
     color: theme.window

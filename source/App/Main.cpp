@@ -4,8 +4,12 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <Qt>
+#include <QtQml/qqmlextensionplugin.h>
 
 #include "UI/Bridge/AppController.h"
+
+// QML 模块提取为独立 STATIC 库后，需要显式导入插件
+Q_IMPORT_QML_PLUGIN(MappyZUIPlugin)
 
 int main(int ArgCount, char* Arguments[])
 {

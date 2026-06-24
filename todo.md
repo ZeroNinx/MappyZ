@@ -1,117 +1,99 @@
-# TODO: Runtime Binding Rule Apply
+# TODO: Profile Save Snapshot
 
 ## Next Step
 
-下一步实现 Binding Editor 的真实运行期规则创建：用户选中输入控件和输出动作后，点击 Apply，把规则写入当前 RuntimeHost 的 active profile，并刷新 Current mappings 列表。
+下一步实现“保存当前 active profile 快照”：用户点击 `Save Profile` 后，把当前 RuntimeHost 中的 `SMappingProfile` 序列化为 JSON profile 文件。
 
-本轮只做内存 profile，不保存磁盘，不做完整 profile 编辑器。
+本轮只做保存，不做 profile 切换、不做启动自动加载、不做文件选择器。
 
 ## Scope
 
 包含：
 
-- [x] 新增 UI Bridge 映射规则列表模型，展示 active profile 中的规则。
-- [x] `ZAppController` 暴露 `mappingRuleModel`。
-- [x] `ZAppController` 增加 `applySelectedBinding(controlId, actionText)`。
-- [x] Apply 成功后通过 `RuntimeHost::ReplaceProfile()` 更新运行期 profile。
-- [x] Current mappings 从 QML demo `ListModel` 改为真实 `mappingRuleModel`。
-- [x] 增加 UI Bridge 单元测试，验证规则写入和后续输入能被映射派发。
+- [ ] `ZAppController` 增加保存当前 profile 的 QML API。
+- [ ] 使用现有 `ZProfileManager::SaveProfile()` 完成 JSON 写入。
+- [ ] TopBar 的 `Save Profile` 按钮调用真实保存 API。
+- [ ] 保存成功或失败时给 QML 一个可观察的结果。
+- [ ] 增加 UI Bridge 单元测试覆盖保存链路。
 
 不做：
 
-- [x] 不保存 profile 文件。
-- [x] 不实现 action picker 或任意键位输入。
-- [x] 不实现规则删除、规则禁用、拖拽排序。
-- [x] 不改 Core/Runtime 的 mapping 数据契约。
-- [x] 不支持 Axis2D -> MouseMove 的 UI 创建入口，本轮只保留后续扩展点。
+- [ ] 不实现 profile 手动切换。
+- [ ] 不实现启动时从 UI 指定路径加载 profile。
+- [ ] 不实现文件选择对话框。
+- [ ] 不引入 `ZProfileModel`。
+- [ ] 不做 profile dirty 状态。
+- [ ] 不保存 event log 或运行时输入状态。
+
+## API Plan
+
+`ZAppController` 新增：
+
+- [ ] `Q_PROPERTY(QString profilePath READ ProfilePath NOTIFY profileStatusChanged)`
+- [ ] `Q_PROPERTY(QString profileMessage READ ProfileMessage NOTIFY profileStatusChanged)`
+- [ ] `Q_INVOKABLE bool saveActiveProfile(QString profilePath = QString())`
+- [ ] `QString ProfilePath() const`
+- [ ] `QString ProfileMessage() const`
+- [ ] `void profileStatusChanged()`
+- [ ] `void profileSaved(QString profilePath)`
+
+语义：
+
+- [ ] `profilePath` 参数为空时使用默认 profile 路径。
+- [ ] 默认路径通过 `QStandardPaths::AppDataLocation` 计算，并追加 `profiles/default.json`。
+- [ ] `profilePath` 参数非空时使用调用方传入路径，主要供测试和后续文件选择器使用。
+- [ ] 保存成功更新 `profilePath` 和 `profileMessage`，发 `profileStatusChanged()` 和 `profileSaved(profilePath)`。
+- [ ] 保存失败更新 `profileMessage`，发 `profileStatusChanged()` 和现有 `runtimeError(message)`。
 
 ## Behavior
 
-- [x] `applySelectedBinding("", actionText)` 返回 false，发 `runtimeError`。
-- [x] `applySelectedBinding(controlId, "")` 返回 false，发 `runtimeError`。
-- [x] Runtime 未 initialize 时返回 false，发 `runtimeError`。
-- [x] 支持 `Keyboard: Space` 输出：
-  - action type 为 `KeyboardKey`。
-  - key 为 `Space`。
-  - mode 为 `PressRelease`。
-- [x] 支持 `Mouse: Left Click` 输出：
-  - action type 为 `MouseButton`。
-  - button 为 0。
-  - mode 为 `PressRelease`。
-- [x] 输入类型按标准 control id 推断：
-  - `button_*`、shoulder、stick button、start/back/guide -> Button。
-  - `dpad_*` -> Hat。
-  - `left_trigger` / `right_trigger` -> Trigger，事件类型为 Changed，阈值 0.5。
-  - `left_stick` / `right_stick` 暂不支持创建，返回 false。
-- [x] 同一个 `controlId` 再次 Apply 时替换旧规则，不追加重复规则。
-- [x] Apply 后当前 mapping enabled 状态不变。
-- [x] Apply 后 `mappingRuleModel` 立即刷新。
-- [x] 规则 id 生成策略：本轮使用 `Rule.Id = controlId`，并按 `Input.ControlId` 替换已有规则，保证单个 profile 内当前范围唯一。
-
-## Proposed Types
-
-新增 `source/UI/Bridge/MappingRuleModel.h/.cpp`：
-
-- [x] `class ZMappingRuleModel final : public QAbstractListModel`
-- [x] Roles：
-  - `ruleId`
-  - `input`
-  - `output`
-  - `actionKind`
-  - `enabled`
-- [x] Role 语义：
-  - `ruleId`：`SMappingRule::Id`，本轮等于原始 `controlId`。
-  - `input`：原始 `SMappingRule::Input.ControlId`，例如 `button_south`；本轮不做显示名美化。
-  - `output`：从 `SAction::Payload` 提取的用户可读输出值，例如 `Space` / `Left Click`。
-  - `actionKind`：从 `SAction::Type` 推导的动作类别，例如 `Keyboard` / `Mouse`。
-  - `enabled`：`SMappingRule::bEnabled`。
-- [x] Public API：
-  - `void ReplaceRules(TVector<SMappingRule> Rules)`
-  - `Q_INVOKABLE void clear()`
-  - `Q_INVOKABLE QString ruleIdAt(int row) const`
-  - `TVector<SMappingRule> ListRulesSnapshot() const`
-
-## AppController Integration
-
-- [x] `Q_PROPERTY(ZMappingRuleModel* mappingRuleModel READ MappingRuleModel CONSTANT)`。
-- [x] 初始化成功后用 host profile 刷新 model。
-- [x] Error 重建失败路径不清空 mapping model；只有成功拿到新 profile 后替换。
-- [x] Apply 时：
-  - 取 `Bootstrap.GetRuntimeHost().GetProfileSnapshot()`。
-  - 构造一条 UI 规则。
-  - 设置 `Rule.Id = controlId`。
-  - 按 `Input.ControlId` 替换或追加。
-  - 调 `ReplaceProfile()`。
-  - 刷新 `MappingRuleModel`。
-  - 返回 true。
+- [ ] Runtime 未 initialize 时 `saveActiveProfile()` 返回 false，不创建文件，发 `runtimeError()`。
+- [ ] Ready 或 Running 状态下允许保存。
+- [ ] 保存内容来自 `Bootstrap.GetRuntimeHost().GetProfileSnapshot()`，不从 `MappingRuleModel` 反推。
+- [ ] 保存不会修改当前 RuntimeHost profile。
+- [ ] 保存不会修改 mapping enabled 状态。
+- [ ] 空 profile 保存为合法 JSON，`mappings` 为空数组。
+- [ ] 已 Apply 的 binding 保存后，JSON 中包含对应 mapping rule。
+- [ ] 父目录不存在时由 `ZProfileManager::SaveProfile()` 创建。
+- [ ] 保存失败不清空 `MappingRuleModel`，不改变 Runtime 状态。
 
 ## QML Plan
 
-- [x] `Main.qml` 删除 demo `mappingModel`。
-- [x] `BindingEditor.qml` 不再接收 `mappingModel`。
-- [x] Current mappings 的 Repeater 使用 `appController.mappingRuleModel`。
-- [x] 增加 Apply 按钮，调用 `appController.applySelectedBinding(selectedControl, selectedAction)`。
-- [x] Keyboard / Mouse 按钮仍只更新 `selectedAction`，不自动 Apply。
+- [ ] `TopBar.qml` 的 `Save Profile` 按钮调用 `appController.saveActiveProfile()`。
+- [ ] 保存成功后向现有 demo `eventModel` 插入 `Profile saved` 事件。
+- [ ] 保存失败后向现有 demo `eventModel` 插入 `Profile save failed` 事件。
+- [ ] `TopBar.qml` 不直接拼路径，不持有文件系统策略。
+- [ ] 本轮不展示 profilePath；只通过事件列表给最小反馈。
 
 ## Tests
 
-- [x] `mappingRuleModel` property 非空。
-- [x] initialize 后默认 mapping model 为空。
-- [x] Apply Keyboard Space 成功后 model 有一条规则。
-- [x] Apply Mouse Left Click 成功后 model 输出为 Left Click / Mouse。
-- [x] `MappingRuleModel` 的 `input` role 返回原始 control id。
-- [x] `MappingRuleModel` 的 `output` / `actionKind` roles 从 action payload 拆分，而不是直接返回 `Keyboard: Space` 这类 UI 选择字符串。
-- [x] Apply 后生成的 `SMappingRule::Id` 等于 control id。
-- [x] 空 control 或空 action 返回 false 并发 `runtimeError`。
-- [x] Runtime 未 initialize 时 Apply 返回 false。
-- [x] 同一 control 重复 Apply 替换旧规则，不增加 row count。
-- [x] Apply 后 fake 输入同一 button，`pumpOnce()` 后 mapped/dispatched 计数为 1。
-- [x] 不支持 Axis2D 创建时返回 false 且不修改 model。
+`AppControllerTests.cpp`：
+
+- [ ] `saveActiveProfile()` before initialize returns false and emits `runtimeError`。
+- [ ] `saveActiveProfile(explicitPath)` after initialize creates JSON file。
+- [ ] saved empty profile can be parsed by `ZProfileManager`。
+- [ ] apply binding then save writes one mapping rule with expected control id and action。
+- [ ] saving creates missing parent directories。
+- [ ] saving while Running succeeds。
+- [ ] saving preserves `mappingEnabled` value。
+- [ ] successful save emits `profileStatusChanged` and `profileSaved`。
+- [ ] failed save emits `profileStatusChanged` and `runtimeError`。
+
+QML smoke：
+
+- [ ] offscreen 启动无 QML binding/import/property warning。
 
 ## Acceptance Criteria
 
-- [x] Current mappings 列表不再是硬编码 demo 数据。
-- [x] Apply 后 profile snapshot 中存在对应 `SMappingRule`。
-- [x] Apply 后真实输入能走 MappingEngine -> ActionDispatcher 链路。
-- [x] 所有测试通过。
-- [x] 修改和新增文本文件使用 CRLF 行尾。
+- [ ] `Save Profile` 不再只是写 demo log，而是调用真实保存 API。
+- [ ] 保存出的 JSON 可由 `ZProfileManager::LoadProfile()` 读回。
+- [ ] Apply 出来的 runtime binding 能持久化到 profile JSON。
+- [ ] 所有测试通过。
+- [ ] 修改和新增文本文件使用 CRLF 行尾。
+
+## Follow-Up
+
+- [ ] 后续实现启动时加载上次保存的 profile。
+- [ ] 后续实现 profile 文件选择和 profile path UI。
+- [ ] 后续实现 `ZProfileModel` 与多个 profile 管理。
+- [ ] 后续实现真实 `ZLogModel`，替换 demo `eventModel`。

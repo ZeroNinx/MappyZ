@@ -221,16 +221,10 @@ else()
     target_compile_options(MappyZUIBridge PRIVATE -Wall -Wextra -Wconversion -Wshadow)
 endif()
 
-# ── 主应用 ──
+# ── QML 模块 ──
+# 将 QML 资源提取为独立 STATIC 库，供主应用和 smoke test 共同链接
 
-qt_add_executable(MappyZ
-    source/App/Main.cpp
-)
-
-set_target_properties(MappyZ
-    PROPERTIES
-        WIN32_EXECUTABLE TRUE
-)
+qt_add_library(MappyZQml STATIC)
 
 set_source_files_properties(ui/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 set_source_files_properties(ui/Theme.qml PROPERTIES QT_RESOURCE_ALIAS Theme.qml)
@@ -248,7 +242,7 @@ set_source_files_properties(ui/BindingEditor.qml PROPERTIES QT_RESOURCE_ALIAS Bi
 set_source_files_properties(ui/EventLogPanel.qml PROPERTIES QT_RESOURCE_ALIAS EventLogPanel.qml)
 set_source_files_properties(ui/StatusBar.qml PROPERTIES QT_RESOURCE_ALIAS StatusBar.qml)
 
-qt_add_qml_module(MappyZ
+qt_add_qml_module(MappyZQml
     URI MappyZUI
     VERSION 1.0
     QML_FILES
@@ -269,6 +263,17 @@ qt_add_qml_module(MappyZ
         ui/StatusBar.qml
 )
 
+# ── 主应用 ──
+
+qt_add_executable(MappyZ
+    source/App/Main.cpp
+)
+
+set_target_properties(MappyZ
+    PROPERTIES
+        WIN32_EXECUTABLE TRUE
+)
+
 target_compile_features(MappyZ PRIVATE cxx_std_20)
 
 target_link_libraries(MappyZ
@@ -276,6 +281,8 @@ target_link_libraries(MappyZ
         MappyZUIBridge
         MappyZApp
         MappyZCore
+        MappyZQml
+        MappyZQmlplugin
         Qt6::Quick
 )
 
@@ -491,4 +498,30 @@ if(BUILD_TESTING)
     endif()
 
     catch_discover_tests(MappyZUIBridgeTests)
+
+    # ── QML 离屏冒烟测试 ──
+    # 使用 offscreen 平台加载 QML 模块，验证无 binding/import/property 警告
+
+    add_executable(MappyZQmlSmokeTests
+        tests/UI/QmlSmokeTests.cpp
+    )
+
+    target_link_libraries(MappyZQmlSmokeTests
+        PRIVATE
+            MappyZQml
+            MappyZQmlplugin
+            MappyZUIBridge
+            MappyZInputBackends
+            MappyZOutputBackends
+            Qt6::Quick
+            Catch2::Catch2
+    )
+
+    if(MSVC)
+        target_compile_options(MappyZQmlSmokeTests PRIVATE /W4)
+    else()
+        target_compile_options(MappyZQmlSmokeTests PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+    endif()
+
+    catch_discover_tests(MappyZQmlSmokeTests)
 endif()
