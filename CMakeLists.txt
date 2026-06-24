@@ -254,6 +254,7 @@ qt_add_qml_module(MappyZQml
         ui/FieldLabel.qml
         ui/ValueText.qml
         ui/InputControlState.qml
+        ui/InlineMessage.qml
         ui/ControlDot.qml
         ui/TopBar.qml
         ui/DevicesPanel.qml

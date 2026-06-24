@@ -1,6 +1,7 @@
 import QtQuick
 
 // 绑定编辑面板：控件选择、Capture、Action 输出和 mapping 列表
+// P0：Apply 前置检查、操作反馈、空状态提示
 Panel {
     id: bindingEditor
 
@@ -19,6 +20,35 @@ Panel {
 
     readonly property bool captureMode: appController
         ? appController.inputCapture.active : false
+
+    // runtime 处于 ready 或 running 状态时允许 Apply
+    readonly property bool _runtimeAllowsApply: {
+        if (!appController) return false
+        var state = appController.runtimeState
+        return state === "ready" || state === "running"
+    }
+
+    // Capture 可用条件：已选设备
+    readonly property bool _canCapture: appController
+        && selectedDevice !== ""
+
+    // Apply 可用条件：设备 + 控件 + 动作 + runtime 就绪 + 非 capture 模式
+    readonly property bool _canApply: _runtimeAllowsApply
+        && selectedDevice !== ""
+        && selectedControl !== ""
+        && selectedAction !== ""
+        && !captureMode
+
+    // 当前最优先的禁用原因提示（空字符串表示无禁用）
+    readonly property string _disableHint: {
+        if (!appController) return ""
+        if (selectedDevice === "") return "Select a device first"
+        if (!_runtimeAllowsApply) return "Initialize runtime first"
+        if (captureMode) return ""
+        if (selectedControl === "") return "Select an input first"
+        if (selectedAction === "") return "Select an action first"
+        return ""
+    }
 
     Flickable {
         anchors.fill: parent
@@ -70,6 +100,7 @@ Panel {
                     theme: bindingEditor.theme
                     label: "Capture Input"
                     primary: bindingEditor.captureMode
+                    enabled: bindingEditor._canCapture || bindingEditor.captureMode
                     onClicked: {
                         if (!bindingEditor.appController) return
                         if (bindingEditor.captureMode) {
@@ -132,13 +163,47 @@ Panel {
                     theme: bindingEditor.theme
                     label: "Apply"
                     primary: true
+                    enabled: bindingEditor._canApply
                     onClicked: {
                         if (!bindingEditor.appController) return
-                        bindingEditor.appController.applySelectedBinding(
+                        var success = bindingEditor.appController.applySelectedBinding(
                             bindingEditor.selectedControl,
                             bindingEditor.selectedAction)
+                        if (success) {
+                            var state = bindingEditor.appController.runtimeState
+                            if (state === "running") {
+                                applyFeedback.show(
+                                    "Applied successfully",
+                                    bindingEditor.theme.success)
+                            } else {
+                                applyFeedback.show(
+                                    "Applied — mapping will dispatch after runtime starts",
+                                    bindingEditor.theme.accent)
+                            }
+                        } else {
+                            applyFeedback.show(
+                                "Apply failed",
+                                bindingEditor.theme.warning)
+                        }
                     }
                 }
+            }
+
+            // 禁用原因提示（持久显示，直到条件解除）
+            Text {
+                visible: bindingEditor._disableHint !== ""
+                    && applyFeedback.text === ""
+                width: parent.width
+                text: bindingEditor._disableHint
+                color: bindingEditor.theme.muted
+                font.pixelSize: 11
+            }
+
+            // Apply 操作反馈（临时显示，3 秒后自动消失）
+            InlineMessage {
+                id: applyFeedback
+
+                theme: bindingEditor.theme
             }
 
             Rectangle {
@@ -155,6 +220,8 @@ Panel {
             }
 
             Repeater {
+                id: mappingRepeater
+
                 model: bindingEditor.appController
                     ? bindingEditor.appController.mappingRuleModel : null
 
@@ -203,6 +270,15 @@ Panel {
                         tone: actionKind === "Mouse" ? "#c4710c" : bindingEditor.theme.accentSoft
                     }
                 }
+            }
+
+            // mapping 列表为空时的占位提示
+            Text {
+                visible: mappingRepeater.count === 0
+                text: "No mappings yet"
+                color: bindingEditor.theme.muted
+                font.pixelSize: 12
+                topPadding: 4
             }
         }
     }

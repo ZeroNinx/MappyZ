@@ -1,6 +1,6 @@
 import QtQuick
 
-// 通用操作按钮，支持 primary 高亮和 hover 反馈
+// 通用操作按钮，支持 primary 高亮、hover 反馈和 enabled 禁用态
 Rectangle {
     id: button
 
@@ -14,10 +14,15 @@ Rectangle {
     width: labelText.implicitWidth + 28
     height: 30
     radius: 3
-    color: mouseArea.containsMouse
-        ? theme.accentHover
-        : (primary ? theme.accentSoft : theme.surface)
-    border.color: primary ? theme.accent : theme.border
+    opacity: enabled ? 1.0 : 0.4
+    color: !enabled
+        ? theme.surface
+        : (mouseArea.containsMouse
+            ? theme.accentHover
+            : (primary ? theme.accentSoft : theme.surface))
+    border.color: !enabled
+        ? theme.border
+        : (primary ? theme.accent : theme.border)
     border.width: 1
 
     Text {
@@ -33,8 +38,8 @@ Rectangle {
         id: mouseArea
 
         anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: button.clicked()
+        hoverEnabled: button.enabled
+        cursorShape: button.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: { if (button.enabled) button.clicked() }
     }
 }

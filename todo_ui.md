@@ -31,19 +31,23 @@
 
 目标：把已有操作的成功、失败、空状态说清楚，不新增持久化或加载能力。
 
-- [ ] P0 反馈统一采用所在 panel 内 inline message，不依赖 LogModel。
-- [ ] inline message 可被下一次操作覆盖，并在短时间后自动清除，例如 3 秒。
-- [ ] 成功反馈使用 accent/success tone，失败反馈使用 warning/danger tone。
-- [ ] BindingEditor Apply 成功后给 inline feedback。
-- [ ] BindingEditor Apply 失败后给 inline feedback，不只依赖 stderr。
-- [ ] Capture active 时 Apply 按钮禁用，或明确显示 Apply 将使用当前 selected control。
-- [ ] selectedDevice 为空时 Capture 与 Apply 按钮禁用，并显示 `Select a device first` inline hint。
-- [ ] Current mappings 为空时显示 empty state，例如 `No mappings yet`。
-- [ ] DevicesPanel 为空时显示可读说明，不只是一行弱提示。
-- [ ] EventLogPanel 为空时显示 empty state。
-- [ ] Runtime 未 running 时，Apply 仍可编辑 active profile snapshot，但 inline hint 显示 `Mapping will dispatch after runtime starts`，避免误导用户以为已经真实输出。
-- [ ] Mapping On/Off 操作后给 inline feedback。
-- [ ] P0 验收：已有 QML offscreen smoke 仍通过且无 warning。
+- [x] P0 反馈默认采用所在 panel 内 inline message，不依赖 LogModel。
+- [x] TopBar 操作例外：Mapping On/Off 使用按钮 label + primary state 作为即时反馈，不额外加 inline message。
+- [x] inline message 可被下一次操作覆盖，并在短时间后自动清除，例如 3 秒。
+- [x] 成功反馈使用 accent/success tone，失败反馈使用 warning/danger tone。
+- [x] BindingEditor Apply 成功后给 inline feedback。
+- [x] BindingEditor Apply 不监听全局 `runtimeError`，避免 initialize/start/save 等非 Apply 错误污染局部反馈。
+- [x] BindingEditor Apply 点击前先做 UI 前置检查：
+  - [x] selectedDevice 为空：禁用 Capture 与 Apply，并显示 `Select a device first`。
+  - [x] selectedControl 为空：禁用 Apply 或显示 `Select an input first`。
+  - [x] selectedAction 为空：禁用 Apply 或显示 `Select an action first`。
+  - [x] Runtime 未 initialize 或处于 Error：禁用 Apply，并显示 `Initialize runtime first`。
+- [x] BindingEditor Apply 后端返回 false 时显示通用 `Apply failed`，不尝试从全局错误信号反推原因。
+- [x] Capture active 时 Apply 按钮禁用，或明确显示 Apply 将使用当前 selected control。
+- [x] Current mappings 为空时显示 empty state，例如 `No mappings yet`。
+- [x] DevicesPanel 为空时显示可读说明，不只是一行弱提示。
+- [x] Runtime 已 initialize 但未 running 时，Apply 仍可编辑 active profile snapshot；成功后 inline hint 显示 `Mapping will dispatch after runtime starts`，避免误导用户以为已经真实输出。
+- [x] P0 验收：已有 QML offscreen smoke 仍通过且无 warning。
 
 ## Priority 1: LogModel Lite
 
@@ -62,6 +66,7 @@
 - [ ] 不把逐输入、逐 mapped、逐 dispatch success 写入 Event Log。
 - [ ] per-frame mapped/dispatched 计数继续放 StatusBar。
 - [ ] EventLogPanel 使用 `appController.logModel`，删除 Main.qml demo `eventModel`。
+- [ ] EventLogPanel 使用真实 `logModel` 后增加 empty state，例如 `No events yet`；P0 不处理 demo model 的空状态。
 - [ ] LogModel capacity 固定为 200 条，超过后丢弃最旧记录。
 - [ ] 增加测试：
   - [ ] log append 增加 row。
@@ -187,7 +192,7 @@ UI 侧验收：
 ## Suggested Execution Order
 
 - [x] 1. Layout Fixes polish。
-- [ ] 2. UI Feedback And Empty States。
+- [x] 2. UI Feedback And Empty States。
 - [ ] 3. LogModel Lite。
 - [ ] 4. Runtime Status Display Cleanup。
 - [ ] 5. Save Active Profile（详见 `todo.md`）。

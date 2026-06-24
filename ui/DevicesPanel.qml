@@ -145,12 +145,28 @@ Panel {
                 }
             }
 
-            Text {
+            // 无设备时的引导说明
+            Column {
                 visible: deviceRepeater.count === 0
-                text: "No gamepads connected"
-                color: devicesPanel.theme.muted
-                font.pixelSize: 12
+                width: contentColumn.width
+                spacing: 6
                 topPadding: 8
+
+                Text {
+                    text: "No gamepads connected"
+                    color: devicesPanel.theme.text
+                    font.pixelSize: 13
+                    font.bold: true
+                }
+
+                Text {
+                    width: parent.width
+                    text: "Connect a gamepad to get started.\nSupported: Xbox, PlayStation, and other XInput / DirectInput devices."
+                    color: devicesPanel.theme.muted
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    lineHeight: 1.3
+                }
             }
 
             Rectangle {
