@@ -1,10 +1,10 @@
 import QtQuick
 
-// 事件日志面板：显示 demo 日志列表
+// 事件日志面板：显示 LogModel 中的 lifecycle 级事件
 Panel {
     id: eventLogPanel
 
-    required property var eventModel
+    required property var appController
 
     heading: "Event Log"
 
@@ -22,7 +22,10 @@ Panel {
             spacing: 6
 
             Repeater {
-                model: eventLogPanel.eventModel
+                id: logRepeater
+
+                model: eventLogPanel.appController
+                    ? eventLogPanel.appController.logModel : null
 
                 Rectangle {
                     required property int index
@@ -38,7 +41,7 @@ Panel {
                         anchors.left: parent.left
                         anchors.leftMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 70
+                        width: 80
                         text: time
                         color: eventLogPanel.theme.muted
                         font.pixelSize: 11
@@ -46,20 +49,24 @@ Panel {
 
                     Text {
                         anchors.left: parent.left
-                        anchors.leftMargin: 86
+                        anchors.leftMargin: 96
                         anchors.verticalCenter: parent.verticalCenter
                         width: 58
                         text: level
-                        color: level === "Output"
-                            ? eventLogPanel.theme.success
-                            : (level === "Map" ? eventLogPanel.theme.accent : eventLogPanel.theme.text)
+                        color: level === "Error"
+                            ? eventLogPanel.theme.warning
+                            : (level === "Success"
+                                ? eventLogPanel.theme.success
+                                : (level === "Warning"
+                                    ? "#e0a528"
+                                    : eventLogPanel.theme.text))
                         font.pixelSize: 11
                         font.bold: true
                     }
 
                     Text {
                         anchors.left: parent.left
-                        anchors.leftMargin: 152
+                        anchors.leftMargin: 162
                         anchors.right: parent.right
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
@@ -69,6 +76,15 @@ Panel {
                         elide: Text.ElideRight
                     }
                 }
+            }
+
+            // 日志为空时的占位提示
+            Text {
+                visible: logRepeater.count === 0
+                text: "No events yet"
+                color: eventLogPanel.theme.muted
+                font.pixelSize: 12
+                topPadding: 8
             }
         }
     }

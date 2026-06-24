@@ -138,17 +138,6 @@ Window {
         appController.stopRuntime()
     }
 
-    // ── Demo models ──
-
-    ListModel {
-        id: eventModel
-
-        ListElement { time: "00:12.840"; level: "Info"; message: "Profile snapshot applied: Default FPS" }
-        ListElement { time: "00:13.112"; level: "Input"; message: "button_south pressed, value=1.0" }
-        ListElement { time: "00:13.114"; level: "Map"; message: "button_south -> Keyboard Space" }
-        ListElement { time: "00:14.021"; level: "Output"; message: "SendInput keyboard action completed" }
-    }
-
     // ── 布局编排 ──
 
     TopBar {
@@ -156,7 +145,6 @@ Window {
 
         theme: theme
         appController: root._appController
-        eventModel: eventModel
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
@@ -233,7 +221,7 @@ Window {
         id: eventPanel
 
         theme: theme
-        eventModel: eventModel
+        appController: root._appController
         anchors.left: parent.left
         anchors.leftMargin: 12
         anchors.right: parent.right

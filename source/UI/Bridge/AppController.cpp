@@ -1,6 +1,6 @@
 // ZAppController 实现。
 // 把 ZApplicationBootstrap 的生命周期和状态暴露给 QML。
-// 所有非预期路径都输出日志并发出 RuntimeError 信号。
+// 所有非预期路径都通过 EmitRuntimeError 统一输出日志、写 LogModel、发信号。
 
 #include "UI/Bridge/AppController.h"
 
@@ -18,6 +18,19 @@ ZAppController::ZAppController(QObject* Parent)
     : QObject(Parent)
 {
     connect(&PumpTimer, &QTimer::timeout, this, &ZAppController::pumpOnce);
+
+    // capture 完成/取消时写日志
+    connect(&InputCaptureInstance, &ZInputCaptureModel::captureCompleted,
+        this, [this](const QString& /*DeviceId*/, const QString& ControlId) {
+            AppendLog(QStringLiteral("Success"),
+                QStringLiteral("Capture completed: %1").arg(ControlId));
+        });
+
+    connect(&InputCaptureInstance, &ZInputCaptureModel::captureCancelled,
+        this, [this]() {
+            AppendLog(QStringLiteral("Warning"),
+                QStringLiteral("Capture cancelled"));
+        });
 }
 
 ZAppController::ZAppController(
@@ -28,6 +41,19 @@ ZAppController::ZAppController(
     , Bootstrap(std::move(InputFactory), std::move(OutputFactory))
 {
     connect(&PumpTimer, &QTimer::timeout, this, &ZAppController::pumpOnce);
+
+    // capture 完成/取消时写日志
+    connect(&InputCaptureInstance, &ZInputCaptureModel::captureCompleted,
+        this, [this](const QString& /*DeviceId*/, const QString& ControlId) {
+            AppendLog(QStringLiteral("Success"),
+                QStringLiteral("Capture completed: %1").arg(ControlId));
+        });
+
+    connect(&InputCaptureInstance, &ZInputCaptureModel::captureCancelled,
+        this, [this]() {
+            AppendLog(QStringLiteral("Warning"),
+                QStringLiteral("Capture cancelled"));
+        });
 }
 
 ZAppController::~ZAppController()
@@ -74,6 +100,10 @@ void ZAppController::SetMappingEnabled(bool bEnabled)
     {
         Bootstrap.GetRuntimeHost().SetMappingEnabled(bEnabled);
     }
+
+    AppendLog(QStringLiteral("Info"),
+        bEnabled ? QStringLiteral("Mapping enabled")
+                 : QStringLiteral("Mapping disabled"));
 
     emit mappingEnabledChanged();
 }
@@ -123,6 +153,11 @@ ZMappingRuleModel* ZAppController::MappingRuleModel()
     return &MappingRuleModelInstance;
 }
 
+ZLogModel* ZAppController::LogModel()
+{
+    return &LogModelInstance;
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime(bool useNullOutput)
@@ -141,10 +176,8 @@ bool ZAppController::initializeRuntime(bool useNullOutput)
     if (!Result)
     {
         auto Message = QString::fromStdString(Result.Failure().Message);
-        std::fprintf(stderr, "[AppController] 错误: 初始化失败: \"%s\"\n",
-            Message.toUtf8().constData());
         emit runtimeStatusChanged();
-        emit runtimeError(Message);
+        EmitRuntimeError(QStringLiteral("Initialize failed: %1").arg(Message));
         return false;
     }
 
@@ -179,6 +212,7 @@ bool ZAppController::initializeRuntime(bool useNullOutput)
     // 初始化后刷新映射规则模型
     RefreshMappingRuleModelFromHost();
 
+    AppendLog(QStringLiteral("Info"), QStringLiteral("Runtime initialized"));
     emit runtimeStatusChanged();
     return true;
 }
@@ -188,10 +222,8 @@ bool ZAppController::startRuntime()
     if (Bootstrap.GetStatus().State == EApplicationBootstrapState::Created
         || Bootstrap.GetStatus().State == EApplicationBootstrapState::Error)
     {
-        auto Message = QStringLiteral("必须先调用 initializeRuntime() 再调用 startRuntime()");
-        std::fprintf(stderr, "[AppController] 错误: %s\n",
-            Message.toUtf8().constData());
-        emit runtimeError(Message);
+        EmitRuntimeError(
+            QStringLiteral("Start failed: runtime not initialized"));
         return false;
     }
 
@@ -200,10 +232,8 @@ bool ZAppController::startRuntime()
     if (!Result)
     {
         auto Message = QString::fromStdString(Result.Failure().Message);
-        std::fprintf(stderr, "[AppController] 错误: 启动运行时失败: \"%s\"\n",
-            Message.toUtf8().constData());
         emit runtimeStatusChanged();
-        emit runtimeError(Message);
+        EmitRuntimeError(QStringLiteral("Start failed: %1").arg(Message));
         return false;
     }
 
@@ -214,6 +244,7 @@ bool ZAppController::startRuntime()
     // start 后重新刷新设备快照，覆盖真实后端 Start() 后才完成枚举的场景
     RefreshDeviceModelFromBootstrap();
 
+    AppendLog(QStringLiteral("Info"), QStringLiteral("Runtime started"));
     emit runtimeStatusChanged();
     return true;
 }
@@ -222,6 +253,8 @@ void ZAppController::stopRuntime()
 {
     stopPumpTimer();
     Bootstrap.StopRuntime();
+
+    AppendLog(QStringLiteral("Info"), QStringLiteral("Runtime stopped"));
     emit runtimeStatusChanged();
 }
 
@@ -258,7 +291,26 @@ void ZAppController::stopPumpTimer()
     }
 }
 
+void ZAppController::notifySaveProfileNotImplemented()
+{
+    AppendLog(QStringLiteral("Warning"),
+        QStringLiteral("Profile save not yet implemented"));
+}
+
 // ── 内部工具 ──
+
+void ZAppController::AppendLog(const QString& Level, const QString& Message)
+{
+    LogModelInstance.Append(Level, Message);
+}
+
+void ZAppController::EmitRuntimeError(const QString& Message)
+{
+    std::fprintf(stderr, "[AppController] 错误: %s\n",
+        Message.toUtf8().constData());
+    AppendLog(QStringLiteral("Error"), Message);
+    emit runtimeError(Message);
+}
 
 QString ZAppController::BootstrapStateToString(EApplicationBootstrapState State)
 {
@@ -310,20 +362,14 @@ bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
     // 空 controlId 校验
     if (controlId.isEmpty())
     {
-        auto Message = QStringLiteral("绑定失败: controlId 为空");
-        std::fprintf(stderr, "[AppController] 错误: %s\n",
-            Message.toUtf8().constData());
-        emit runtimeError(Message);
+        EmitRuntimeError(QStringLiteral("Apply failed: controlId is empty"));
         return false;
     }
 
     // 空 actionText 校验
     if (actionText.isEmpty())
     {
-        auto Message = QStringLiteral("绑定失败: actionText 为空");
-        std::fprintf(stderr, "[AppController] 错误: %s\n",
-            Message.toUtf8().constData());
-        emit runtimeError(Message);
+        EmitRuntimeError(QStringLiteral("Apply failed: actionText is empty"));
         return false;
     }
 
@@ -332,10 +378,7 @@ bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
     if (Status.State != EApplicationBootstrapState::Ready
         && Status.State != EApplicationBootstrapState::Running)
     {
-        auto Message = QStringLiteral("绑定失败: 运行时未初始化");
-        std::fprintf(stderr, "[AppController] 错误: %s\n",
-            Message.toUtf8().constData());
-        emit runtimeError(Message);
+        EmitRuntimeError(QStringLiteral("Apply failed: runtime not initialized"));
         return false;
     }
 
@@ -343,10 +386,8 @@ bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
     SAction Action = ParseActionText(actionText);
     if (Action.Type == EActionType::None)
     {
-        auto Message = QStringLiteral("绑定失败: 无法解析 action \"%1\"").arg(actionText);
-        std::fprintf(stderr, "[AppController] 错误: %s\n",
-            Message.toUtf8().constData());
-        emit runtimeError(Message);
+        EmitRuntimeError(
+            QStringLiteral("Apply failed: cannot parse action \"%1\"").arg(actionText));
         return false;
     }
 
@@ -355,10 +396,8 @@ bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
     SMappingInput Input;
     if (!InferInputFromControlId(ControlIdStd, Input))
     {
-        auto Message = QStringLiteral("绑定失败: 不支持的控件 \"%1\"").arg(controlId);
-        std::fprintf(stderr, "[AppController] 错误: %s\n",
-            Message.toUtf8().constData());
-        emit runtimeError(Message);
+        EmitRuntimeError(
+            QStringLiteral("Apply failed: unsupported control \"%1\"").arg(controlId));
         return false;
     }
 
@@ -396,6 +435,8 @@ bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
     // 刷新 UI model
     RefreshMappingRuleModelFromHost();
 
+    AppendLog(QStringLiteral("Success"),
+        QStringLiteral("Applied binding: %1 → %2").arg(controlId, actionText));
     return true;
 }
 

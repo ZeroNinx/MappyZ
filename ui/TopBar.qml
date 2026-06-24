@@ -6,7 +6,6 @@ Rectangle {
 
     required property var theme
     required property var appController
-    required property var eventModel
 
     height: 54
     color: theme.panelHeader
@@ -68,12 +67,8 @@ Rectangle {
             theme: topBar.theme
             label: "Save Profile"
             onClicked: {
-                if (topBar.eventModel)
-                    topBar.eventModel.insert(0, {
-                        "time": "now",
-                        "level": "Profile",
-                        "message": "Profile save requested"
-                    })
+                if (topBar.appController)
+                    topBar.appController.notifySaveProfileNotImplemented()
             }
         }
     }

@@ -53,26 +53,42 @@
 
 目标：替换 QML demo `eventModel`，让 Event Log 显示真实 UI / lifecycle 级事件，但不记录逐输入事件。
 
-- [ ] 新增 `ZLogModel : QAbstractListModel`。
-- [ ] roles 至少包含 `time`、`level`、`message`。
-- [ ] `ZAppController` 暴露 `logModel`。
-- [ ] 记录 UI/lifecycle 级事件：
-  - [ ] initialize success/failure。
-  - [ ] start/stop。
-  - [ ] mapping enabled changed。
-  - [ ] apply binding success/failure。
-  - [ ] capture completed/cancelled。
-  - [ ] runtime errors。
-- [ ] 不把逐输入、逐 mapped、逐 dispatch success 写入 Event Log。
-- [ ] per-frame mapped/dispatched 计数继续放 StatusBar。
-- [ ] EventLogPanel 使用 `appController.logModel`，删除 Main.qml demo `eventModel`。
-- [ ] EventLogPanel 使用真实 `logModel` 后增加 empty state，例如 `No events yet`；P0 不处理 demo model 的空状态。
-- [ ] LogModel capacity 固定为 200 条，超过后丢弃最旧记录。
-- [ ] 增加测试：
-  - [ ] log append 增加 row。
-  - [ ] capacity 上限 200 生效。
-  - [ ] runtimeError 同时写 log。
-  - [ ] Apply 成功和失败都写 log。
+- [x] 新增 `ZLogModel : QAbstractListModel`。
+- [x] roles 包含 `time`、`level`、`message`。
+- [x] `time` 使用绝对时间 `HH:mm:ss.zzz`，通过 `QTime::currentTime().toString("HH:mm:ss.zzz")` 生成；不维护应用启动基准。
+- [x] `level` 固定为 `Info` / `Success` / `Warning` / `Error` 四类：
+  - [x] `Info`：initialize success、start、stop、mapping enabled/disabled。
+  - [x] `Success`：apply binding success、capture completed。
+  - [x] `Warning`：capture cancelled、暂未实现但用户主动触发的操作提示。
+  - [x] `Error`：initialize/start/apply/runtimeError 等失败。
+- [x] `ZAppController` 暴露只读 `logModel`，QML 只能绑定读取，不能直接 append/clear。
+- [x] 日志写入入口集中在 `ZAppController` 内部，禁止 QML 组件直接拼日志字符串写 model。
+- [x] `ZAppController` 增加内部 helper，例如 `AppendLog(level, message)`，所有 lifecycle 日志统一走它。
+- [x] `ZAppController` 增加内部 helper，例如 `EmitRuntimeError(message)`：先写 `Error` 日志，再 `emit runtimeError(message)`，避免漏记和重复记录。
+- [x] 记录 UI/lifecycle 级事件：
+  - [x] initialize success/failure。
+  - [x] start/stop。
+  - [x] mapping enabled changed。
+  - [x] apply binding success/failure。
+  - [x] capture completed/cancelled。
+  - [x] runtime errors。
+- [x] Capture completed/cancelled 通过 `InputCaptureInstance` 信号在 `ZAppController` 内部连接并记录。
+- [x] 不把逐输入、逐 mapped、逐 dispatch success 写入 Event Log。
+- [x] per-frame mapped/dispatched 计数继续放 StatusBar。
+- [x] EventLogPanel 使用 `appController.logModel`，删除 Main.qml demo `eventModel`。
+- [x] EventLogPanel 使用真实 `logModel` 后增加 empty state，例如 `No events yet`；P0 不处理 demo model 的空状态。
+- [x] EventLogPanel 着色逻辑改为匹配四类 level：`Error` 用 warning/danger，`Warning` 用 warning，`Success` 用 success，`Info` 用默认 text/muted。
+- [x] TopBar 移除 `required property var eventModel`。
+- [x] TopBar `Save Profile` 在 P1 不直接写 logModel；改为调用 `ZAppController` 的临时 API，例如 `notifySaveProfileNotImplemented()`。
+- [x] `notifySaveProfileNotImplemented()` 只在 AppController 内部写一条 `Warning: Profile save not yet implemented`，P3 再替换为真实保存。
+- [x] LogModel capacity 固定为 200 条，超过后丢弃最旧记录。
+- [x] 增加测试：
+  - [x] log append 增加 row。
+  - [x] capacity 上限 200 生效。
+  - [x] runtimeError 同时写 log。
+  - [x] Apply 成功和失败都写 log。
+  - [x] QML 无法直接调用 LogModel append/clear。
+  - [x] TopBar Save Profile 写入 `Warning` 级暂未实现日志。
 
 ## Priority 2: Runtime Status Display Cleanup
 
@@ -193,7 +209,7 @@ UI 侧验收：
 
 - [x] 1. Layout Fixes polish。
 - [x] 2. UI Feedback And Empty States。
-- [ ] 3. LogModel Lite。
+- [x] 3. LogModel Lite。
 - [ ] 4. Runtime Status Display Cleanup。
 - [ ] 5. Save Active Profile（详见 `todo.md`）。
 - [ ] 6. Load Saved Profile。

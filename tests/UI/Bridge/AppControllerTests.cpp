@@ -362,7 +362,7 @@ TEST_CASE("AppController initializeRuntime fails when input factory fails",
 
     // 验证 error signal 携带消息
     auto ErrorArgs = ErrorSpy.takeFirst();
-    REQUIRE(ErrorArgs.at(0).toString() == "input backend unavailable");
+    REQUIRE(ErrorArgs.at(0).toString() == "Initialize failed: input backend unavailable");
 }
 
 // ── output factory 失败 ──

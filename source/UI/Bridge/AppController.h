@@ -15,6 +15,7 @@
 #include "UI/Bridge/DeviceModel.h"
 #include "UI/Bridge/InputCaptureModel.h"
 #include "UI/Bridge/InputStateModel.h"
+#include "UI/Bridge/LogModel.h"
 #include "UI/Bridge/MappingRuleModel.h"
 
 namespace MappyZ
@@ -39,6 +40,7 @@ class ZAppController final : public QObject
     Q_PROPERTY(ZInputStateModel* inputStateModel READ InputStateModel CONSTANT)
     Q_PROPERTY(ZInputCaptureModel* inputCapture READ InputCapture CONSTANT)
     Q_PROPERTY(ZMappingRuleModel* mappingRuleModel READ MappingRuleModel CONSTANT)
+    Q_PROPERTY(ZLogModel* logModel READ LogModel CONSTANT)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -68,6 +70,7 @@ public:
     NODISCARD ZInputStateModel* InputStateModel();
     NODISCARD ZInputCaptureModel* InputCapture();
     NODISCARD ZMappingRuleModel* MappingRuleModel();
+    NODISCARD ZLogModel* LogModel();
 
     // ── QML invokable ──
 
@@ -78,6 +81,7 @@ public:
     Q_INVOKABLE void startPumpTimer(int intervalMs = 16);
     Q_INVOKABLE void stopPumpTimer();
     Q_INVOKABLE bool applySelectedBinding(QString controlId, QString actionText);
+    Q_INVOKABLE void notifySaveProfileNotImplemented();
 
 signals:
     void runtimeStatusChanged();
@@ -98,6 +102,12 @@ private:
 
     // 从 RuntimeHost profile 快照刷新 MappingRuleModel
     void RefreshMappingRuleModelFromHost();
+
+    // 统一日志写入入口，所有 lifecycle 日志走此方法
+    void AppendLog(const QString& Level, const QString& Message);
+
+    // 统一错误处理：写 Error 日志 + stderr + emit runtimeError
+    void EmitRuntimeError(const QString& Message);
 
     // 解析 actionText 构造 SAction，失败返回 None 类型
     static SAction ParseActionText(const QString& ActionText);
@@ -126,6 +136,9 @@ private:
 
     // 映射规则列表模型，供 QML 绑定
     ZMappingRuleModel MappingRuleModelInstance;
+
+    // 事件日志模型，供 QML EventLogPanel 绑定
+    ZLogModel LogModelInstance;
 };
 
 }  // namespace MappyZ
