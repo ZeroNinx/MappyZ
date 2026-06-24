@@ -15,6 +15,7 @@
 #include "UI/Bridge/DeviceModel.h"
 #include "UI/Bridge/InputCaptureModel.h"
 #include "UI/Bridge/InputStateModel.h"
+#include "UI/Bridge/MappingRuleModel.h"
 
 using namespace MappyZ;
 
@@ -977,4 +978,215 @@ TEST_CASE("AppController capture does not affect LastPumpSummary statistics",
 
     // capture 不影响统计计数
     REQUIRE(Controller.LastInputEventCount() == BaseInputCount);
+}
+
+// ══════════════════════════════════════════════════════════════
+// MappingRuleModel 集成测试
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController mappingRuleModel property returns non-null",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.MappingRuleModel() != nullptr);
+}
+
+TEST_CASE("AppController mappingRuleModel is empty after initialize",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    auto* Model = Controller.MappingRuleModel();
+    REQUIRE(Model->rowCount() == 0);
+}
+
+TEST_CASE("AppController applySelectedBinding Keyboard Space succeeds",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    bool bResult = Controller.applySelectedBinding("button_south", "Keyboard: Space");
+    REQUIRE(bResult);
+
+    auto* Model = Controller.MappingRuleModel();
+    REQUIRE(Model->rowCount() == 1);
+
+    auto Index = Model->index(0);
+    REQUIRE(Model->data(Index, ZMappingRuleModel::InputRole).toString() == "button_south");
+    REQUIRE(Model->data(Index, ZMappingRuleModel::OutputRole).toString() == "Space");
+    REQUIRE(Model->data(Index, ZMappingRuleModel::ActionKindRole).toString() == "Keyboard");
+}
+
+TEST_CASE("AppController applySelectedBinding Mouse Left Click succeeds",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    bool bResult = Controller.applySelectedBinding("right_trigger", "Mouse: Left Click");
+    REQUIRE(bResult);
+
+    auto* Model = Controller.MappingRuleModel();
+    REQUIRE(Model->rowCount() == 1);
+
+    auto Index = Model->index(0);
+    REQUIRE(Model->data(Index, ZMappingRuleModel::OutputRole).toString() == "Left Click");
+    REQUIRE(Model->data(Index, ZMappingRuleModel::ActionKindRole).toString() == "Mouse");
+}
+
+TEST_CASE("AppController applySelectedBinding rule id equals controlId",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    Controller.applySelectedBinding("button_south", "Keyboard: Space");
+
+    auto* Model = Controller.MappingRuleModel();
+    auto Index = Model->index(0);
+    REQUIRE(Model->data(Index, ZMappingRuleModel::RuleIdRole).toString() == "button_south");
+}
+
+TEST_CASE("AppController applySelectedBinding empty controlId returns false and emits error",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.applySelectedBinding("", "Keyboard: Space");
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+}
+
+TEST_CASE("AppController applySelectedBinding empty actionText returns false and emits error",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.applySelectedBinding("button_south", "");
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+}
+
+TEST_CASE("AppController applySelectedBinding before initialize returns false",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.applySelectedBinding("button_south", "Keyboard: Space");
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+}
+
+TEST_CASE("AppController applySelectedBinding same control replaces old rule",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    Controller.applySelectedBinding("button_south", "Keyboard: Space");
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
+
+    // 同一 control 再次 apply 替换
+    Controller.applySelectedBinding("button_south", "Mouse: Left Click");
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
+
+    auto Index = Controller.MappingRuleModel()->index(0);
+    REQUIRE(Controller.MappingRuleModel()->data(
+        Index, ZMappingRuleModel::OutputRole).toString() == "Left Click");
+    REQUIRE(Controller.MappingRuleModel()->data(
+        Index, ZMappingRuleModel::ActionKindRole).toString() == "Mouse");
+}
+
+TEST_CASE("AppController applySelectedBinding Axis2D returns false and does not modify model",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.applySelectedBinding("left_stick", "Keyboard: Space");
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController applySelectedBinding unknown controlId returns false",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.applySelectedBinding("unknown_control", "Keyboard: Space");
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController applySelectedBinding updates RuntimeHost profile snapshot",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    Controller.applySelectedBinding("button_south", "Keyboard: Space");
+
+    // 直接验证内部 snapshot
+    auto Snapshot = Controller.MappingRuleModel()->ListRulesSnapshot();
+    REQUIRE(Snapshot.size() == 1);
+    REQUIRE(Snapshot[0].Id == "button_south");
+    REQUIRE(Snapshot[0].Input.ControlId == "button_south");
+    REQUIRE(Snapshot[0].Output.Action.Type == EActionType::KeyboardKey);
+}
+
+TEST_CASE("AppController applySelectedBinding then pump dispatches mapped input",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    // 创建规则
+    Controller.applySelectedBinding("button_south", "Keyboard: Space");
+
+    // 注入匹配事件
+    RawInputBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+    Controller.pumpOnce();
+
+    REQUIRE(Controller.LastMappedInputCount() == 1);
+    REQUIRE(Controller.LastDispatchedInputCount() == 1);
 }

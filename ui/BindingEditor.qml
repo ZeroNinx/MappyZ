@@ -8,7 +8,6 @@ Panel {
     required property string selectedDevice
     required property string selectedControl
     required property string selectedAction
-    required property var mappingModel
 
     heading: "Binding Editor"
 
@@ -113,6 +112,18 @@ Panel {
                 label: "Mouse"
                 onClicked: bindingEditor.selectedActionChangedByUi("Mouse: Left Click")
             }
+
+            ActionButton {
+                theme: bindingEditor.theme
+                label: "Apply"
+                primary: true
+                onClicked: {
+                    if (!bindingEditor.appController) return
+                    bindingEditor.appController.applySelectedBinding(
+                        bindingEditor.selectedControl,
+                        bindingEditor.selectedAction)
+                }
+            }
         }
 
         Rectangle {
@@ -129,7 +140,8 @@ Panel {
         }
 
         Repeater {
-            model: bindingEditor.mappingModel
+            model: bindingEditor.appController
+                ? bindingEditor.appController.mappingRuleModel : null
 
             Rectangle {
                 required property string input

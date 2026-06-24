@@ -141,15 +141,6 @@ Window {
     // ── Demo models ──
 
     ListModel {
-        id: mappingModel
-
-        ListElement { input: "A / South"; output: "Space"; actionKind: "Keyboard" }
-        ListElement { input: "RT"; output: "Left Click"; actionKind: "Mouse" }
-        ListElement { input: "Right Stick"; output: "Mouse Move"; actionKind: "Axis" }
-        ListElement { input: "Start"; output: "Enter"; actionKind: "Keyboard" }
-    }
-
-    ListModel {
         id: eventModel
 
         ListElement { time: "00:12.840"; level: "Info"; message: "Profile snapshot applied: Default FPS" }
@@ -226,7 +217,6 @@ Window {
         selectedDevice: root.selectedDevice
         selectedControl: root.selectedControl
         selectedAction: root.selectedAction
-        mappingModel: mappingModel
         anchors.right: parent.right
         anchors.rightMargin: 12
         anchors.top: devicePanel.top

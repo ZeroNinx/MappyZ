@@ -15,6 +15,7 @@
 #include "UI/Bridge/DeviceModel.h"
 #include "UI/Bridge/InputCaptureModel.h"
 #include "UI/Bridge/InputStateModel.h"
+#include "UI/Bridge/MappingRuleModel.h"
 
 namespace MappyZ
 {
@@ -37,6 +38,7 @@ class ZAppController final : public QObject
     Q_PROPERTY(ZDeviceModel* deviceModel READ DeviceModel CONSTANT)
     Q_PROPERTY(ZInputStateModel* inputStateModel READ InputStateModel CONSTANT)
     Q_PROPERTY(ZInputCaptureModel* inputCapture READ InputCapture CONSTANT)
+    Q_PROPERTY(ZMappingRuleModel* mappingRuleModel READ MappingRuleModel CONSTANT)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -65,6 +67,7 @@ public:
     NODISCARD ZDeviceModel* DeviceModel();
     NODISCARD ZInputStateModel* InputStateModel();
     NODISCARD ZInputCaptureModel* InputCapture();
+    NODISCARD ZMappingRuleModel* MappingRuleModel();
 
     // ── QML invokable ──
 
@@ -74,6 +77,7 @@ public:
     Q_INVOKABLE void pumpOnce();
     Q_INVOKABLE void startPumpTimer(int intervalMs = 16);
     Q_INVOKABLE void stopPumpTimer();
+    Q_INVOKABLE bool applySelectedBinding(QString controlId, QString actionText);
 
 signals:
     void runtimeStatusChanged();
@@ -92,6 +96,16 @@ private:
     // 从 Bootstrap 刷新设备快照到 DeviceModel
     void RefreshDeviceModelFromBootstrap();
 
+    // 从 RuntimeHost profile 快照刷新 MappingRuleModel
+    void RefreshMappingRuleModelFromHost();
+
+    // 解析 actionText 构造 SAction，失败返回 None 类型
+    static SAction ParseActionText(const QString& ActionText);
+
+    // 根据 controlId 推断输入控件类型和事件类型，不支持的控件返回 false
+    static bool InferInputFromControlId(
+        const StdString& ControlId, SMappingInput& OutInput);
+
     ZApplicationBootstrap Bootstrap;
     QTimer PumpTimer;
 
@@ -109,6 +123,9 @@ private:
 
     // 输入捕获状态模型，供 QML 绑定
     ZInputCaptureModel InputCaptureInstance;
+
+    // 映射规则列表模型，供 QML 绑定
+    ZMappingRuleModel MappingRuleModelInstance;
 };
 
 }  // namespace MappyZ

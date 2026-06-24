@@ -206,6 +206,7 @@ add_library(MappyZUIBridge STATIC
     source/UI/Bridge/DeviceModel.cpp
     source/UI/Bridge/InputCaptureModel.cpp
     source/UI/Bridge/InputStateModel.cpp
+    source/UI/Bridge/MappingRuleModel.cpp
 )
 
 target_link_libraries(MappyZUIBridge
@@ -471,6 +472,7 @@ if(BUILD_TESTING)
         tests/UI/Bridge/DeviceModelTests.cpp
         tests/UI/Bridge/InputCaptureModelTests.cpp
         tests/UI/Bridge/InputStateModelTests.cpp
+        tests/UI/Bridge/MappingRuleModelTests.cpp
     )
 
     target_link_libraries(MappyZUIBridgeTests

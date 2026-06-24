@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <utility>
 
+#include "Core/ControlId.h"
+
 namespace MappyZ
 {
 
@@ -116,6 +118,11 @@ ZInputCaptureModel* ZAppController::InputCapture()
     return &InputCaptureInstance;
 }
 
+ZMappingRuleModel* ZAppController::MappingRuleModel()
+{
+    return &MappingRuleModelInstance;
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime(bool useNullOutput)
@@ -168,6 +175,9 @@ bool ZAppController::initializeRuntime(bool useNullOutput)
 
     // 初始化后立即刷新设备快照
     RefreshDeviceModelFromBootstrap();
+
+    // 初始化后刷新映射规则模型
+    RefreshMappingRuleModelFromHost();
 
     emit runtimeStatusChanged();
     return true;
@@ -278,6 +288,199 @@ QString ZAppController::OutputStateToString(EOutputBackendState State)
 void ZAppController::RefreshDeviceModelFromBootstrap()
 {
     DeviceModelInstance.ReplaceDevices(Bootstrap.ListInputDevices());
+}
+
+void ZAppController::RefreshMappingRuleModelFromHost()
+{
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        return;
+    }
+
+    auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+    MappingRuleModelInstance.ReplaceRules(std::move(Profile.Rules));
+}
+
+// ── applySelectedBinding ──
+
+bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
+{
+    // 空 controlId 校验
+    if (controlId.isEmpty())
+    {
+        auto Message = QStringLiteral("绑定失败: controlId 为空");
+        std::fprintf(stderr, "[AppController] 错误: %s\n",
+            Message.toUtf8().constData());
+        emit runtimeError(Message);
+        return false;
+    }
+
+    // 空 actionText 校验
+    if (actionText.isEmpty())
+    {
+        auto Message = QStringLiteral("绑定失败: actionText 为空");
+        std::fprintf(stderr, "[AppController] 错误: %s\n",
+            Message.toUtf8().constData());
+        emit runtimeError(Message);
+        return false;
+    }
+
+    // Runtime 必须已 initialize
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        auto Message = QStringLiteral("绑定失败: 运行时未初始化");
+        std::fprintf(stderr, "[AppController] 错误: %s\n",
+            Message.toUtf8().constData());
+        emit runtimeError(Message);
+        return false;
+    }
+
+    // 解析 actionText 为 SAction
+    SAction Action = ParseActionText(actionText);
+    if (Action.Type == EActionType::None)
+    {
+        auto Message = QStringLiteral("绑定失败: 无法解析 action \"%1\"").arg(actionText);
+        std::fprintf(stderr, "[AppController] 错误: %s\n",
+            Message.toUtf8().constData());
+        emit runtimeError(Message);
+        return false;
+    }
+
+    // 推断输入控件类型
+    StdString ControlIdStd = controlId.toStdString();
+    SMappingInput Input;
+    if (!InferInputFromControlId(ControlIdStd, Input))
+    {
+        auto Message = QStringLiteral("绑定失败: 不支持的控件 \"%1\"").arg(controlId);
+        std::fprintf(stderr, "[AppController] 错误: %s\n",
+            Message.toUtf8().constData());
+        emit runtimeError(Message);
+        return false;
+    }
+
+    // 构造规则
+    SMappingRule Rule;
+    Rule.Id = ControlIdStd;
+    Rule.DisplayName = ControlIdStd;
+    Rule.bEnabled = true;
+    Rule.Input = std::move(Input);
+    Rule.Output.Action = std::move(Action);
+    Rule.Output.Mode = EMappingActionMode::PressRelease;
+    Rule.Output.Sensitivity = 1.0f;
+
+    // 获取当前 profile 快照，按 Input.ControlId 替换或追加
+    auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+
+    bool bReplaced = false;
+    for (auto& Existing : Profile.Rules)
+    {
+        if (Existing.Input.ControlId == ControlIdStd)
+        {
+            Existing = std::move(Rule);
+            bReplaced = true;
+            break;
+        }
+    }
+    if (!bReplaced)
+    {
+        Profile.Rules.push_back(std::move(Rule));
+    }
+
+    // 写回 RuntimeHost
+    Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(Profile));
+
+    // 刷新 UI model
+    RefreshMappingRuleModelFromHost();
+
+    return true;
+}
+
+// ── actionText 解析 ──
+
+SAction ZAppController::ParseActionText(const QString& ActionText)
+{
+    if (ActionText == QStringLiteral("Keyboard: Space"))
+    {
+        SAction Action;
+        Action.Type = EActionType::KeyboardKey;
+        Action.Payload = SKeyboardAction{.Key = "Space", .bPressed = true};
+        return Action;
+    }
+
+    if (ActionText == QStringLiteral("Mouse: Left Click"))
+    {
+        SAction Action;
+        Action.Type = EActionType::MouseButton;
+        Action.Payload = SMouseButtonAction{.Button = 0, .bPressed = true};
+        return Action;
+    }
+
+    return SAction{};
+}
+
+// ── controlId 到输入类型推断 ──
+
+bool ZAppController::InferInputFromControlId(
+    const StdString& ControlId, SMappingInput& OutInput)
+{
+    OutInput.ControlId = ControlId;
+
+    // Axis2D 暂不支持创建
+    if (ControlId == MappyZ::ControlId::LeftStick
+        || ControlId == MappyZ::ControlId::RightStick)
+    {
+        return false;
+    }
+
+    // Trigger
+    if (ControlId == MappyZ::ControlId::LeftTrigger
+        || ControlId == MappyZ::ControlId::RightTrigger)
+    {
+        OutInput.ControlType = EInputControlType::Trigger;
+        OutInput.EventType = EInputEventType::Changed;
+        OutInput.Threshold = 0.5f;
+        OutInput.Deadzone = 0.0f;
+        return true;
+    }
+
+    // D-Pad (Hat)
+    if (ControlId == MappyZ::ControlId::DpadUp
+        || ControlId == MappyZ::ControlId::DpadDown
+        || ControlId == MappyZ::ControlId::DpadLeft
+        || ControlId == MappyZ::ControlId::DpadRight)
+    {
+        OutInput.ControlType = EInputControlType::Hat;
+        OutInput.EventType = EInputEventType::Pressed;
+        OutInput.Threshold = 0.5f;
+        OutInput.Deadzone = 0.0f;
+        return true;
+    }
+
+    // Button 白名单：面板按钮、功能键、肩键、摇杆按下
+    if (ControlId == MappyZ::ControlId::ButtonSouth
+        || ControlId == MappyZ::ControlId::ButtonEast
+        || ControlId == MappyZ::ControlId::ButtonWest
+        || ControlId == MappyZ::ControlId::ButtonNorth
+        || ControlId == MappyZ::ControlId::ButtonStart
+        || ControlId == MappyZ::ControlId::ButtonBack
+        || ControlId == MappyZ::ControlId::ButtonGuide
+        || ControlId == MappyZ::ControlId::LeftShoulder
+        || ControlId == MappyZ::ControlId::RightShoulder
+        || ControlId == MappyZ::ControlId::LeftStickButton
+        || ControlId == MappyZ::ControlId::RightStickButton)
+    {
+        OutInput.ControlType = EInputControlType::Button;
+        OutInput.EventType = EInputEventType::Pressed;
+        OutInput.Threshold = 0.5f;
+        OutInput.Deadzone = 0.0f;
+        return true;
+    }
+
+    return false;
 }
 
 }  // namespace MappyZ
