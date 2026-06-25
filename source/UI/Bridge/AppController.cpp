@@ -162,6 +162,11 @@ ZLogModel* ZAppController::LogModel()
     return &LogModelInstance;
 }
 
+ZActionCatalogModel* ZAppController::ActionCatalogModel()
+{
+    return &ActionCatalogModelInstance;
+}
+
 QString ZAppController::ActiveProfileName() const
 {
     auto Status = Bootstrap.GetStatus();
@@ -688,7 +693,8 @@ QString ZAppController::DefaultProfilePath() const
 
 // ── applySelectedBinding ──
 
-bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
+bool ZAppController::applySelectedBinding(
+    QString controlId, QString actionKind, QString actionValue)
 {
     // 空 controlId 校验
     if (controlId.isEmpty())
@@ -697,10 +703,10 @@ bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
         return false;
     }
 
-    // 空 actionText 校验
-    if (actionText.isEmpty())
+    // 空 actionKind / actionValue 校验
+    if (actionKind.isEmpty() || actionValue.isEmpty())
     {
-        EmitRuntimeError(QStringLiteral("Apply failed: actionText is empty"));
+        EmitRuntimeError(QStringLiteral("Apply failed: actionKind or actionValue is empty"));
         return false;
     }
 
@@ -713,12 +719,53 @@ bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
         return false;
     }
 
-    // 解析 actionText 为 SAction
-    SAction Action = ParseActionText(actionText);
-    if (Action.Type == EActionType::None)
+    // 根据 actionKind + actionValue 构造 SAction
+    SAction Action;
+
+    if (actionKind == QStringLiteral("Keyboard"))
+    {
+        if (!ActionCatalogModelInstance.Contains(actionKind, actionValue))
+        {
+            EmitRuntimeError(
+                QStringLiteral("Apply failed: unknown keyboard key \"%1\"")
+                    .arg(actionValue));
+            return false;
+        }
+
+        Action.Type = EActionType::KeyboardKey;
+        Action.Payload = SKeyboardAction{
+            .Key = actionValue.toStdString(), .bPressed = true};
+    }
+    else if (actionKind == QStringLiteral("MouseButton"))
+    {
+        int ButtonIndex = -1;
+        if (actionValue == QStringLiteral("Left"))
+        {
+            ButtonIndex = 0;
+        }
+        else if (actionValue == QStringLiteral("Right"))
+        {
+            ButtonIndex = 1;
+        }
+        else if (actionValue == QStringLiteral("Middle"))
+        {
+            ButtonIndex = 2;
+        }
+        else
+        {
+            EmitRuntimeError(
+                QStringLiteral("Apply failed: unknown mouse button \"%1\"")
+                    .arg(actionValue));
+            return false;
+        }
+
+        Action.Type = EActionType::MouseButton;
+        Action.Payload = SMouseButtonAction{.Button = ButtonIndex, .bPressed = true};
+    }
+    else
     {
         EmitRuntimeError(
-            QStringLiteral("Apply failed: cannot parse action \"%1\"").arg(actionText));
+            QStringLiteral("Apply failed: unknown actionKind \"%1\"").arg(actionKind));
         return false;
     }
 
@@ -767,31 +814,9 @@ bool ZAppController::applySelectedBinding(QString controlId, QString actionText)
     RefreshMappingRuleModelFromHost();
 
     AppendLog(QStringLiteral("Success"),
-        QStringLiteral("Applied binding: %1 → %2").arg(controlId, actionText));
+        QStringLiteral("Applied binding: %1 → %2:%3")
+            .arg(controlId, actionKind, actionValue));
     return true;
-}
-
-// ── actionText 解析 ──
-
-SAction ZAppController::ParseActionText(const QString& ActionText)
-{
-    if (ActionText == QStringLiteral("Keyboard: Space"))
-    {
-        SAction Action;
-        Action.Type = EActionType::KeyboardKey;
-        Action.Payload = SKeyboardAction{.Key = "Space", .bPressed = true};
-        return Action;
-    }
-
-    if (ActionText == QStringLiteral("Mouse: Left Click"))
-    {
-        SAction Action;
-        Action.Type = EActionType::MouseButton;
-        Action.Payload = SMouseButtonAction{.Button = 0, .bPressed = true};
-        return Action;
-    }
-
-    return SAction{};
 }
 
 // ── controlId 到输入类型推断 ──

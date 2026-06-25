@@ -22,7 +22,6 @@ Window {
     property string selectedDevice: ""
     property string selectedDeviceDisplayName: ""
     property string selectedControl: "button_south"
-    property string selectedAction: "Keyboard: Space"
     property string latestControlForSelectedDevice: ""
 
     // ── 设备生命周期 signal 驱动设备选择 ──
@@ -207,7 +206,6 @@ Window {
         appController: root._appController
         selectedDevice: root.selectedDevice
         selectedControl: root.selectedControl
-        selectedAction: root.selectedAction
         anchors.right: parent.right
         anchors.rightMargin: 12
         anchors.top: devicePanel.top
@@ -215,9 +213,6 @@ Window {
         width: 300
 
         onClearControlRequested: root.selectedControl = ""
-        onSelectedActionChangedByUi: function(actionText) {
-            root.selectedAction = actionText
-        }
     }
 
     EventLogPanel {

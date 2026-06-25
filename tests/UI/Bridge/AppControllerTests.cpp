@@ -20,6 +20,7 @@
 #include "UI/Bridge/DeviceModel.h"
 #include "UI/Bridge/InputCaptureModel.h"
 #include "UI/Bridge/InputStateModel.h"
+#include "UI/Bridge/LogModel.h"
 #include "UI/Bridge/MappingRuleModel.h"
 
 using namespace MappyZ;
@@ -1025,7 +1026,7 @@ TEST_CASE("AppController applySelectedBinding Keyboard Space succeeds",
     (void)Controller.initializeRuntime(true);
     (void)Controller.startRuntime();
 
-    bool bResult = Controller.applySelectedBinding("button_south", "Keyboard: Space");
+    bool bResult = Controller.applySelectedBinding("button_south", "Keyboard", "Space");
     REQUIRE(bResult);
 
     auto* Model = Controller.MappingRuleModel();
@@ -1044,7 +1045,7 @@ TEST_CASE("AppController applySelectedBinding Mouse Left Click succeeds",
     (void)Controller.initializeRuntime(true);
     (void)Controller.startRuntime();
 
-    bool bResult = Controller.applySelectedBinding("right_trigger", "Mouse: Left Click");
+    bool bResult = Controller.applySelectedBinding("right_trigger", "MouseButton", "Left");
     REQUIRE(bResult);
 
     auto* Model = Controller.MappingRuleModel();
@@ -1062,7 +1063,7 @@ TEST_CASE("AppController applySelectedBinding rule id equals controlId",
     (void)Controller.initializeRuntime(true);
     (void)Controller.startRuntime();
 
-    Controller.applySelectedBinding("button_south", "Keyboard: Space");
+    Controller.applySelectedBinding("button_south", "Keyboard", "Space");
 
     auto* Model = Controller.MappingRuleModel();
     auto Index = Model->index(0);
@@ -1078,13 +1079,13 @@ TEST_CASE("AppController applySelectedBinding empty controlId returns false and 
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
-    bool bResult = Controller.applySelectedBinding("", "Keyboard: Space");
+    bool bResult = Controller.applySelectedBinding("", "Keyboard", "Space");
 
     REQUIRE_FALSE(bResult);
     REQUIRE(ErrorSpy.count() == 1);
 }
 
-TEST_CASE("AppController applySelectedBinding empty actionText returns false and emits error",
+TEST_CASE("AppController applySelectedBinding empty actionKind returns false and emits error",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
@@ -1093,7 +1094,7 @@ TEST_CASE("AppController applySelectedBinding empty actionText returns false and
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
-    bool bResult = Controller.applySelectedBinding("button_south", "");
+    bool bResult = Controller.applySelectedBinding("button_south", "", "Space");
 
     REQUIRE_FALSE(bResult);
     REQUIRE(ErrorSpy.count() == 1);
@@ -1106,7 +1107,7 @@ TEST_CASE("AppController applySelectedBinding before initialize returns false",
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
-    bool bResult = Controller.applySelectedBinding("button_south", "Keyboard: Space");
+    bool bResult = Controller.applySelectedBinding("button_south", "Keyboard", "Space");
 
     REQUIRE_FALSE(bResult);
     REQUIRE(ErrorSpy.count() == 1);
@@ -1119,11 +1120,11 @@ TEST_CASE("AppController applySelectedBinding same control replaces old rule",
     (void)Controller.initializeRuntime(true);
     (void)Controller.startRuntime();
 
-    Controller.applySelectedBinding("button_south", "Keyboard: Space");
+    Controller.applySelectedBinding("button_south", "Keyboard", "Space");
     REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
 
     // 同一 control 再次 apply 替换
-    Controller.applySelectedBinding("button_south", "Mouse: Left Click");
+    Controller.applySelectedBinding("button_south", "MouseButton", "Left");
     REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
 
     auto Index = Controller.MappingRuleModel()->index(0);
@@ -1142,7 +1143,7 @@ TEST_CASE("AppController applySelectedBinding Axis2D returns false and does not 
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
-    bool bResult = Controller.applySelectedBinding("left_stick", "Keyboard: Space");
+    bool bResult = Controller.applySelectedBinding("left_stick", "Keyboard", "Space");
 
     REQUIRE_FALSE(bResult);
     REQUIRE(ErrorSpy.count() == 1);
@@ -1158,7 +1159,7 @@ TEST_CASE("AppController applySelectedBinding unknown controlId returns false",
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
-    bool bResult = Controller.applySelectedBinding("unknown_control", "Keyboard: Space");
+    bool bResult = Controller.applySelectedBinding("unknown_control", "Keyboard", "Space");
 
     REQUIRE_FALSE(bResult);
     REQUIRE(ErrorSpy.count() == 1);
@@ -1172,7 +1173,7 @@ TEST_CASE("AppController applySelectedBinding updates RuntimeHost profile snapsh
     (void)Controller.initializeRuntime(true);
     (void)Controller.startRuntime();
 
-    Controller.applySelectedBinding("button_south", "Keyboard: Space");
+    Controller.applySelectedBinding("button_south", "Keyboard", "Space");
 
     // 直接验证内部 snapshot
     auto Snapshot = Controller.MappingRuleModel()->ListRulesSnapshot();
@@ -1197,7 +1198,7 @@ TEST_CASE("AppController applySelectedBinding then pump dispatches mapped input"
     (void)Controller.startRuntime();
 
     // 创建规则
-    Controller.applySelectedBinding("button_south", "Keyboard: Space");
+    Controller.applySelectedBinding("button_south", "Keyboard", "Space");
 
     // 注入匹配事件
     RawInputBackend->EmitInput(
@@ -1206,6 +1207,151 @@ TEST_CASE("AppController applySelectedBinding then pump dispatches mapped input"
 
     REQUIRE(Controller.LastMappedInputCount() == 1);
     REQUIRE(Controller.LastDispatchedInputCount() == 1);
+}
+
+// ══════════════════════════════════════════════════════════════
+// P6: actionCatalogModel 属性 + 结构化 apply 测试
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController actionCatalogModel is non-null and has rows",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    auto* Catalog = Controller.ActionCatalogModel();
+    REQUIRE(Catalog != nullptr);
+    REQUIRE(Catalog->rowCount() > 0);
+}
+
+TEST_CASE("AppController applySelectedBinding Keyboard A writes correct action",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    bool bResult = Controller.applySelectedBinding("button_south", "Keyboard", "A");
+    REQUIRE(bResult);
+
+    auto* Model = Controller.MappingRuleModel();
+    REQUIRE(Model->rowCount() == 1);
+
+    auto Snapshot = Model->ListRulesSnapshot();
+    REQUIRE(Snapshot[0].Output.Action.Type == EActionType::KeyboardKey);
+    auto& Keyboard = std::get<SKeyboardAction>(Snapshot[0].Output.Action.Payload);
+    REQUIRE(Keyboard.Key == "A");
+    REQUIRE(Keyboard.bPressed == true);
+}
+
+TEST_CASE("AppController applySelectedBinding MouseButton Left writes Button 0",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    bool bResult = Controller.applySelectedBinding("button_south", "MouseButton", "Left");
+    REQUIRE(bResult);
+
+    auto Snapshot = Controller.MappingRuleModel()->ListRulesSnapshot();
+    REQUIRE(Snapshot[0].Output.Action.Type == EActionType::MouseButton);
+    auto& Mouse = std::get<SMouseButtonAction>(Snapshot[0].Output.Action.Payload);
+    REQUIRE(Mouse.Button == 0);
+}
+
+TEST_CASE("AppController applySelectedBinding MouseButton Right writes Button 1",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    bool bResult = Controller.applySelectedBinding("button_south", "MouseButton", "Right");
+    REQUIRE(bResult);
+
+    auto Snapshot = Controller.MappingRuleModel()->ListRulesSnapshot();
+    REQUIRE(Snapshot[0].Output.Action.Type == EActionType::MouseButton);
+    auto& Mouse = std::get<SMouseButtonAction>(Snapshot[0].Output.Action.Payload);
+    REQUIRE(Mouse.Button == 1);
+}
+
+TEST_CASE("AppController applySelectedBinding MouseButton Middle writes Button 2",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    bool bResult = Controller.applySelectedBinding("button_south", "MouseButton", "Middle");
+    REQUIRE(bResult);
+
+    auto Snapshot = Controller.MappingRuleModel()->ListRulesSnapshot();
+    REQUIRE(Snapshot[0].Output.Action.Type == EActionType::MouseButton);
+    auto& Mouse = std::get<SMouseButtonAction>(Snapshot[0].Output.Action.Payload);
+    REQUIRE(Mouse.Button == 2);
+}
+
+TEST_CASE("AppController applySelectedBinding unknown actionKind returns false",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.applySelectedBinding("button_south", "UnknownKind", "Space");
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController applySelectedBinding unknown mouse button value returns false",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.applySelectedBinding(
+        "button_south", "MouseButton", "UnknownButton");
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController applySelectedBinding unknown keyboard value returns false",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.applySelectedBinding(
+        "button_south", "Keyboard", "NotAKey");
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController applySelectedBinding success and failure log semantics preserved",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    auto* Log = Controller.LogModel();
+
+    // 成功 apply
+    Controller.applySelectedBinding("button_south", "Keyboard", "Space");
+    auto SuccessLevel = Log->data(
+        Log->index(Log->rowCount() - 1), ZLogModel::LevelRole).toString();
+    CHECK(SuccessLevel == "Success");
+
+    // 失败 apply（未知 kind）
+    Controller.applySelectedBinding("button_south", "BadKind", "X");
+    auto ErrorLevel = Log->data(
+        Log->index(Log->rowCount() - 1), ZLogModel::LevelRole).toString();
+    CHECK(ErrorLevel == "Error");
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1376,7 +1522,7 @@ TEST_CASE("AppController apply binding then save writes mapping rule with expect
     (void)Controller.initializeRuntime(true);
 
     Controller.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
 
     auto TempPath = std::filesystem::temp_directory_path()
         / "mappyz_save_test_binding" / "profile.json";
@@ -1594,7 +1740,7 @@ TEST_CASE("AppController loadProfile with explicit path loads saved profile and 
         ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
         (void)Saver.initializeRuntime(true);
         Saver.applySelectedBinding(
-            QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+            QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
         Saver.saveActiveProfile(PathStr);
     }
 
@@ -1704,7 +1850,7 @@ TEST_CASE("AppController loadProfile failure does not clear existing MappingRule
 
     // 先 apply 一条规则
     Controller.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
     REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
 
     // 加载不存在的显式路径
@@ -1779,7 +1925,7 @@ TEST_CASE("AppController default path save then no-arg load round-trips",
     ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
     (void)Saver.initializeRuntime(true);
     Saver.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
     Saver.saveActiveProfile();
     auto SavedPath = Saver.ProfilePath();
 
@@ -1920,7 +2066,7 @@ TEST_CASE("AppController setRealOutputEnabled preserves active profile rules",
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
     (void)Controller.initializeRuntime(true);
     Controller.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
     REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
 
     (void)Controller.setRealOutputEnabled(true);
@@ -1990,9 +2136,9 @@ TEST_CASE("AppController setRealOutputEnabled refreshes mappingRuleModel consist
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
     (void)Controller.initializeRuntime(true);
     Controller.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
     Controller.applySelectedBinding(
-        QStringLiteral("button_east"), QStringLiteral("Mouse: Left Click"));
+        QStringLiteral("button_east"), QStringLiteral("MouseButton"), QStringLiteral("Left"));
     REQUIRE(Controller.MappingRuleModel()->rowCount() == 2);
 
     (void)Controller.setRealOutputEnabled(true);

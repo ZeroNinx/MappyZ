@@ -202,6 +202,7 @@ endif()
 # ── UI Bridge 模块 ──
 
 add_library(MappyZUIBridge STATIC
+    source/UI/Bridge/ActionCatalogModel.cpp
     source/UI/Bridge/AppController.cpp
     source/UI/Bridge/DeviceModel.cpp
     source/UI/Bridge/InputCaptureModel.cpp
@@ -477,6 +478,7 @@ if(BUILD_TESTING)
 
     add_executable(MappyZUIBridgeTests
         tests/UI/Bridge/Main.cpp
+        tests/UI/Bridge/ActionCatalogModelTests.cpp
         tests/UI/Bridge/AppControllerTests.cpp
         tests/UI/Bridge/DeviceModelTests.cpp
         tests/UI/Bridge/InputCaptureModelTests.cpp

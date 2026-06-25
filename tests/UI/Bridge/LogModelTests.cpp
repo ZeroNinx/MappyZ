@@ -223,7 +223,7 @@ TEST_CASE("AppController apply success writes Success log entry",
     auto* Log = Controller.LogModel();
 
     int CountBefore = Log->rowCount();
-    bool bResult = Controller.applySelectedBinding("button_south", "Keyboard: Space");
+    bool bResult = Controller.applySelectedBinding("button_south", "Keyboard", "Space");
 
     REQUIRE(bResult);
     REQUIRE(Log->rowCount() > CountBefore);
@@ -244,7 +244,7 @@ TEST_CASE("AppController apply failure writes Error log entry",
     auto* Log = Controller.LogModel();
 
     int CountBefore = Log->rowCount();
-    bool bResult = Controller.applySelectedBinding("", "Keyboard: Space");
+    bool bResult = Controller.applySelectedBinding("", "Keyboard", "Space");
 
     REQUIRE_FALSE(bResult);
     REQUIRE(Log->rowCount() > CountBefore);

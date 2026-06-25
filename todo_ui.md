@@ -185,24 +185,21 @@ UI 侧验收：
 
 目标：Binding Editor 不再只有两个硬编码输出动作。
 
-- [ ] 保留当前简单 UI，不引入复杂弹窗。
-- [ ] 先扩展 UI 选择能力，再重构 API。
-- [ ] `applySelectedBinding()` 从字符串解析改结构化参数的工作推迟到本模块实现时一起做。
-- [ ] 增加 action type 选择：
-  - [ ] Keyboard key。
-  - [ ] Mouse button。
-  - [ ] Mouse move preset 后续再做。
-- [ ] Keyboard 支持常用键：
-  - [ ] Space、Enter、Escape、Tab。
-  - [ ] A-Z。
-  - [ ] 0-9。
-  - [ ] Arrow keys。
-- [ ] Mouse 支持 Left / Right / Middle。
-- [ ] 增加测试：
-  - [ ] 常用 keyboard key 能生成正确 `SKeyboardAction`。
-  - [ ] mouse button 能生成正确 `SMouseButtonAction`。
-  - [ ] 未知 key 被拒绝且不修改 profile。
-  - [ ] 结构化参数不会依赖 QML 展示字符串。
+详细设计见 `todo.md` 的 `Action Picker`。这里不重复完整 API 签名，避免两份规划分叉。
+
+UI 侧验收：
+
+- [x] 保留当前简单 UI，不引入复杂弹窗。
+- [x] 使用 `appController.actionCatalogModel` 渲染可选 action。
+- [x] action 选择状态由 `BindingEditor` 内部管理；`Main.qml` 不再持有 `selectedAction: "Keyboard: Space"` root property。
+- [x] 使用 flat list 下拉选择，不做分组 header；`category` role 暂不驱动 UI 分组。
+- [x] `Action output` 显示选中项的展示文案。
+- [x] Apply 调用结构化参数，不再传 `"Keyboard: Space"` 这种展示字符串。
+- [x] 默认选中 `Keyboard / Space`，保持当前体验。
+- [x] Keyboard 支持 Space、Enter、Escape、Tab、A-Z、0-9、Arrow keys。
+- [x] Mouse 支持 Left / Right / Middle。
+- [x] Current mappings 展示不退化。
+- [x] QML smoke 无 binding/import/property warning。
 
 ## Priority 7: Mapping Rule Editing
 
@@ -237,6 +234,6 @@ UI 侧验收：
 - [x] 5. Save Active Profile（详见 `todo.md`）。
 - [x] 6. Load Saved Profile。
 - [x] 7. Real Output Mode。
-- [ ] 8. Action Picker。
+- [x] 8. Action Picker。
 - [ ] 9. Mapping Rule Editing。
 

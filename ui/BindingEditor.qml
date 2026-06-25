@@ -1,22 +1,31 @@
 import QtQuick
+import QtQuick.Controls.Basic
 
 // 绑定编辑面板：控件选择、Capture、Action 输出和 mapping 列表
-// P0：Apply 前置检查、操作反馈、空状态提示
+// P6：使用 actionCatalogModel 下拉选择，结构化 action apply
 Panel {
     id: bindingEditor
 
     required property var appController
     required property string selectedDevice
     required property string selectedControl
-    required property string selectedAction
 
     heading: "Binding Editor"
 
     // Clear 按钮触发，父级应清空 selectedControl
     signal clearControlRequested()
 
-    // Keyboard / Mouse 按钮触发，父级应更新 selectedAction
-    signal selectedActionChangedByUi(string actionText)
+    // action 选择状态由 BindingEditor 内部管理
+    property int _selectedActionIndex: 0
+
+    readonly property string _selectedActionKind: appController && appController.actionCatalogModel
+        ? appController.actionCatalogModel.kindAt(_selectedActionIndex) : ""
+
+    readonly property string _selectedActionValue: appController && appController.actionCatalogModel
+        ? appController.actionCatalogModel.valueAt(_selectedActionIndex) : ""
+
+    readonly property string _selectedActionDisplayText: appController && appController.actionCatalogModel
+        ? appController.actionCatalogModel.displayTextAt(_selectedActionIndex) : ""
 
     readonly property bool captureMode: appController
         ? appController.inputCapture.active : false
@@ -36,7 +45,7 @@ Panel {
     readonly property bool _canApply: _runtimeAllowsApply
         && selectedDevice !== ""
         && selectedControl !== ""
-        && selectedAction !== ""
+        && _selectedActionKind !== ""
         && !captureMode
 
     // 当前最优先的禁用原因提示（空字符串表示无禁用）
@@ -46,7 +55,7 @@ Panel {
         if (!_runtimeAllowsApply) return "Initialize runtime first"
         if (captureMode) return ""
         if (selectedControl === "") return "Select an input first"
-        if (selectedAction === "") return "Select an action first"
+        if (_selectedActionKind === "") return "Select an action first"
         return ""
     }
 
@@ -124,40 +133,97 @@ Panel {
                 text: "Action output"
             }
 
-            Rectangle {
+            // action 选择下拉
+            ComboBox {
+                id: actionComboBox
+
                 width: parent.width
                 height: 44
-                radius: 4
-                color: "#1f1f1f"
-                border.color: bindingEditor.theme.border
 
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
+                model: bindingEditor.appController
+                    ? bindingEditor.appController.actionCatalogModel : null
+
+                textRole: "displayText"
+                currentIndex: bindingEditor._selectedActionIndex
+
+                onActivated: function(index) {
+                    bindingEditor._selectedActionIndex = index
+                }
+
+                contentItem: Text {
+                    leftPadding: 10
+                    rightPadding: actionComboBox.indicator.width + 10
+                    text: actionComboBox.displayText
+                    color: bindingEditor.theme.text
+                    font.pixelSize: 13
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+
+                background: Rectangle {
+                    radius: 4
+                    color: "#1f1f1f"
+                    border.color: actionComboBox.pressed
+                        ? bindingEditor.theme.accent : bindingEditor.theme.border
+                }
+
+                indicator: Text {
                     anchors.right: parent.right
                     anchors.rightMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    text: bindingEditor.selectedAction
-                    color: bindingEditor.theme.text
-                    font.pixelSize: 13
-                    elide: Text.ElideRight
+                    text: "▼"
+                    color: bindingEditor.theme.muted
+                    font.pixelSize: 10
+                }
+
+                popup: Popup {
+                    y: actionComboBox.height
+                    width: actionComboBox.width
+                    implicitHeight: Math.min(contentItem.implicitHeight + 2, 300)
+                    padding: 1
+
+                    background: Rectangle {
+                        color: "#1f1f1f"
+                        border.color: bindingEditor.theme.border
+                        radius: 4
+                    }
+
+                    contentItem: ListView {
+                        clip: true
+                        implicitHeight: contentHeight
+                        model: actionComboBox.popup.visible
+                            ? actionComboBox.delegateModel : null
+                        currentIndex: actionComboBox.highlightedIndex
+                        ScrollBar.vertical: ScrollBar {}
+                    }
+                }
+
+                delegate: ItemDelegate {
+                    required property int index
+                    required property string displayText
+
+                    width: actionComboBox.width
+                    height: 36
+
+                    contentItem: Text {
+                        text: displayText
+                        color: highlighted
+                            ? bindingEditor.theme.accent : bindingEditor.theme.text
+                        font.pixelSize: 13
+                        verticalAlignment: Text.AlignVCenter
+                        leftPadding: 10
+                    }
+
+                    highlighted: actionComboBox.highlightedIndex === index
+
+                    background: Rectangle {
+                        color: highlighted ? "#2a2a2a" : "transparent"
+                    }
                 }
             }
 
             Row {
                 spacing: 8
-
-                ActionButton {
-                    theme: bindingEditor.theme
-                    label: "Keyboard"
-                    onClicked: bindingEditor.selectedActionChangedByUi("Keyboard: Space")
-                }
-
-                ActionButton {
-                    theme: bindingEditor.theme
-                    label: "Mouse"
-                    onClicked: bindingEditor.selectedActionChangedByUi("Mouse: Left Click")
-                }
 
                 ActionButton {
                     theme: bindingEditor.theme
@@ -168,7 +234,8 @@ Panel {
                         if (!bindingEditor.appController) return
                         var success = bindingEditor.appController.applySelectedBinding(
                             bindingEditor.selectedControl,
-                            bindingEditor.selectedAction)
+                            bindingEditor._selectedActionKind,
+                            bindingEditor._selectedActionValue)
                         if (success) {
                             var state = bindingEditor.appController.runtimeState
                             if (state === "running") {

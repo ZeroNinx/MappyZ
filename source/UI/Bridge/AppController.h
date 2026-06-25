@@ -15,6 +15,7 @@
 #include "UI/Bridge/DeviceModel.h"
 #include "UI/Bridge/InputCaptureModel.h"
 #include "UI/Bridge/InputStateModel.h"
+#include "UI/Bridge/ActionCatalogModel.h"
 #include "UI/Bridge/LogModel.h"
 #include "UI/Bridge/MappingRuleModel.h"
 
@@ -41,6 +42,7 @@ class ZAppController final : public QObject
     Q_PROPERTY(ZInputCaptureModel* inputCapture READ InputCapture CONSTANT)
     Q_PROPERTY(ZMappingRuleModel* mappingRuleModel READ MappingRuleModel CONSTANT)
     Q_PROPERTY(ZLogModel* logModel READ LogModel CONSTANT)
+    Q_PROPERTY(ZActionCatalogModel* actionCatalogModel READ ActionCatalogModel CONSTANT)
     Q_PROPERTY(QString activeProfileName READ ActiveProfileName NOTIFY runtimeStatusChanged)
     Q_PROPERTY(QString outputDisplayText READ OutputDisplayText NOTIFY runtimeStatusChanged)
     Q_PROPERTY(QString profilePath READ ProfilePath NOTIFY profileStatusChanged)
@@ -77,6 +79,7 @@ public:
     NODISCARD ZInputCaptureModel* InputCapture();
     NODISCARD ZMappingRuleModel* MappingRuleModel();
     NODISCARD ZLogModel* LogModel();
+    NODISCARD ZActionCatalogModel* ActionCatalogModel();
     NODISCARD QString ActiveProfileName() const;
     NODISCARD QString OutputDisplayText() const;
     NODISCARD QString ProfilePath() const;
@@ -92,7 +95,8 @@ public:
     Q_INVOKABLE void pumpOnce();
     Q_INVOKABLE void startPumpTimer(int intervalMs = 16);
     Q_INVOKABLE void stopPumpTimer();
-    Q_INVOKABLE bool applySelectedBinding(QString controlId, QString actionText);
+    Q_INVOKABLE bool applySelectedBinding(
+        QString controlId, QString actionKind, QString actionValue);
     Q_INVOKABLE bool saveActiveProfile(QString profilePath = QString());
     Q_INVOKABLE bool loadProfile(QString profilePath = QString());
     Q_INVOKABLE bool setRealOutputEnabled(bool enabled);
@@ -131,9 +135,6 @@ private:
     // 统一错误处理：写 Error 日志 + stderr + emit runtimeError
     void EmitRuntimeError(const QString& Message);
 
-    // 解析 actionText 构造 SAction，失败返回 None 类型
-    static SAction ParseActionText(const QString& ActionText);
-
     // 根据 controlId 推断输入控件类型和事件类型，不支持的控件返回 false
     static bool InferInputFromControlId(
         const StdString& ControlId, SMappingInput& OutInput);
@@ -164,6 +165,9 @@ private:
 
     // 映射规则列表模型，供 QML 绑定
     ZMappingRuleModel MappingRuleModelInstance;
+
+    // 输出动作目录模型，供 QML BindingEditor action 选择绑定
+    ZActionCatalogModel ActionCatalogModelInstance;
 
     // 事件日志模型，供 QML EventLogPanel 绑定
     ZLogModel LogModelInstance;
