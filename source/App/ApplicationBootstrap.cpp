@@ -42,11 +42,11 @@ static TResult<TUniquePtr<IOutputBackend>> DefaultOutputBackendFactory()
     return TResult<TUniquePtr<IOutputBackend>>::Ok(
         std::make_unique<ZWindowsSendInputBackend>());
 #else
-    // 无真实输出后端可用，回退到 NullOutputBackend
-    std::fprintf(stderr,
-        "[ApplicationBootstrap] 提示: 无真实输出后端可用，回退到 NullOutputBackend\n");
-    return TResult<TUniquePtr<IOutputBackend>>::Ok(
-        std::make_unique<ZNullOutputBackend>());
+    // 无真实输出后端可用，返回错误而非静默 fallback。
+    // NullOutput 回退策略由上层 AppController 显式控制。
+    return TResult<TUniquePtr<IOutputBackend>>::Err(
+        MakeError(EErrorCode::Unknown,
+            "当前构建没有可用的真实输出后端（未启用 Windows SendInput）"));
 #endif
 }
 
@@ -127,35 +127,38 @@ TResult<void> ZApplicationBootstrap::Initialize(SApplicationBootstrapOptions Opt
     // 5. 构造 RuntimeHost（stopped 状态）
     RuntimeHost = std::make_unique<ZRuntimeHost>(*InputBackend, *OutputBackend);
 
-    // 5. 加载 profile
-    if (Options.ProfilePath.empty())
+    // 5. 加载 profile（bSkipProfileSetup 时跳过，由调用方后续 ReplaceProfile）
+    if (!Options.bSkipProfileSetup)
     {
-        // 使用默认空 profile
-        SMappingProfile DefaultProfile;
-        DefaultProfile.Name = "Default";
-        RuntimeHost->ReplaceProfile(std::move(DefaultProfile));
-    }
-    else
-    {
-        ZProfileManager ProfileManager;
-        auto ProfileResult = ProfileManager.LoadProfile(Options.ProfilePath);
-        if (!ProfileResult)
+        if (Options.ProfilePath.empty())
         {
-            // profile 加载失败，清理已构造的对象
-            RuntimeHost.reset();
-            InputBackend.reset();
-            OutputBackend.reset();
-
-            BootstrapState = EApplicationBootstrapState::Error;
-            BootstrapMessage = ProfileResult.Failure().Message;
-            std::fprintf(stderr,
-                "[ApplicationBootstrap] 错误: 加载 profile 失败: \"%s\" (路径: \"%s\")\n",
-                BootstrapMessage.c_str(),
-                Options.ProfilePath.string().c_str());
-            return TResult<void>::Err(std::move(ProfileResult).TakeFailure());
+            // 使用默认空 profile
+            SMappingProfile DefaultProfile;
+            DefaultProfile.Name = "Default";
+            RuntimeHost->ReplaceProfile(std::move(DefaultProfile));
         }
+        else
+        {
+            ZProfileManager ProfileManager;
+            auto ProfileResult = ProfileManager.LoadProfile(Options.ProfilePath);
+            if (!ProfileResult)
+            {
+                // profile 加载失败，清理已构造的对象
+                RuntimeHost.reset();
+                InputBackend.reset();
+                OutputBackend.reset();
 
-        RuntimeHost->ReplaceProfile(std::move(ProfileResult).TakeValue());
+                BootstrapState = EApplicationBootstrapState::Error;
+                BootstrapMessage = ProfileResult.Failure().Message;
+                std::fprintf(stderr,
+                    "[ApplicationBootstrap] 错误: 加载 profile 失败: \"%s\" (路径: \"%s\")\n",
+                    BootstrapMessage.c_str(),
+                    Options.ProfilePath.string().c_str());
+                return TResult<void>::Err(std::move(ProfileResult).TakeFailure());
+            }
+
+            RuntimeHost->ReplaceProfile(std::move(ProfileResult).TakeValue());
+        }
     }
 
     // 6. 缓存选项，更新状态
@@ -163,6 +166,25 @@ TResult<void> ZApplicationBootstrap::Initialize(SApplicationBootstrapOptions Opt
     BootstrapState = EApplicationBootstrapState::Ready;
     BootstrapMessage = "ready";
     return TResult<void>::Ok();
+}
+
+// ── Reinitialize ──
+
+TResult<void> ZApplicationBootstrap::Reinitialize(SApplicationBootstrapOptions Options)
+{
+    // 强制 teardown 现有对象，回到 Created 状态后执行标准 Initialize 流程
+    if (RuntimeHost)
+    {
+        RuntimeHost->Stop();
+        RuntimeHost.reset();
+    }
+    InputBackend.reset();
+    OutputBackend.reset();
+
+    BootstrapState = EApplicationBootstrapState::Created;
+    BootstrapMessage.clear();
+
+    return Initialize(std::move(Options));
 }
 
 // ── StartRuntime ──

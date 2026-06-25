@@ -37,6 +37,10 @@ struct SApplicationBootstrapOptions
 
     // 是否在 StartRuntime 时启用映射
     bool bEnableMapping = true;
+
+    // 跳过 profile 加载/创建，由调用方后续 ReplaceProfile()。
+    // 用于输出模式切换等场景：调用方自行保存和恢复 profile snapshot。
+    bool bSkipProfileSetup = false;
 };
 
 // 应用层 bootstrap 状态
@@ -76,6 +80,10 @@ public:
     // 初始化：创建后端、加载 profile、构造 stopped 状态的 RuntimeHost。
     // Created/Error 状态下执行完整 setup；Ready/Running 状态下幂等返回 Ok。
     NODISCARD TResult<void> Initialize(SApplicationBootstrapOptions Options = {});
+
+    // 强制重新初始化：无论当前状态都执行完整 teardown + setup。
+    // 用于输出模式切换等需要重建后端的场景。
+    NODISCARD TResult<void> Reinitialize(SApplicationBootstrapOptions Options);
 
     // 启动运行时：调用 RuntimeHost::Start()，透传 options。
     // 要求已 Initialize()，否则返回错误。

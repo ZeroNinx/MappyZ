@@ -248,27 +248,7 @@ bool ZAppController::initializeRuntime(bool useNullOutput)
     // 应用缓存的 mapping enabled 到 host，保证 stopped host 与 UI 状态一致
     Bootstrap.GetRuntimeHost().SetMappingEnabled(bCachedMappingEnabled);
 
-    // 注册设备热插拔 handler，pump 分发设备事件时自动更新 DeviceModel
-    Bootstrap.GetRuntimeHost().GetEventPump().SetDeviceConnectedHandler(
-        [this](const SDeviceInfo& Info)
-        {
-            DeviceModelInstance.AddOrUpdateDevice(Info);
-        });
-
-    Bootstrap.GetRuntimeHost().GetEventPump().SetDeviceDisconnectedHandler(
-        [this](const SDeviceId& Id)
-        {
-            DeviceModelInstance.RemoveDevice(Id);
-            InputStateModelInstance.RemoveDevice(Id);
-        });
-
-    // 注册输入事件 handler，pump 分发输入事件时自动更新 InputStateModel 和 InputCapture
-    Bootstrap.GetRuntimeHost().GetEventPump().SetInputEventHandler(
-        [this](const SInputEvent& Event)
-        {
-            InputStateModelInstance.ApplyInputEvent(Event);
-            InputCaptureInstance.HandleInputEvent(Event);
-        });
+    RegisterEventHandlers();
 
     // 初始化后立即刷新设备快照
     RefreshDeviceModelFromBootstrap();
@@ -473,6 +453,136 @@ bool ZAppController::loadProfile(QString profilePath)
     return true;
 }
 
+bool ZAppController::IsRealOutputEnabled() const
+{
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        return false;
+    }
+    return !Bootstrap.IsUsingNullOutput();
+}
+
+bool ZAppController::IsOutputModeSwitching() const
+{
+    return bOutputModeSwitching;
+}
+
+bool ZAppController::setRealOutputEnabled(bool enabled)
+{
+    // 防重入
+    if (bOutputModeSwitching)
+    {
+        return false;
+    }
+
+    // Runtime 未 initialize 时拒绝
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        EmitRuntimeError(
+            QStringLiteral("Output mode switch failed: runtime not initialized"));
+        return false;
+    }
+
+    // no-op：已处于期望模式
+    bool bCurrentlyReal = !Bootstrap.IsUsingNullOutput();
+    if (bCurrentlyReal == enabled)
+    {
+        return true;
+    }
+
+    bOutputModeSwitching = true;
+    emit outputModeChanged();
+
+    // 保存切换前状态
+    bool bWasRunning = (Status.State == EApplicationBootstrapState::Running);
+    bool bWasPumpTimerActive = PumpTimer.isActive();
+    int PumpTimerInterval = PumpTimer.interval();
+    bool bSavedMappingEnabled = bCachedMappingEnabled;
+    auto SavedProfile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+
+    // 停止 timer 和 runtime
+    stopPumpTimer();
+    Bootstrap.StopRuntime();
+
+    // 尝试 Reinitialize 到目标输出模式
+    auto ReinitResult = Bootstrap.Reinitialize({
+        .bUseNullOutput = !enabled,
+        .bEnableMapping = bSavedMappingEnabled,
+        .bSkipProfileSetup = true,
+    });
+
+    if (!ReinitResult)
+    {
+        // 目标模式失败（通常是 enabled=true 但真实输出不可用），回退到 NullOutput
+        auto FallbackResult = Bootstrap.Reinitialize({
+            .bUseNullOutput = true,
+            .bEnableMapping = bSavedMappingEnabled,
+            .bSkipProfileSetup = true,
+        });
+
+        if (FallbackResult)
+        {
+            // 恢复 profile 和运行状态，清空输入状态（后端已重建，旧状态无效）
+            Bootstrap.GetRuntimeHost().ReplaceProfile(SavedProfile);
+            Bootstrap.GetRuntimeHost().SetMappingEnabled(bSavedMappingEnabled);
+            RegisterEventHandlers();
+            RefreshDeviceModelFromBootstrap();
+            InputStateModelInstance.clear();
+            RefreshMappingRuleModelFromHost();
+
+            if (bWasRunning)
+            {
+                (void)Bootstrap.StartRuntime();
+            }
+            if (bWasPumpTimerActive)
+            {
+                startPumpTimer(PumpTimerInterval);
+            }
+        }
+
+        bOutputModeSwitching = false;
+        emit outputModeChanged();
+        emit runtimeStatusChanged();
+
+        auto ErrorMsg = QString::fromStdString(ReinitResult.Failure().Message);
+        EmitRuntimeError(
+            QStringLiteral("Real output unavailable: %1").arg(ErrorMsg));
+        return false;
+    }
+
+    // 成功：恢复 profile、mappingEnabled、event handler、model
+    Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(SavedProfile));
+    Bootstrap.GetRuntimeHost().SetMappingEnabled(bSavedMappingEnabled);
+    RegisterEventHandlers();
+    RefreshDeviceModelFromBootstrap();
+    InputStateModelInstance.clear();
+    RefreshMappingRuleModelFromHost();
+
+    // 恢复 Running 和 pump timer
+    if (bWasRunning)
+    {
+        (void)Bootstrap.StartRuntime();
+        Bootstrap.GetRuntimeHost().SetMappingEnabled(bSavedMappingEnabled);
+    }
+    if (bWasPumpTimerActive)
+    {
+        startPumpTimer(PumpTimerInterval);
+    }
+
+    bOutputModeSwitching = false;
+    emit outputModeChanged();
+    emit runtimeStatusChanged();
+
+    AppendLog(QStringLiteral("Success"),
+        enabled ? QStringLiteral("Switched to real output")
+                : QStringLiteral("Switched to null output"));
+    return true;
+}
+
 // ── 测试辅助 ──
 
 void ZAppController::ReplaceActiveProfileForTest(SMappingProfile Profile)
@@ -538,6 +648,31 @@ void ZAppController::RefreshMappingRuleModelFromHost()
 
     auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
     MappingRuleModelInstance.ReplaceRules(std::move(Profile.Rules));
+}
+
+void ZAppController::RegisterEventHandlers()
+{
+    // 设备热插拔 handler
+    Bootstrap.GetRuntimeHost().GetEventPump().SetDeviceConnectedHandler(
+        [this](const SDeviceInfo& Info)
+        {
+            DeviceModelInstance.AddOrUpdateDevice(Info);
+        });
+
+    Bootstrap.GetRuntimeHost().GetEventPump().SetDeviceDisconnectedHandler(
+        [this](const SDeviceId& Id)
+        {
+            DeviceModelInstance.RemoveDevice(Id);
+            InputStateModelInstance.RemoveDevice(Id);
+        });
+
+    // 输入事件 handler
+    Bootstrap.GetRuntimeHost().GetEventPump().SetInputEventHandler(
+        [this](const SInputEvent& Event)
+        {
+            InputStateModelInstance.ApplyInputEvent(Event);
+            InputCaptureInstance.HandleInputEvent(Event);
+        });
 }
 
 QString ZAppController::DefaultProfilePath() const

@@ -163,20 +163,23 @@ UI 侧验收：
 
 目标：在保持 NullOutput 安全默认的前提下，提供明确的真实输出开关，用于验证 Apply -> SendInput 的端到端闭环。
 
-- [ ] 默认继续使用 NullOutput，避免误触系统输入。
-- [ ] UI 增加明确的 `Use Real Output` toggle 或按钮。
-- [ ] 开启真实输出前给出可见提示或确认。
-- [ ] `Main.qml` 不再永久硬编码 `appController.initializeRuntime(true)`，但默认仍传 NullOutput。
-- [ ] 用户主动开启后，Stop -> Initialize(real output) -> Start。
-- [ ] 真实输出不可用时回退 NullOutput，并显示错误/提示。
-- [ ] 切换输出模式不丢失当前 mapping enabled 状态。
-- [ ] 切换输出模式应保留当前 profile snapshot 并重新应用到新 host。
-- [ ] 增加测试：
-  - [ ] 默认 initialize 使用 NullOutput。
-  - [ ] RealOutput 请求会走 output factory。
-  - [ ] output factory 失败时 UI 有错误信号并保留安全状态。
-  - [ ] 切换模式不会丢失 mapping enabled。
-  - [ ] 切换模式后 mappingRuleModel 仍与 active profile 一致。
+详细设计见 `todo.md` 的 `Real Output Mode`。这里不重复完整 API 签名，避免两份规划分叉。
+
+UI 侧验收：
+
+- [x] 默认继续使用 NullOutput，避免误触系统输入。
+- [x] TopBar 增加明确的 `Real Output` 开关或按钮，和 `Mapping On/Off`、`Save Profile` 同级，默认关闭。
+- [x] 开启真实输出前给出可见确认；本轮使用两步确认按钮，不引入 Dialog 或设置页。
+- [x] 第一次点击显示 `Confirm Real Output`，3 秒内第二次点击才调用 C++。
+- [x] `Main.qml` 默认仍传 `initializeRuntime(true)`。
+- [x] 用户主动确认后，由 `ZAppController` 负责重建 runtime 到真实输出模式。
+- [x] 真实输出不可用时回退 NullOutput，并显示错误/提示。
+- [x] 切换期间绑定 `appController.outputModeSwitching` 禁用按钮或显示 busy 状态；本轮同步实现下它主要是防御性绑定，不依赖它提供长时间可见 loading。
+- [x] 切换输出模式不丢失当前 mapping enabled 状态。
+- [x] 切换输出模式保留当前 active profile snapshot 和 `mappingRuleModel`。
+- [x] 切换输出模式后清空输入状态显示，避免保留旧按键/轴状态。
+- [x] 切换输出模式后 StatusBar `Output:` 正确显示 `NullOutput` / `RealOutput`。
+- [x] QML 不直接重建 runtime，不直接保存/恢复 profile。
 
 ## Priority 6: Action Picker
 
@@ -233,7 +236,7 @@ UI 侧验收：
 - [x] 4. Runtime Status Display Cleanup。
 - [x] 5. Save Active Profile（详见 `todo.md`）。
 - [x] 6. Load Saved Profile。
-- [ ] 7. Real Output Mode。
+- [x] 7. Real Output Mode。
 - [ ] 8. Action Picker。
 - [ ] 9. Mapping Rule Editing。
 

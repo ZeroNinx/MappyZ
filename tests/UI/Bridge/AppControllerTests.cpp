@@ -1798,3 +1798,334 @@ TEST_CASE("AppController default path save then no-arg load round-trips",
     std::filesystem::remove_all(
         StdPath(SavedPath.toStdString()).parent_path());
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// P5: Output Mode Switching
+// ══════════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController default initialize uses NullOutput and realOutputEnabled is false",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    REQUIRE_FALSE(Controller.IsRealOutputEnabled());
+    REQUIRE(Controller.property("outputDisplayText").toString() == "NullOutput");
+}
+
+TEST_CASE("AppController default outputModeSwitching is false",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE_FALSE(Controller.IsOutputModeSwitching());
+}
+
+TEST_CASE("AppController setRealOutputEnabled true calls real output factory",
+    "[UI][AppController]")
+{
+    bool bOutputFactoryCalled = false;
+    auto RealOutputFactory = [&bOutputFactoryCalled]()
+        -> TResult<TUniquePtr<IOutputBackend>> {
+        bOutputFactoryCalled = true;
+        return TResult<TUniquePtr<IOutputBackend>>::Ok(
+            std::make_unique<ZNullOutputBackend>());
+    };
+
+    ZAppController Controller(MakeFakeInputFactory(), RealOutputFactory);
+    (void)Controller.initializeRuntime(true);
+
+    bool bResult = Controller.setRealOutputEnabled(true);
+
+    REQUIRE(bResult);
+    REQUIRE(bOutputFactoryCalled);
+    REQUIRE(Controller.IsRealOutputEnabled());
+}
+
+TEST_CASE("AppController setRealOutputEnabled true shows RealOutput in outputDisplayText",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    (void)Controller.setRealOutputEnabled(true);
+
+    REQUIRE(Controller.property("outputDisplayText").toString() == "RealOutput");
+}
+
+TEST_CASE("AppController setRealOutputEnabled false switches back to NullOutput",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.setRealOutputEnabled(true);
+    REQUIRE(Controller.IsRealOutputEnabled());
+
+    bool bResult = Controller.setRealOutputEnabled(false);
+
+    REQUIRE(bResult);
+    REQUIRE_FALSE(Controller.IsRealOutputEnabled());
+    REQUIRE(Controller.property("outputDisplayText").toString() == "NullOutput");
+}
+
+TEST_CASE("AppController setRealOutputEnabled true with failing factory returns false and falls back to NullOutput",
+    "[UI][AppController]")
+{
+    ZAppController Controller(
+        MakeFakeInputFactory(),
+        MakeFailingOutputFactory("no real output available"));
+    (void)Controller.initializeRuntime(true);
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.setRealOutputEnabled(true);
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE_FALSE(Controller.IsRealOutputEnabled());
+    REQUIRE(Controller.property("outputDisplayText").toString() == "NullOutput");
+    REQUIRE(ErrorSpy.count() >= 1);
+}
+
+TEST_CASE("AppController setRealOutputEnabled failure preserves Ready or Running state",
+    "[UI][AppController]")
+{
+    SECTION("Ready state")
+    {
+        ZAppController Controller(
+            MakeFakeInputFactory(),
+            MakeFailingOutputFactory("unavailable"));
+        (void)Controller.initializeRuntime(true);
+
+        (void)Controller.setRealOutputEnabled(true);
+
+        REQUIRE(Controller.property("runtimeState").toString() == "ready");
+    }
+
+    SECTION("Running state")
+    {
+        ZAppController Controller(
+            MakeFakeInputFactory(),
+            MakeFailingOutputFactory("unavailable"));
+        (void)Controller.initializeRuntime(true);
+        (void)Controller.startRuntime();
+
+        (void)Controller.setRealOutputEnabled(true);
+
+        REQUIRE(Controller.property("runtimeState").toString() == "running");
+    }
+}
+
+TEST_CASE("AppController setRealOutputEnabled preserves active profile rules",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
+
+    (void)Controller.setRealOutputEnabled(true);
+
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
+}
+
+TEST_CASE("AppController setRealOutputEnabled preserves activeProfileName",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    SMappingProfile NamedProfile;
+    NamedProfile.Name = "MyProfile";
+    Controller.ReplaceActiveProfileForTest(std::move(NamedProfile));
+    REQUIRE(Controller.ActiveProfileName() == "MyProfile");
+
+    (void)Controller.setRealOutputEnabled(true);
+
+    REQUIRE(Controller.ActiveProfileName() == "MyProfile");
+}
+
+TEST_CASE("AppController setRealOutputEnabled preserves mappingEnabled",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    Controller.SetMappingEnabled(false);
+    REQUIRE_FALSE(Controller.IsMappingEnabled());
+
+    (void)Controller.setRealOutputEnabled(true);
+
+    REQUIRE_FALSE(Controller.IsMappingEnabled());
+}
+
+TEST_CASE("AppController setRealOutputEnabled from Running state stays Running after switch",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+    REQUIRE(Controller.property("runtimeState").toString() == "running");
+
+    (void)Controller.setRealOutputEnabled(true);
+
+    REQUIRE(Controller.property("runtimeState").toString() == "running");
+}
+
+TEST_CASE("AppController setRealOutputEnabled restores pump timer if it was active",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+    Controller.startPumpTimer(16);
+    REQUIRE(Controller.IsPumpTimerRunning());
+
+    (void)Controller.setRealOutputEnabled(true);
+
+    REQUIRE(Controller.IsPumpTimerRunning());
+}
+
+TEST_CASE("AppController setRealOutputEnabled refreshes mappingRuleModel consistently",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+    Controller.applySelectedBinding(
+        QStringLiteral("button_east"), QStringLiteral("Mouse: Left Click"));
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 2);
+
+    (void)Controller.setRealOutputEnabled(true);
+
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 2);
+}
+
+TEST_CASE("AppController setRealOutputEnabled clears inputStateModel and emits reset",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawBackend = nullptr;
+    auto InputFactory = [&RawBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    // 注入输入事件，使 inputStateModel 非空
+    SInputEvent Event;
+    Event.DeviceId = SDeviceId{.Value = "dev_1"};
+    Event.ControlId = std::string(ControlId::ButtonSouth);
+    Event.ControlType = EInputControlType::Button;
+    Event.EventType = EInputEventType::Pressed;
+    Event.Value = 1.0f;
+    RawBackend->EmitInput(Event);
+    Controller.pumpOnce();
+
+    QSignalSpy ResetSpy(Controller.InputStateModel(),
+        &ZInputStateModel::inputStateReset);
+
+    (void)Controller.setRealOutputEnabled(true);
+
+    REQUIRE(ResetSpy.count() >= 1);
+    REQUIRE(Controller.InputStateModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController setRealOutputEnabled same mode is idempotent no-op (defensive for sync impl)",
+    "[UI][AppController]")
+{
+    // 同步实现下 bOutputModeSwitching 不可被外部观测到 true，
+    // 此测试验证的是"已处于目标模式时返回 true 且不触发 reinitialize"的 no-op 分支
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.setRealOutputEnabled(true);
+
+    // 已经是 real output，再次调用 true 应为 no-op
+    bool bResult = Controller.setRealOutputEnabled(true);
+    REQUIRE(bResult);
+    REQUIRE(Controller.IsRealOutputEnabled());
+}
+
+TEST_CASE("AppController setRealOutputEnabled emits outputModeChanged when done",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    QSignalSpy ModeSpy(&Controller, &ZAppController::outputModeChanged);
+
+    (void)Controller.setRealOutputEnabled(true);
+
+    // 切换开始和结束各 emit 一次
+    REQUIRE(ModeSpy.count() == 2);
+    REQUIRE_FALSE(Controller.IsOutputModeSwitching());
+}
+
+TEST_CASE("AppController setRealOutputEnabled before initialize returns false and emits runtimeError",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.setRealOutputEnabled(true);
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+}
+
+TEST_CASE("AppController signals include outputModeChanged with lowerCamelCase",
+    "[UI][AppController]")
+{
+    // 验证 signal 名称存在且 QML 兼容
+    auto* MetaObj = &ZAppController::staticMetaObject;
+    bool bFound = false;
+    for (int i = 0; i < MetaObj->methodCount(); ++i)
+    {
+        if (MetaObj->method(i).name() == "outputModeChanged")
+        {
+            bFound = true;
+            break;
+        }
+    }
+    REQUIRE(bFound);
+}
+
+TEST_CASE("AppController setRealOutputEnabled fallback to NullOutput clears inputStateModel and emits reset",
+    "[UI][AppController]")
+{
+    ZFakeInputBackend* RawBackend = nullptr;
+    auto InputFactory = [&RawBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory,
+        MakeFailingOutputFactory("no real output"));
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    // 注入输入事件使 inputStateModel 非空
+    SInputEvent Event;
+    Event.DeviceId = SDeviceId{.Value = "dev_1"};
+    Event.ControlId = std::string(ControlId::ButtonSouth);
+    Event.ControlType = EInputControlType::Button;
+    Event.EventType = EInputEventType::Pressed;
+    Event.Value = 1.0f;
+    RawBackend->EmitInput(Event);
+    Controller.pumpOnce();
+
+    QSignalSpy ResetSpy(Controller.InputStateModel(),
+        &ZInputStateModel::inputStateReset);
+
+    // 尝试切换到真实输出（会失败并回退）
+    bool bResult = Controller.setRealOutputEnabled(true);
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE_FALSE(Controller.IsRealOutputEnabled());
+    REQUIRE(ResetSpy.count() >= 1);
+    REQUIRE(Controller.InputStateModel()->rowCount() == 0);
+}

@@ -491,3 +491,168 @@ TEST_CASE("ApplicationBootstrap empty profile Name verified via snapshot",
     auto Snapshot = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
     REQUIRE(Snapshot.Name.empty());
 }
+
+// ── Reinitialize ──
+
+TEST_CASE("ApplicationBootstrap Reinitialize in Ready state rebuilds output backend",
+    "[App][ApplicationBootstrap]")
+{
+    int OutputFactoryCallCount = 0;
+    auto CountingOutputFactory = [&OutputFactoryCallCount]()
+        -> TResult<TUniquePtr<IOutputBackend>> {
+        ++OutputFactoryCallCount;
+        return TResult<TUniquePtr<IOutputBackend>>::Ok(
+            std::make_unique<ZNullOutputBackend>());
+    };
+
+    ZApplicationBootstrap Bootstrap(MakeFakeInputFactory(), CountingOutputFactory);
+
+    // 第一次 Initialize 使用 NullOutput（不调用 factory）
+    auto InitResult = Bootstrap.Initialize({.bUseNullOutput = true});
+    REQUIRE(InitResult);
+    REQUIRE(OutputFactoryCallCount == 0);
+
+    // Reinitialize 请求真实输出，factory 被调用
+    auto ReinitResult = Bootstrap.Reinitialize({.bUseNullOutput = false});
+    REQUIRE(ReinitResult);
+    REQUIRE(OutputFactoryCallCount == 1);
+    REQUIRE_FALSE(Bootstrap.IsUsingNullOutput());
+}
+
+TEST_CASE("ApplicationBootstrap Reinitialize in Running state safely stops old host and rebuilds",
+    "[App][ApplicationBootstrap]")
+{
+    ZApplicationBootstrap Bootstrap(MakeFakeInputFactory(), MakeNullOutputFactory());
+
+    (void)Bootstrap.Initialize({.bUseNullOutput = true});
+    (void)Bootstrap.StartRuntime();
+    REQUIRE(Bootstrap.GetStatus().State == EApplicationBootstrapState::Running);
+
+    auto Result = Bootstrap.Reinitialize({.bUseNullOutput = true});
+
+    REQUIRE(Result);
+    // Reinitialize 成功后状态为 Ready（host 处于 stopped）
+    REQUIRE(Bootstrap.GetStatus().State == EApplicationBootstrapState::Ready);
+    REQUIRE_FALSE(Bootstrap.GetRuntimeHost().IsRunning());
+}
+
+TEST_CASE("ApplicationBootstrap Reinitialize in Error state executes full setup and recovers to Ready",
+    "[App][ApplicationBootstrap]")
+{
+    bool bShouldFail = true;
+    auto InputFactory = [&bShouldFail]() -> TResult<TUniquePtr<IInputBackend>> {
+        if (bShouldFail)
+        {
+            return TResult<TUniquePtr<IInputBackend>>::Err(
+                MakeError(EErrorCode::Unknown, "temporary"));
+        }
+        return TResult<TUniquePtr<IInputBackend>>::Ok(
+            std::make_unique<ZFakeInputBackend>());
+    };
+
+    ZApplicationBootstrap Bootstrap(InputFactory, MakeNullOutputFactory());
+
+    // 先进入 Error 状态
+    (void)Bootstrap.Initialize();
+    REQUIRE(Bootstrap.GetStatus().State == EApplicationBootstrapState::Error);
+
+    // 修复后 Reinitialize 恢复到 Ready
+    bShouldFail = false;
+    auto Result = Bootstrap.Reinitialize({.bUseNullOutput = true});
+    REQUIRE(Result);
+    REQUIRE(Bootstrap.GetStatus().State == EApplicationBootstrapState::Ready);
+}
+
+TEST_CASE("ApplicationBootstrap Reinitialize replaces old host with new backend references",
+    "[App][ApplicationBootstrap]")
+{
+    ZFakeInputBackend* LatestBackend = nullptr;
+    int FactoryCallCount = 0;
+
+    auto InputFactory = [&]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        LatestBackend = Backend.get();
+        ++FactoryCallCount;
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZApplicationBootstrap Bootstrap(InputFactory, MakeNullOutputFactory());
+    (void)Bootstrap.Initialize({.bUseNullOutput = true});
+    REQUIRE(FactoryCallCount == 1);
+
+    (void)Bootstrap.Reinitialize({.bUseNullOutput = true});
+    REQUIRE(FactoryCallCount == 2);
+
+    // 新 host 使用最新创建的 backend，可以正常启动和 pump
+    (void)Bootstrap.StartRuntime();
+    LatestBackend->EmitInput(
+        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
+    auto Summary = Bootstrap.PumpOnce();
+    REQUIRE(Summary.DrainedEventCount == 1);
+}
+
+TEST_CASE("ApplicationBootstrap Reinitialize with bSkipProfileSetup skips profile creation",
+    "[App][ApplicationBootstrap]")
+{
+    ZApplicationBootstrap Bootstrap(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Bootstrap.Initialize({.bUseNullOutput = true});
+
+    // 设置一个自定义 profile
+    SMappingProfile CustomProfile;
+    CustomProfile.Name = "Custom";
+    CustomProfile.Rules.push_back(
+        MakeButtonToKeyRule("r1", ControlId::ButtonSouth, "Space"));
+    Bootstrap.GetRuntimeHost().ReplaceProfile(CustomProfile);
+
+    // Reinitialize 时跳过 profile setup
+    auto Result = Bootstrap.Reinitialize({
+        .bUseNullOutput = true,
+        .bSkipProfileSetup = true,
+    });
+    REQUIRE(Result);
+    REQUIRE(Bootstrap.GetStatus().State == EApplicationBootstrapState::Ready);
+
+    // host 已重建但 profile 未被默认覆盖，由调用方负责恢复
+    // 此时 host 的 profile 为默认构造的空 profile（无 Name）
+    auto Snapshot = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+    REQUIRE(Snapshot.Name.empty());
+    REQUIRE(Snapshot.Rules.empty());
+
+    // 调用方手动恢复 profile
+    Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(CustomProfile));
+    auto Restored = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+    REQUIRE(Restored.Name == "Custom");
+    REQUIRE(Restored.Rules.size() == 1);
+}
+
+TEST_CASE("ApplicationBootstrap Initialize with bUseNullOutput false calls output factory",
+    "[App][ApplicationBootstrap]")
+{
+    bool bFactoryCalled = false;
+    auto OutputFactory = [&bFactoryCalled]() -> TResult<TUniquePtr<IOutputBackend>> {
+        bFactoryCalled = true;
+        return TResult<TUniquePtr<IOutputBackend>>::Ok(
+            std::make_unique<ZNullOutputBackend>());
+    };
+
+    ZApplicationBootstrap Bootstrap(MakeFakeInputFactory(), OutputFactory);
+
+    auto Result = Bootstrap.Initialize({.bUseNullOutput = false});
+    REQUIRE(Result);
+    REQUIRE(bFactoryCalled);
+    REQUIRE_FALSE(Bootstrap.IsUsingNullOutput());
+}
+
+TEST_CASE("ApplicationBootstrap real output factory failure returns error not silent NullOutput",
+    "[App][ApplicationBootstrap]")
+{
+    ZApplicationBootstrap Bootstrap(
+        MakeFakeInputFactory(),
+        MakeFailingOutputFactory("real output not available"));
+
+    auto Result = Bootstrap.Initialize({.bUseNullOutput = false});
+
+    REQUIRE_FALSE(Result);
+    REQUIRE(Result.Failure().Message == "real output not available");
+    REQUIRE(Bootstrap.GetStatus().State == EApplicationBootstrapState::Error);
+}

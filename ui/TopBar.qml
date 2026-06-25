@@ -65,6 +65,49 @@ Rectangle {
         }
 
         ActionButton {
+            id: realOutputButton
+
+            theme: topBar.theme
+            label: _confirmPending ? "Confirm Real Output" : (
+                topBar.appController && topBar.appController.realOutputEnabled
+                    ? "Real Output On" : "Real Output")
+            primary: topBar.appController
+                ? topBar.appController.realOutputEnabled : false
+            enabled: topBar.appController
+                ? !topBar.appController.outputModeSwitching : false
+
+            property bool _confirmPending: false
+
+            Timer {
+                id: confirmTimer
+                interval: 3000
+                onTriggered: realOutputButton._confirmPending = false
+            }
+
+            onClicked: {
+                if (!topBar.appController) return
+
+                // 关闭真实输出不需要确认
+                if (topBar.appController.realOutputEnabled) {
+                    topBar.appController.setRealOutputEnabled(false)
+                    return
+                }
+
+                // 两步确认：第一次点击进入待确认状态
+                if (!_confirmPending) {
+                    _confirmPending = true
+                    confirmTimer.restart()
+                    return
+                }
+
+                // 第二次点击：确认开启
+                _confirmPending = false
+                confirmTimer.stop()
+                topBar.appController.setRealOutputEnabled(true)
+            }
+        }
+
+        ActionButton {
             theme: topBar.theme
             label: "Save Profile"
             onClicked: {
