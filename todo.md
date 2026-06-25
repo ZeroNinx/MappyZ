@@ -1,87 +1,111 @@
-# TODO: Profile Save Snapshot
+# TODO: Profile Load Snapshot
 
 ## Next Step
 
-下一步实现“保存当前 active profile 快照”：用户点击 `Save Profile` 后，把当前 RuntimeHost 中的 `SMappingProfile` 序列化为 JSON profile 文件。
+下一步实现“加载保存过的 active profile”：UI 启动时在 runtime 初始化成功后尝试加载默认 profile，后续测试也可以通过显式路径加载 profile。
 
-本轮只做保存，不做 profile 切换、不做启动自动加载、不做文件选择器。
+本轮只做单个 active profile 的加载，不做 profile 切换列表、不做文件选择器、不做 dirty 状态。
 
 ## Scope
 
 包含：
 
-- [x] `ZAppController` 增加保存当前 profile 的 QML API。
-- [x] 使用现有 `ZProfileManager::SaveProfile()` 完成 JSON 写入。
-- [x] TopBar 的 `Save Profile` 按钮调用真实保存 API。
-- [x] 删除 `notifySaveProfileNotImplemented()` 临时 API，替换为 `saveActiveProfile()`。
-- [x] 保存成功或失败时给 QML 一个可观察的结果。
-- [x] 增加 UI Bridge 单元测试覆盖保存链路。
+- [x] `ZAppController` 增加加载 profile 的 QML API。
+- [x] 使用现有 `ZProfileManager::LoadProfile()` 完成 JSON 读取。
+- [x] 加载成功后替换 `RuntimeHost` active profile snapshot。
+- [x] 加载成功后刷新 `MappingRuleModel`。
+- [x] 加载成功后刷新 `activeProfileName`。
+- [x] 默认加载路径与 `saveActiveProfile()` 使用同一位置。
+- [x] `Main.qml` 在 `initializeRuntime()` 成功后调用无参 `loadProfile()`。
+- [x] 增加 UI Bridge 单元测试覆盖加载链路。
 
 不做：
 
-- [ ] 不实现 profile 手动切换。
-- [ ] 不实现启动时从 UI 指定路径加载 profile。
-- [ ] 不实现文件选择对话框。
-- [ ] 不引入 `ZProfileModel`。
-- [ ] 不做 profile dirty 状态。
-- [ ] 不保存 event log 或运行时输入状态。
+- [x] 不实现 profile 手动切换 UI。
+- [x] 不实现文件选择对话框。
+- [x] 不引入 `ZProfileModel`。
+- [x] 不做 profile dirty 状态。
+- [x] 不把加载逻辑塞进 `initializeRuntime()`。
+- [x] 不重建输入/输出后端。
+- [x] 不保存或加载 event log / runtime input state。
 
 ## API Plan
 
 `ZAppController` 新增：
 
+- [x] `Q_INVOKABLE bool loadProfile(QString profilePath = QString())`
+- [x] `void profileLoaded(QString profilePath)`
+
+复用 P3 已有属性和信号：
+
 - [x] `Q_PROPERTY(QString profilePath READ ProfilePath NOTIFY profileStatusChanged)`
 - [x] `Q_PROPERTY(QString profileMessage READ ProfileMessage NOTIFY profileStatusChanged)`
-- [x] `Q_INVOKABLE bool saveActiveProfile(QString profilePath = QString())`
-- [x] `QString ProfilePath() const`
-- [x] `QString ProfileMessage() const`
 - [x] `void profileStatusChanged()`
-- [x] `void profileSaved(QString profilePath)`
+- [x] `void runtimeError(QString message)`
+- [x] `void runtimeStatusChanged()`
+
+内部 helper：
+
+- [x] 抽取 `QString DefaultProfilePath() const`，供 `saveActiveProfile()` 和 `loadProfile()` 共用。
+- [x] `DefaultProfilePath()` 使用 `QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)` 并追加 `profiles/default.json`。
+- [x] 如果 `QStandardPaths` 返回空路径，保存和加载都返回失败并发出可观察错误。
 
 语义：
 
 - [x] `profilePath` 参数为空时使用默认 profile 路径。
-- [x] 默认路径通过 `QStandardPaths::AppDataLocation` 计算，并追加 `profiles/default.json`。
 - [x] `profilePath` 参数非空时使用调用方传入路径，主要供测试和后续文件选择器使用。
-- [x] `profilePath` 属性本轮先保留为 UI Bridge 状态契约；QML 暂不展示，但测试需要覆盖成功保存后值已更新。
-- [x] 保存成功更新 `profilePath` 和 `profileMessage`，发 `profileStatusChanged()` 和 `profileSaved(profilePath)`。
-- [x] `profileSaved(profilePath)` 保留为语义事件，供后续 Load/Profile UI 或外部 shell 订阅；不要只依赖通用 `profileStatusChanged()`。
-- [x] 保存失败更新 `profileMessage`，发 `profileStatusChanged()` 和现有 `runtimeError(message)`。
+- [x] 无参 `loadProfile()` 找不到默认 profile 时返回 `true`，保持当前 Default 空 profile，不发 `runtimeError()`。
+- [x] 显式 `loadProfile(path)` 找不到文件时返回 `false`，更新 `profileMessage`，发 `runtimeError(message)`。
+- [x] 加载成功更新 `profilePath` 和 `profileMessage`，发 `profileStatusChanged()` 和 `profileLoaded(profilePath)`。
+- [x] 加载失败只更新 `profileMessage`，不修改 `profilePath`。
+- [x] 加载成功后发 `runtimeStatusChanged()`，保证 `activeProfileName` 绑定刷新。
+- [x] 加载成功后刷新 `MappingRuleModel`，保证 Current mappings 立即更新。
 
 ## Behavior
 
-- [x] Runtime 未 initialize 时 `saveActiveProfile()` 返回 false，不创建文件，发 `runtimeError()`。
-- [x] Ready 或 Running 状态下允许保存。
-- [x] 保存内容来自 `Bootstrap.GetRuntimeHost().GetProfileSnapshot()`，不从 `MappingRuleModel` 反推。
-- [x] 保存不会修改当前 RuntimeHost profile。
-- [x] 保存不会修改 mapping enabled 状态。
-- [x] 空 profile 保存为合法 JSON，`mappings` 为空数组。
-- [x] 已 Apply 的 binding 保存后，JSON 中包含对应 mapping rule。
-- [x] 父目录不存在时由 `ZProfileManager::SaveProfile()` 创建。
-- [x] 保存失败不清空 `MappingRuleModel`，不改变 Runtime 状态。
+- [x] Runtime 未 initialize 时 `loadProfile()` 返回 false，不读取文件，发 `runtimeError()`。
+- [x] Ready 或 Running 状态下允许加载。
+- [x] 加载内容来自 `ZProfileManager::LoadProfile()`。
+- [x] 加载成功调用 `Bootstrap.GetRuntimeHost().ReplaceProfile(...)`。
+- [x] 加载成功不会修改 mapping enabled 状态。
+- [x] 加载成功不会启动或停止 runtime。
+- [x] 加载成功不会重建 input/output backend。
+- [x] 加载失败保留当前 RuntimeHost profile。
+- [x] 加载失败不清空 `MappingRuleModel`。
+- [x] 加载失败不改变 Runtime 状态。
+- [x] 空 profile 文件加载为合法 profile，`MappingRuleModel` 为空。
+- [x] 含 mapping rule 的 profile 加载后，Current mappings 与 profile rules 一致。
 
 ## QML Plan
 
-- [x] `TopBar.qml` 的 `Save Profile` 按钮调用 `appController.saveActiveProfile()`。
-- [x] 保存成功/失败日志由 `ZAppController` 内部通过 `AppendLog()` 写入 `ZLogModel`，QML 不直接写日志。
-- [x] 保存成功写入 `Success: Profile saved` 日志。
-- [x] 保存失败写入 `Error: Profile save failed` 日志，并通过 `runtimeError(message)` 暴露错误。
-- [x] `TopBar.qml` 不直接拼路径，不持有文件系统策略。
-- [x] 本轮不展示 `profilePath`；只通过 Event Log 给最小可见反馈。
+- [x] `Main.qml` 的 `Component.onCompleted` 流程保持显式：
+  - [x] `initializeRuntime(true)` 成功后调用 `appController.loadProfile()`。
+  - [x] `loadProfile()` 成功或默认文件不存在时继续 `startRuntime()`。
+  - [x] `loadProfile()` 失败时保留 runtime initialized 状态，并通过 Event Log / runtime error 暴露问题。
+- [x] 不把 profile 加载继续塞进 `initializeRuntime(...)`。
+- [x] QML 不直接拼 profile 路径，不持有文件系统策略。
+- [x] 加载成功/失败日志由 `ZAppController` 内部通过 `AppendLog()` 写入 `ZLogModel`。
+- [x] 加载成功写入 `Success: Profile loaded` 日志。
+- [x] 默认 profile 不存在时写入 `Info: No saved profile found` 或等价低噪声日志，不作为错误。
+- [x] 加载失败写入 `Error: Profile load failed` 日志，并通过 `runtimeError(message)` 暴露错误。
+- [x] TopBar profile tag 继续绑定 `activeProfileName`，加载成功后自然更新。
 
 ## Tests
 
 `AppControllerTests.cpp`：
 
-- [x] `saveActiveProfile()` before initialize returns false and emits `runtimeError`。
-- [x] `saveActiveProfile(explicitPath)` after initialize creates JSON file。
-- [x] saved empty profile can be parsed by `ZProfileManager`。
-- [x] apply binding then save writes one mapping rule with expected control id and action。
-- [x] saving creates missing parent directories。
-- [x] saving while Running succeeds。
-- [x] saving preserves `mappingEnabled` value。
-- [x] successful save emits `profileStatusChanged` and `profileSaved`。
-- [x] failed save emits `profileStatusChanged` and `runtimeError`。
+- [x] `loadProfile()` before initialize returns false and emits `runtimeError`。
+- [x] `loadProfile()` with missing default path returns true and keeps empty Default profile。
+- [x] `loadProfile(explicitPath)` missing file returns false and emits `runtimeError`。
+- [x] `loadProfile(explicitPath)` loads saved profile and refreshes `MappingRuleModel`。
+- [x] loading profile updates `activeProfileName` from profile `Name`。
+- [x] loading profile preserves `mappingEnabled` value。
+- [x] loading profile while Running succeeds and does not stop runtime。
+- [x] loading failure does not clear existing `MappingRuleModel`。
+- [x] loading failure does not change `profilePath`。
+- [x] successful load emits `profileStatusChanged` and `profileLoaded`。
+- [x] default path save then no-arg load round-trips under `QStandardPaths::setTestModeEnabled(true)`。
+- [x] introduce a small RAII guard for `QStandardPaths::setTestModeEnabled(true)` once P4 tests need it.
 
 QML smoke：
 
@@ -89,14 +113,17 @@ QML smoke：
 
 ## Acceptance Criteria
 
-- [x] `Save Profile` 不再只是写 demo log，而是调用真实保存 API。
-- [x] 保存出的 JSON 可由 `ZProfileManager::LoadProfile()` 读回。
-- [x] Apply 出来的 runtime binding 能持久化到 profile JSON。
+- [x] App 启动时能自动尝试加载默认 profile，但加载逻辑不在 `initializeRuntime()` 内部。
+- [x] 默认 profile 不存在时启动仍成功，保持空 Default profile。
+- [x] 保存过的 profile 可通过无参 `loadProfile()` 从默认路径读回。
+- [x] 显式路径 profile 可加载并刷新 Current mappings。
+- [x] 加载后 TopBar profile tag 反映 profile name。
+- [x] 加载失败保留当前 profile 和 mapping list。
 - [x] 所有测试通过。
 - [x] 修改和新增文本文件使用 CRLF 行尾。
 
 ## Follow-Up
 
-- [ ] 后续实现启动时加载上次保存的 profile。
 - [ ] 后续实现 profile 文件选择和 profile path UI。
 - [ ] 后续实现 `ZProfileModel` 与多个 profile 管理。
+- [ ] 后续实现 profile dirty 状态。

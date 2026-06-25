@@ -5,6 +5,7 @@
 #include "UI/Bridge/AppController.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <utility>
 
 #include <QStandardPaths>
@@ -370,9 +371,8 @@ bool ZAppController::saveActiveProfile(QString profilePath)
     // 参数为空时使用默认路径
     if (profilePath.isEmpty())
     {
-        QString DataPath = QStandardPaths::writableLocation(
-            QStandardPaths::AppDataLocation);
-        if (DataPath.isEmpty())
+        profilePath = DefaultProfilePath();
+        if (profilePath.isEmpty())
         {
             CachedProfileMessage = QStringLiteral(
                 "Save failed: cannot determine default profile path");
@@ -380,7 +380,6 @@ bool ZAppController::saveActiveProfile(QString profilePath)
             EmitRuntimeError(CachedProfileMessage);
             return false;
         }
-        profilePath = DataPath + QStringLiteral("/profiles/default.json");
     }
 
     // 从 RuntimeHost 获取当前 profile 快照
@@ -407,6 +406,70 @@ bool ZAppController::saveActiveProfile(QString profilePath)
     AppendLog(QStringLiteral("Success"), CachedProfileMessage);
     emit profileStatusChanged();
     emit profileSaved(profilePath);
+    return true;
+}
+
+bool ZAppController::loadProfile(QString profilePath)
+{
+    // Runtime 未 initialize 时拒绝加载
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        CachedProfileMessage = QStringLiteral("Load failed: runtime not initialized");
+        emit profileStatusChanged();
+        EmitRuntimeError(CachedProfileMessage);
+        return false;
+    }
+
+    // 记录是否使用默认路径，用于区分软/硬错误
+    bool bUsingDefaultPath = profilePath.isEmpty();
+
+    if (bUsingDefaultPath)
+    {
+        profilePath = DefaultProfilePath();
+        if (profilePath.isEmpty())
+        {
+            CachedProfileMessage = QStringLiteral(
+                "Load failed: cannot determine default profile path");
+            emit profileStatusChanged();
+            EmitRuntimeError(CachedProfileMessage);
+            return false;
+        }
+
+        // 默认 profile 不存在是正常情况（首次启动），静默返回
+        if (!std::filesystem::exists(StdPath(profilePath.toStdString())))
+        {
+            AppendLog(QStringLiteral("Info"),
+                QStringLiteral("No saved profile found, using default"));
+            return true;
+        }
+    }
+
+    // 读取 profile 文件
+    ZProfileManager Manager;
+    auto Result = Manager.LoadProfile(StdPath(profilePath.toStdString()));
+
+    if (!Result)
+    {
+        auto ErrorMessage = QString::fromStdString(Result.Failure().Message);
+        CachedProfileMessage =
+            QStringLiteral("Profile load failed: %1").arg(ErrorMessage);
+        emit profileStatusChanged();
+        EmitRuntimeError(CachedProfileMessage);
+        return false;
+    }
+
+    // 加载成功，替换 RuntimeHost profile 并刷新 UI
+    Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(Result).TakeValue());
+    RefreshMappingRuleModelFromHost();
+
+    CachedProfilePath = profilePath;
+    CachedProfileMessage = QStringLiteral("Profile loaded");
+    AppendLog(QStringLiteral("Success"), CachedProfileMessage);
+    emit profileStatusChanged();
+    emit runtimeStatusChanged();
+    emit profileLoaded(profilePath);
     return true;
 }
 
@@ -475,6 +538,17 @@ void ZAppController::RefreshMappingRuleModelFromHost()
 
     auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
     MappingRuleModelInstance.ReplaceRules(std::move(Profile.Rules));
+}
+
+QString ZAppController::DefaultProfilePath() const
+{
+    QString DataPath = QStandardPaths::writableLocation(
+        QStandardPaths::AppDataLocation);
+    if (DataPath.isEmpty())
+    {
+        return QString();
+    }
+    return DataPath + QStringLiteral("/profiles/default.json");
 }
 
 // ── applySelectedBinding ──

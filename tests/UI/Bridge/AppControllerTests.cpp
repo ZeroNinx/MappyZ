@@ -24,6 +24,15 @@
 
 using namespace MappyZ;
 
+// QStandardPaths test mode RAII guard，确保断言失败时仍恢复全局状态
+struct STestModeGuard
+{
+    STestModeGuard() { QStandardPaths::setTestModeEnabled(true); }
+    ~STestModeGuard() { QStandardPaths::setTestModeEnabled(false); }
+    STestModeGuard(const STestModeGuard&) = delete;
+    STestModeGuard& operator=(const STestModeGuard&) = delete;
+};
+
 // ── 测试用 factory 辅助 ──
 
 static TInputBackendFactory MakeFakeInputFactory()
@@ -421,6 +430,7 @@ TEST_CASE("AppController signals use lowerCamelCase for QML Connections compatib
     REQUIRE(Meta->indexOfSignal("runtimeError(QString)") >= 0);
     REQUIRE(Meta->indexOfSignal("profileStatusChanged()") >= 0);
     REQUIRE(Meta->indexOfSignal("profileSaved(QString)") >= 0);
+    REQUIRE(Meta->indexOfSignal("profileLoaded(QString)") >= 0);
 }
 
 // ── inputStateModel 属性 ──
@@ -1498,8 +1508,7 @@ TEST_CASE("AppController failed save emits profileStatusChanged and runtimeError
 TEST_CASE("AppController saveActiveProfile default path creates file under AppDataLocation",
     "[UI][AppController]")
 {
-    // 启用 Qt test mode，隔离默认路径到临时测试目录
-    QStandardPaths::setTestModeEnabled(true);
+    STestModeGuard Guard;
 
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
     (void)Controller.initializeRuntime(true);
@@ -1519,5 +1528,273 @@ TEST_CASE("AppController saveActiveProfile default path creates file under AppDa
 
     // 清理测试目录
     std::filesystem::remove_all(SavedPath.parent_path());
-    QStandardPaths::setTestModeEnabled(false);
+}
+
+// ══════════════════════════════════════════════════════════════
+// P4: loadProfile
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController loadProfile before initialize returns false and emits runtimeError",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
+
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_load_test_noinit" / "profile.json";
+    bool bResult = Controller.loadProfile(
+        QString::fromStdString(TempPath.string()));
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(StatusSpy.count() == 1);
+}
+
+TEST_CASE("AppController loadProfile with missing default path returns true and keeps empty Default profile",
+    "[UI][AppController]")
+{
+    STestModeGuard Guard;
+
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    // 无参调用，test mode 下默认路径不存在
+    bool bResult = Controller.loadProfile();
+
+    REQUIRE(bResult);
+    REQUIRE(Controller.ActiveProfileName() == "Default");
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController loadProfile with explicit missing path returns false and emits runtimeError",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.loadProfile(
+        QStringLiteral("nonexistent_mappyz_test_xyz.json"));
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+}
+
+TEST_CASE("AppController loadProfile with explicit path loads saved profile and refreshes MappingRuleModel",
+    "[UI][AppController]")
+{
+    // 先用一个 controller 保存带规则的 profile
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_load_test_explicit" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    {
+        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
+        (void)Saver.initializeRuntime(true);
+        Saver.applySelectedBinding(
+            QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+        Saver.saveActiveProfile(PathStr);
+    }
+
+    // 用新 controller 加载
+    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Loader.initializeRuntime(true);
+    REQUIRE(Loader.MappingRuleModel()->rowCount() == 0);
+
+    bool bResult = Loader.loadProfile(PathStr);
+
+    REQUIRE(bResult);
+    REQUIRE(Loader.MappingRuleModel()->rowCount() == 1);
+
+    auto Index = Loader.MappingRuleModel()->index(0);
+    REQUIRE(Loader.MappingRuleModel()->data(
+        Index, ZMappingRuleModel::InputRole).toString() == "button_south");
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController loadProfile updates activeProfileName from profile Name",
+    "[UI][AppController]")
+{
+    // 保存带自定义 Name 的 profile
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_load_test_name" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    {
+        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
+        (void)Saver.initializeRuntime(true);
+
+        SMappingProfile Profile;
+        Profile.Name = "My Custom Profile";
+        Saver.ReplaceActiveProfileForTest(std::move(Profile));
+        Saver.saveActiveProfile(PathStr);
+    }
+
+    // 加载并验证 activeProfileName
+    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Loader.initializeRuntime(true);
+    REQUIRE(Loader.ActiveProfileName() == "Default");
+
+    Loader.loadProfile(PathStr);
+
+    REQUIRE(Loader.ActiveProfileName() == "My Custom Profile");
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController loadProfile preserves mappingEnabled value",
+    "[UI][AppController]")
+{
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_load_test_mapping" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    {
+        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
+        (void)Saver.initializeRuntime(true);
+        Saver.saveActiveProfile(PathStr);
+    }
+
+    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Loader.initializeRuntime(true);
+    Loader.SetMappingEnabled(false);
+    REQUIRE_FALSE(Loader.IsMappingEnabled());
+
+    Loader.loadProfile(PathStr);
+
+    REQUIRE_FALSE(Loader.IsMappingEnabled());
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController loadProfile while Running succeeds and does not stop runtime",
+    "[UI][AppController]")
+{
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_load_test_running" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    {
+        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
+        (void)Saver.initializeRuntime(true);
+        Saver.saveActiveProfile(PathStr);
+    }
+
+    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Loader.initializeRuntime(true);
+    (void)Loader.startRuntime();
+    REQUIRE(Loader.RuntimeState() == "running");
+
+    bool bResult = Loader.loadProfile(PathStr);
+
+    REQUIRE(bResult);
+    REQUIRE(Loader.RuntimeState() == "running");
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController loadProfile failure does not clear existing MappingRuleModel",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    // 先 apply 一条规则
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
+
+    // 加载不存在的显式路径
+    Controller.loadProfile(QStringLiteral("nonexistent_mappyz_load_fail.json"));
+
+    // 现有规则不被清空
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
+}
+
+TEST_CASE("AppController loadProfile failure does not change profilePath",
+    "[UI][AppController]")
+{
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_load_test_keeppath" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    // 先保存以设置 profilePath
+    Controller.saveActiveProfile(PathStr);
+    REQUIRE(Controller.ProfilePath() == PathStr);
+
+    // 加载失败不应修改 profilePath
+    Controller.loadProfile(QStringLiteral("nonexistent_mappyz_load_fail.json"));
+
+    REQUIRE(Controller.ProfilePath() == PathStr);
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController successful load emits profileStatusChanged and profileLoaded",
+    "[UI][AppController]")
+{
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_load_test_signals" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    {
+        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
+        (void)Saver.initializeRuntime(true);
+        Saver.saveActiveProfile(PathStr);
+    }
+
+    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Loader.initializeRuntime(true);
+
+    QSignalSpy StatusSpy(&Loader, &ZAppController::profileStatusChanged);
+    QSignalSpy LoadedSpy(&Loader, &ZAppController::profileLoaded);
+    QSignalSpy RuntimeSpy(&Loader, &ZAppController::runtimeStatusChanged);
+
+    Loader.loadProfile(PathStr);
+
+    REQUIRE(StatusSpy.count() == 1);
+    REQUIRE(LoadedSpy.count() == 1);
+    REQUIRE(LoadedSpy.at(0).at(0).toString() == PathStr);
+    // runtimeStatusChanged 也需发出，驱动 activeProfileName 刷新
+    REQUIRE(RuntimeSpy.count() >= 1);
+
+    REQUIRE(Loader.ProfilePath() == PathStr);
+    REQUIRE(Loader.ProfileMessage() == "Profile loaded");
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController default path save then no-arg load round-trips",
+    "[UI][AppController]")
+{
+    STestModeGuard Guard;
+
+    // 保存带规则的 profile 到默认路径
+    ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Saver.initializeRuntime(true);
+    Saver.applySelectedBinding(
+        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+    Saver.saveActiveProfile();
+    auto SavedPath = Saver.ProfilePath();
+
+    // 新 controller 无参 loadProfile 读回
+    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Loader.initializeRuntime(true);
+    REQUIRE(Loader.MappingRuleModel()->rowCount() == 0);
+
+    bool bResult = Loader.loadProfile();
+
+    REQUIRE(bResult);
+    REQUIRE(Loader.MappingRuleModel()->rowCount() == 1);
+    REQUIRE(Loader.ProfilePath() == SavedPath);
+
+    // 清理
+    std::filesystem::remove_all(
+        StdPath(SavedPath.toStdString()).parent_path());
 }

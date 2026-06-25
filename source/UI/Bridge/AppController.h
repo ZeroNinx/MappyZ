@@ -90,6 +90,7 @@ public:
     Q_INVOKABLE void stopPumpTimer();
     Q_INVOKABLE bool applySelectedBinding(QString controlId, QString actionText);
     Q_INVOKABLE bool saveActiveProfile(QString profilePath = QString());
+    Q_INVOKABLE bool loadProfile(QString profilePath = QString());
 
     // 测试辅助：替换 RuntimeHost 的 active profile 并刷新 UI model。
     // 不暴露给 QML，仅供 C++ 测试代码使用。
@@ -103,6 +104,7 @@ signals:
     void runtimeError(QString message);
     void profileStatusChanged();
     void profileSaved(QString profilePath);
+    void profileLoaded(QString profilePath);
 
 private:
     // 将 EApplicationBootstrapState 转为 QML 稳定字符串
@@ -129,6 +131,9 @@ private:
     // 根据 controlId 推断输入控件类型和事件类型，不支持的控件返回 false
     static bool InferInputFromControlId(
         const StdString& ControlId, SMappingInput& OutInput);
+
+    // save/load 共用的默认 profile 路径
+    NODISCARD QString DefaultProfilePath() const;
 
     ZApplicationBootstrap Bootstrap;
     QTimer PumpTimer;

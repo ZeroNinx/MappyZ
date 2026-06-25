@@ -143,19 +143,21 @@ UI 侧验收：
 
 目标：UI 启动或用户操作时能加载保存过的 profile，并刷新映射列表。
 
-- [ ] 使用独立 `loadProfile(path)` 方案，不把 profile 加载继续塞进 `initializeRuntime(...)`。
-- [ ] `loadProfile(path)` 不重建输入/输出后端，只替换 RuntimeHost profile snapshot 并刷新 UI model。
-- [ ] 默认加载路径与 Save Active Profile 使用同一位置。
-- [ ] 如果默认 profile 存在，启动后加载；不存在则继续使用空 Default profile。
-- [ ] 加载成功后刷新 `mappingRuleModel`。
-- [ ] 加载失败时保留当前安全状态，显示错误。
-- [ ] TopBar profile tag 使用加载后的 profile name。
-- [ ] 增加测试：
-  - [ ] 默认路径不存在时启动成功且 profile 为空。
-  - [ ] 已保存 profile 可通过 `loadProfile(path)` 加载。
-  - [ ] 加载后 Current mappings 与 profile rules 一致。
-  - [ ] 加载失败不清空当前 mappingRuleModel。
-  - [ ] 加载失败发出可观察错误信号。
+详细设计见 `todo.md` 的 `Profile Load Snapshot`。这里不重复完整 API 签名，避免两份规划分叉。
+
+UI 侧验收：
+
+- [x] 使用独立 `loadProfile(path = QString())` 方案，不把 profile 加载继续塞进 `initializeRuntime(...)`。
+- [x] `Main.qml` 在 `initializeRuntime(true)` 成功后显式调用无参 `appController.loadProfile()`。
+- [x] 默认加载路径与 Save Active Profile 使用同一 `DefaultProfilePath()` helper。
+- [x] 默认 profile 不存在时启动成功且 profile 保持空 Default。
+- [x] 已保存 profile 加载后刷新 `mappingRuleModel`。
+- [x] 已保存 profile 加载后 TopBar profile tag 使用加载后的 profile name。
+- [x] 加载失败时保留当前 profile / mapping list，并显示错误。
+- [x] QML 不直接拼路径，不持有文件系统策略。
+- [x] 加载成功后 LogModel 写入 `Profile loaded`。
+- [x] 默认 profile 不存在时只写低噪声 Info 日志或不报错。
+- [x] 加载失败后 LogModel 写入 `Profile load failed`。
 
 ## Priority 5: Real Output Mode
 
@@ -230,7 +232,7 @@ UI 侧验收：
 - [x] 3. LogModel Lite。
 - [x] 4. Runtime Status Display Cleanup。
 - [x] 5. Save Active Profile（详见 `todo.md`）。
-- [ ] 6. Load Saved Profile。
+- [x] 6. Load Saved Profile。
 - [ ] 7. Real Output Mode。
 - [ ] 8. Action Picker。
 - [ ] 9. Mapping Rule Editing。
