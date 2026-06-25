@@ -247,6 +247,13 @@ SApplicationBootstrapStatus ZApplicationBootstrap::GetStatus() const
     return Status;
 }
 
+// ── 输出模式查询 ──
+
+bool ZApplicationBootstrap::IsUsingNullOutput() const
+{
+    return CachedOptions.bUseNullOutput;
+}
+
 // ── 设备列表 ──
 
 TVector<SDeviceInfo> ZApplicationBootstrap::ListInputDevices() const

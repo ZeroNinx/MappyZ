@@ -1190,3 +1190,105 @@ TEST_CASE("AppController applySelectedBinding then pump dispatches mapped input"
     REQUIRE(Controller.LastMappedInputCount() == 1);
     REQUIRE(Controller.LastDispatchedInputCount() == 1);
 }
+
+// ══════════════════════════════════════════════════════════════
+// P2: activeProfileName / outputDisplayText / outputState 稳定性
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController activeProfileName is Default before initialize",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.ActiveProfileName() == "Default");
+}
+
+TEST_CASE("AppController activeProfileName is Default after initialize with default profile",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    // Bootstrap 默认 profile Name 为 "Default"
+    REQUIRE(Controller.ActiveProfileName() == "Default");
+}
+
+TEST_CASE("AppController activeProfileName falls back to Default when profile name is empty",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime(true));
+
+    // 替换为空 Name 的 profile
+    SMappingProfile Profile;
+    Profile.Name = "";
+    Controller.ReplaceActiveProfileForTest(std::move(Profile));
+
+    REQUIRE(Controller.ActiveProfileName() == "Default");
+}
+
+TEST_CASE("AppController outputDisplayText is Unavailable before initialize",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.OutputDisplayText() == "Unavailable");
+}
+
+TEST_CASE("AppController outputDisplayText is NullOutput after initialize with null output",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    REQUIRE(Controller.OutputDisplayText() == "NullOutput");
+}
+
+TEST_CASE("AppController outputDisplayText is RealOutput after initialize with real output",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    // bUseNullOutput=false，使用真实 factory（此处为 NullOutputFactory 充当）
+    (void)Controller.initializeRuntime(false);
+    REQUIRE(Controller.OutputDisplayText() == "RealOutput");
+}
+
+TEST_CASE("AppController outputDisplayText is Unavailable when initialize fails",
+    "[UI][AppController]")
+{
+    ZAppController Controller(
+        MakeFailingInputFactory("input failed"),
+        MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    REQUIRE(Controller.RuntimeState() == "error");
+    REQUIRE(Controller.OutputDisplayText() == "Unavailable");
+}
+
+TEST_CASE("AppController outputState strings are stable",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+
+    // Created 状态下 outputState 返回 unavailable
+    REQUIRE(Controller.OutputState() == "unavailable");
+
+    (void)Controller.initializeRuntime(true);
+    // Ready 状态下 NullOutputBackend state 为 ready
+    REQUIRE(Controller.OutputState() == "ready");
+}
+
+TEST_CASE("AppController mappingEnabled change emits signal and property syncs",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    QSignalSpy MappingSpy(&Controller, &ZAppController::mappingEnabledChanged);
+
+    // 默认 enabled=true，改为 false
+    Controller.SetMappingEnabled(false);
+    REQUIRE(MappingSpy.count() == 1);
+    REQUIRE_FALSE(Controller.IsMappingEnabled());
+
+    // 改回 true
+    Controller.SetMappingEnabled(true);
+    REQUIRE(MappingSpy.count() == 2);
+    REQUIRE(Controller.IsMappingEnabled());
+}

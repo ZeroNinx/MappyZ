@@ -41,6 +41,8 @@ class ZAppController final : public QObject
     Q_PROPERTY(ZInputCaptureModel* inputCapture READ InputCapture CONSTANT)
     Q_PROPERTY(ZMappingRuleModel* mappingRuleModel READ MappingRuleModel CONSTANT)
     Q_PROPERTY(ZLogModel* logModel READ LogModel CONSTANT)
+    Q_PROPERTY(QString activeProfileName READ ActiveProfileName NOTIFY runtimeStatusChanged)
+    Q_PROPERTY(QString outputDisplayText READ OutputDisplayText NOTIFY runtimeStatusChanged)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -71,6 +73,8 @@ public:
     NODISCARD ZInputCaptureModel* InputCapture();
     NODISCARD ZMappingRuleModel* MappingRuleModel();
     NODISCARD ZLogModel* LogModel();
+    NODISCARD QString ActiveProfileName() const;
+    NODISCARD QString OutputDisplayText() const;
 
     // ── QML invokable ──
 
@@ -82,6 +86,10 @@ public:
     Q_INVOKABLE void stopPumpTimer();
     Q_INVOKABLE bool applySelectedBinding(QString controlId, QString actionText);
     Q_INVOKABLE void notifySaveProfileNotImplemented();
+
+    // 测试辅助：替换 RuntimeHost 的 active profile 并刷新 UI model。
+    // 不暴露给 QML，仅供 C++ 测试代码使用。
+    void ReplaceActiveProfileForTest(SMappingProfile Profile);
 
 signals:
     void runtimeStatusChanged();

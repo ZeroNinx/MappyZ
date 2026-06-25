@@ -441,3 +441,53 @@ TEST_CASE("ApplicationBootstrap Initialize fails when output factory fails",
     REQUIRE(Result.Failure().Message == "output backend unavailable");
     REQUIRE(Bootstrap.GetStatus().State == EApplicationBootstrapState::Error);
 }
+
+// ── IsUsingNullOutput ──
+
+TEST_CASE("ApplicationBootstrap IsUsingNullOutput reflects last successful Initialize",
+    "[App][ApplicationBootstrap]")
+{
+    ZApplicationBootstrap Bootstrap(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory());
+
+    // 未 initialize 时默认 false
+    REQUIRE_FALSE(Bootstrap.IsUsingNullOutput());
+
+    // 使用 NullOutput 初始化
+    auto Result = Bootstrap.Initialize({.bUseNullOutput = true});
+    REQUIRE(Result);
+    REQUIRE(Bootstrap.IsUsingNullOutput());
+}
+
+TEST_CASE("ApplicationBootstrap IsUsingNullOutput false when real output used",
+    "[App][ApplicationBootstrap]")
+{
+    ZApplicationBootstrap Bootstrap(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory());
+
+    // 使用真实输出后端（NullOutputFactory 充当真实 factory）
+    auto Result = Bootstrap.Initialize({.bUseNullOutput = false});
+    REQUIRE(Result);
+    REQUIRE_FALSE(Bootstrap.IsUsingNullOutput());
+}
+
+TEST_CASE("ApplicationBootstrap empty profile Name verified via snapshot",
+    "[App][ApplicationBootstrap]")
+{
+    ZApplicationBootstrap Bootstrap(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory());
+
+    auto Result = Bootstrap.Initialize({.bUseNullOutput = true});
+    REQUIRE(Result);
+
+    // 替换为空 Name 的 profile，验证 snapshot 确实反映空 Name
+    SMappingProfile EmptyNameProfile;
+    EmptyNameProfile.Name = "";
+    Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(EmptyNameProfile));
+
+    auto Snapshot = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+    REQUIRE(Snapshot.Name.empty());
+}

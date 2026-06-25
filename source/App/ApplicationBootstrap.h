@@ -95,6 +95,9 @@ public:
     // 未 initialize 或 InputBackend 为空时返回空 vector，不修改后端状态。
     NODISCARD TVector<SDeviceInfo> ListInputDevices() const;
 
+    // 最近一次成功 Initialize 是否使用了 NullOutputBackend
+    NODISCARD bool IsUsingNullOutput() const;
+
     // 访问内部 RuntimeHost（供 UI Bridge 绑定和测试使用）。
     // 前置条件：Initialize() 已成功（状态为 Ready 或 Running）。
     NODISCARD ZRuntimeHost& GetRuntimeHost();

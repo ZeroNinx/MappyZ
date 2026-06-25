@@ -158,6 +158,56 @@ ZLogModel* ZAppController::LogModel()
     return &LogModelInstance;
 }
 
+QString ZAppController::ActiveProfileName() const
+{
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        return QStringLiteral("Default");
+    }
+
+    auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+    if (Profile.Name.empty())
+    {
+        return QStringLiteral("Default");
+    }
+
+    return QString::fromStdString(Profile.Name);
+}
+
+QString ZAppController::OutputDisplayText() const
+{
+    auto Status = Bootstrap.GetStatus();
+
+    // 未 initialize 时显示 Unavailable
+    if (Status.State == EApplicationBootstrapState::Created
+        || Status.State == EApplicationBootstrapState::Error)
+    {
+        return QStringLiteral("Unavailable");
+    }
+
+    auto OutputStatus = Status.RuntimeStatus.OutputStatus.State;
+
+    if (OutputStatus == EOutputBackendState::Unavailable)
+    {
+        return QStringLiteral("Unavailable");
+    }
+
+    if (OutputStatus == EOutputBackendState::Error)
+    {
+        return QStringLiteral("Output Error");
+    }
+
+    // Ready 状态下根据 NullOutput 标志区分
+    if (Bootstrap.IsUsingNullOutput())
+    {
+        return QStringLiteral("NullOutput");
+    }
+
+    return QStringLiteral("RealOutput");
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime(bool useNullOutput)
@@ -295,6 +345,15 @@ void ZAppController::notifySaveProfileNotImplemented()
 {
     AppendLog(QStringLiteral("Warning"),
         QStringLiteral("Profile save not yet implemented"));
+}
+
+// ── 测试辅助 ──
+
+void ZAppController::ReplaceActiveProfileForTest(SMappingProfile Profile)
+{
+    Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(Profile));
+    RefreshMappingRuleModelFromHost();
+    emit runtimeStatusChanged();
 }
 
 // ── 内部工具 ──

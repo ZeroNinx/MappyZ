@@ -47,7 +47,8 @@ Rectangle {
 
         Tag {
             theme: topBar.theme
-            label: "Default FPS"
+            label: topBar.appController
+                ? topBar.appController.activeProfileName : "Default"
             tone: "#3c3c3c"
         }
 

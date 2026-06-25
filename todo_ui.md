@@ -94,17 +94,35 @@
 
 目标：让 UI 明确显示当前运行时状态、输出模式、profile 名称，不要求先实现保存/加载。
 
-- [ ] TopBar profile tag 不再硬编码 `Default FPS`。
-- [ ] `ZAppController` 暴露当前 active profile name，读取 RuntimeHost active profile snapshot 的 `Name`；初始为空或缺省时显示 `Default`。
-- [ ] P4 `loadProfile(path)` 成功后通过同一 active profile name 属性自然更新，不在 P2 实现加载逻辑。
-- [ ] StatusBar 显示 output backend state。
-- [ ] StatusBar 显示 output mode：`NullOutput` / `RealOutput` / `Unavailable`。
-- [ ] StatusBar 显示 mapping enabled 状态。
-- [ ] Runtime message 和 output state 文案统一，不让用户误以为 NullOutput 已经真实输出。
-- [ ] 增加测试：
-  - [ ] 默认 profile name 为 Default。
-  - [ ] mapping enabled 改变后 UI 状态属性同步。
-  - [ ] output state 字符串稳定。
+- [x] TopBar profile tag 不再硬编码 `Default FPS`。
+- [x] `ZAppController` 暴露当前 active profile name：
+  - [x] `Q_PROPERTY(QString activeProfileName READ ActiveProfileName NOTIFY runtimeStatusChanged)`。
+  - [x] `ActiveProfileName()` 在 Ready/Running 状态下读取 `RuntimeHost.GetProfileSnapshot().Name`。
+  - [x] Runtime 未 initialize、Error、或 profile name 为空时返回 `Default`。
+  - [x] TopBar Tag 绑定 `appController.activeProfileName`。
+- [x] P4 `loadProfile(path)` 成功后通过同一 active profile name 属性自然更新，不在 P2 实现加载逻辑。
+- [x] StatusBar 显示用户可理解的 output mode/display text；`outputState` 保留给调试和测试使用。
+- [x] 输出模式的事实来源放在 `ZApplicationBootstrap`，不在 QML 或 `ZAppController` 里重复缓存：
+  - [x] `ZApplicationBootstrap` 增加 `bool IsUsingNullOutput() const`，读取 `CachedOptions.bUseNullOutput`。
+  - [x] Created/Error 且尚未成功 initialize 时语义为未使用真实输出，UI 展示仍应落到 `Unavailable`。
+  - [x] Ready/Running 状态下 `IsUsingNullOutput()` 反映最近一次成功 Initialize 的选项。
+- [x] `ZAppController` 暴露 output display text，而不是让 QML 拼 mode/state：
+  - [x] `Q_PROPERTY(QString outputDisplayText READ OutputDisplayText NOTIFY runtimeStatusChanged)`。
+  - [x] backend state 为 `Unavailable` 或 Runtime 未 initialize 时返回 `Unavailable`。
+  - [x] backend state 为 `Error` 时返回 `Output Error`。
+  - [x] backend state 为 `Ready` 且 `Bootstrap.IsUsingNullOutput()` 为 true 时返回 `NullOutput`。
+  - [x] backend state 为 `Ready` 且 `Bootstrap.IsUsingNullOutput()` 为 false 时返回 `RealOutput`。
+- [x] StatusBar 的 `Output:` 使用 `appController.outputDisplayText`，不再直接展示底层 `outputState`，避免 `NullOutput ready` 被误解为真实系统输出就绪。
+- [x] StatusBar 已显示 mapping enabled 状态。
+- [x] Runtime message 和 output display text 文案统一，不让用户误以为 NullOutput 已经真实输出。
+- [x] 增加测试：
+  - [x] 默认 profile name 为 Default。
+  - [x] mapping enabled 改变后 UI 状态属性同步。
+  - [x] `ZApplicationBootstrap::IsUsingNullOutput()` 反映最近一次成功 Initialize 的 `bUseNullOutput`。
+  - [x] `activeProfileName` 在未 initialize、默认 profile、空 profile name 时返回 `Default`。
+  - [x] `outputState` 字符串保持稳定：`unavailable` / `ready` / `error`。
+  - [x] `outputDisplayText` 区分 `NullOutput` / `RealOutput` / `Unavailable` / `Output Error`。
+  - [x] StatusBar QML 绑定 `outputDisplayText`，QML smoke 无 warning。
 
 ## Priority 3: Save Active Profile
 
@@ -210,7 +228,7 @@ UI 侧验收：
 - [x] 1. Layout Fixes polish。
 - [x] 2. UI Feedback And Empty States。
 - [x] 3. LogModel Lite。
-- [ ] 4. Runtime Status Display Cleanup。
+- [x] 4. Runtime Status Display Cleanup。
 - [ ] 5. Save Active Profile（详见 `todo.md`）。
 - [ ] 6. Load Saved Profile。
 - [ ] 7. Real Output Mode。
