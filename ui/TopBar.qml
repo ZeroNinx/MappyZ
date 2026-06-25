@@ -69,7 +69,7 @@ Rectangle {
             label: "Save Profile"
             onClicked: {
                 if (topBar.appController)
-                    topBar.appController.notifySaveProfileNotImplemented()
+                    topBar.appController.saveActiveProfile()
             }
         }
     }

@@ -3,6 +3,9 @@
 // 以及通过 AppController 集成的 lifecycle 日志写入。
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <filesystem>
+
 #include <QMetaMethod>
 #include <QSignalSpy>
 
@@ -252,23 +255,27 @@ TEST_CASE("AppController apply failure writes Error log entry",
     REQUIRE(LastLevel == "Error");
 }
 
-// ── AppController 集成：Save Profile 写 Warning log ──
+// ── AppController 集成：saveActiveProfile 写 Success log ──
 
-TEST_CASE("AppController notifySaveProfileNotImplemented writes Warning log",
+TEST_CASE("AppController saveActiveProfile success writes Success log",
     "[UI][LogModel]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
     auto* Log = Controller.LogModel();
 
-    Controller.notifySaveProfileNotImplemented();
-
-    REQUIRE(Log->rowCount() >= 1);
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_log_save_test" / "profile.json";
+    Controller.saveActiveProfile(QString::fromStdString(TempPath.string()));
 
     auto LastLevel = Log->data(
         Log->index(Log->rowCount() - 1), ZLogModel::LevelRole).toString();
-    REQUIRE(LastLevel == "Warning");
+    REQUIRE(LastLevel == "Success");
 
     auto LastMessage = Log->data(
         Log->index(Log->rowCount() - 1), ZLogModel::MessageRole).toString();
-    REQUIRE(LastMessage.contains("not yet implemented"));
+    REQUIRE(LastMessage.contains("Profile saved"));
+
+    std::filesystem::remove_all(TempPath.parent_path());
 }

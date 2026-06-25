@@ -5,12 +5,17 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
+#include <fstream>
+
 #include <QCoreApplication>
 #include <QSignalSpy>
+#include <QStandardPaths>
 
 #include "Backends/Input/FakeInputBackend.h"
 #include "Backends/Output/NullOutputBackend.h"
 #include "Core/ControlId.h"
+#include "Runtime/ProfileManager.h"
 #include "UI/Bridge/AppController.h"
 #include "UI/Bridge/DeviceModel.h"
 #include "UI/Bridge/InputCaptureModel.h"
@@ -414,6 +419,8 @@ TEST_CASE("AppController signals use lowerCamelCase for QML Connections compatib
     REQUIRE(Meta->indexOfSignal("pumpTimerRunningChanged()") >= 0);
     REQUIRE(Meta->indexOfSignal("lastPumpSummaryChanged()") >= 0);
     REQUIRE(Meta->indexOfSignal("runtimeError(QString)") >= 0);
+    REQUIRE(Meta->indexOfSignal("profileStatusChanged()") >= 0);
+    REQUIRE(Meta->indexOfSignal("profileSaved(QString)") >= 0);
 }
 
 // ── inputStateModel 属性 ──
@@ -1291,4 +1298,226 @@ TEST_CASE("AppController mappingEnabled change emits signal and property syncs",
     Controller.SetMappingEnabled(true);
     REQUIRE(MappingSpy.count() == 2);
     REQUIRE(Controller.IsMappingEnabled());
+}
+
+// ══════════════════════════════════════════════════════════════
+// P3: saveActiveProfile
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController saveActiveProfile before initialize returns false and emits runtimeError",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
+
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_save_test_noinit" / "profile.json";
+    bool bResult = Controller.saveActiveProfile(
+        QString::fromStdString(TempPath.string()));
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(StatusSpy.count() == 1);
+}
+
+TEST_CASE("AppController saveActiveProfile with explicit path creates JSON file",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_save_test" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    bool bResult = Controller.saveActiveProfile(PathStr);
+
+    REQUIRE(bResult);
+    REQUIRE(std::filesystem::exists(TempPath));
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController saved empty profile can be parsed by ZProfileManager",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_save_test_empty" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    Controller.saveActiveProfile(PathStr);
+
+    ZProfileManager Manager;
+    auto LoadResult = Manager.LoadProfile(TempPath);
+    REQUIRE(LoadResult.IsOk());
+    REQUIRE(LoadResult.Value().Rules.empty());
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController apply binding then save writes mapping rule with expected control and action",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"), QStringLiteral("Keyboard: Space"));
+
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_save_test_binding" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    Controller.saveActiveProfile(PathStr);
+
+    ZProfileManager Manager;
+    auto LoadResult = Manager.LoadProfile(TempPath);
+    REQUIRE(LoadResult.IsOk());
+
+    auto& Rules = LoadResult.Value().Rules;
+    REQUIRE(Rules.size() == 1);
+    REQUIRE(Rules[0].Input.ControlId == "button_south");
+    REQUIRE(Rules[0].Output.Action.Type == EActionType::KeyboardKey);
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController saveActiveProfile creates missing parent directories",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_save_test_mkdir" / "nested" / "dir" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    bool bResult = Controller.saveActiveProfile(PathStr);
+
+    REQUIRE(bResult);
+    REQUIRE(std::filesystem::exists(TempPath));
+
+    std::filesystem::remove_all(
+        std::filesystem::temp_directory_path() / "mappyz_save_test_mkdir");
+}
+
+TEST_CASE("AppController saveActiveProfile while Running succeeds",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+    (void)Controller.startRuntime();
+
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_save_test_running" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    bool bResult = Controller.saveActiveProfile(PathStr);
+
+    REQUIRE(bResult);
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController saveActiveProfile preserves mappingEnabled value",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    Controller.SetMappingEnabled(false);
+    REQUIRE_FALSE(Controller.IsMappingEnabled());
+
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_save_test_mapping" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    Controller.saveActiveProfile(PathStr);
+
+    REQUIRE_FALSE(Controller.IsMappingEnabled());
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController successful save emits profileStatusChanged and profileSaved",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
+    QSignalSpy SavedSpy(&Controller, &ZAppController::profileSaved);
+
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_save_test_signals" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    Controller.saveActiveProfile(PathStr);
+
+    REQUIRE(StatusSpy.count() == 1);
+    REQUIRE(SavedSpy.count() == 1);
+    REQUIRE(SavedSpy.at(0).at(0).toString() == PathStr);
+
+    // 验证 profilePath 属性已更新
+    REQUIRE(Controller.ProfilePath() == PathStr);
+    REQUIRE(Controller.ProfileMessage() == "Profile saved");
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController failed save emits profileStatusChanged and runtimeError",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    // 创建一个普通文件作为阻塞点，使 create_directories 失败
+    auto BlockerPath = std::filesystem::temp_directory_path()
+        / "mappyz_save_fail_blocker";
+    { std::ofstream(BlockerPath).close(); }
+
+    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    auto BadPath = QString::fromStdString(
+        (BlockerPath / "sub" / "profile.json").string());
+
+    bool bResult = Controller.saveActiveProfile(BadPath);
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(StatusSpy.count() == 1);
+    REQUIRE(ErrorSpy.count() == 1);
+
+    std::filesystem::remove(BlockerPath);
+}
+
+TEST_CASE("AppController saveActiveProfile default path creates file under AppDataLocation",
+    "[UI][AppController]")
+{
+    // 启用 Qt test mode，隔离默认路径到临时测试目录
+    QStandardPaths::setTestModeEnabled(true);
+
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime(true);
+
+    bool bResult = Controller.saveActiveProfile();
+
+    REQUIRE(bResult);
+    REQUIRE_FALSE(Controller.ProfilePath().isEmpty());
+
+    // 验证文件存在且可被 ProfileManager round-trip
+    StdPath SavedPath(Controller.ProfilePath().toStdString());
+    REQUIRE(std::filesystem::exists(SavedPath));
+
+    ZProfileManager Manager;
+    auto LoadResult = Manager.LoadProfile(SavedPath);
+    REQUIRE(LoadResult.IsOk());
+
+    // 清理测试目录
+    std::filesystem::remove_all(SavedPath.parent_path());
+    QStandardPaths::setTestModeEnabled(false);
 }

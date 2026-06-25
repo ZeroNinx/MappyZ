@@ -132,12 +132,12 @@
 
 UI 侧验收：
 
-- [ ] TopBar `Save Profile` 调用真实保存 API。
-- [ ] 保存成功后给用户可见反馈。
-- [ ] 保存失败后给用户可见反馈。
-- [ ] QML 不直接拼路径，不持有文件系统策略。
-- [ ] 保存成功后 LogModel 写入 `Profile saved`。
-- [ ] 保存失败后 LogModel 写入 `Profile save failed`。
+- [x] TopBar `Save Profile` 调用真实保存 API。
+- [x] 保存成功后给用户可见反馈。
+- [x] 保存失败后给用户可见反馈。
+- [x] QML 不直接拼路径，不持有文件系统策略。
+- [x] 保存成功后 LogModel 写入 `Profile saved`。
+- [x] 保存失败后 LogModel 写入 `Profile save failed`。
 
 ## Priority 4: Load Saved Profile
 
@@ -229,7 +229,7 @@ UI 侧验收：
 - [x] 2. UI Feedback And Empty States。
 - [x] 3. LogModel Lite。
 - [x] 4. Runtime Status Display Cleanup。
-- [ ] 5. Save Active Profile（详见 `todo.md`）。
+- [x] 5. Save Active Profile（详见 `todo.md`）。
 - [ ] 6. Load Saved Profile。
 - [ ] 7. Real Output Mode。
 - [ ] 8. Action Picker。

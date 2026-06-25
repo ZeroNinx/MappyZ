@@ -7,7 +7,10 @@
 #include <cstdio>
 #include <utility>
 
+#include <QStandardPaths>
+
 #include "Core/ControlId.h"
+#include "Runtime/ProfileManager.h"
 
 namespace MappyZ
 {
@@ -208,6 +211,16 @@ QString ZAppController::OutputDisplayText() const
     return QStringLiteral("RealOutput");
 }
 
+QString ZAppController::ProfilePath() const
+{
+    return CachedProfilePath;
+}
+
+QString ZAppController::ProfileMessage() const
+{
+    return CachedProfileMessage;
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime(bool useNullOutput)
@@ -341,10 +354,60 @@ void ZAppController::stopPumpTimer()
     }
 }
 
-void ZAppController::notifySaveProfileNotImplemented()
+bool ZAppController::saveActiveProfile(QString profilePath)
 {
-    AppendLog(QStringLiteral("Warning"),
-        QStringLiteral("Profile save not yet implemented"));
+    // Runtime 未 initialize 时拒绝保存
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        CachedProfileMessage = QStringLiteral("Save failed: runtime not initialized");
+        emit profileStatusChanged();
+        EmitRuntimeError(CachedProfileMessage);
+        return false;
+    }
+
+    // 参数为空时使用默认路径
+    if (profilePath.isEmpty())
+    {
+        QString DataPath = QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation);
+        if (DataPath.isEmpty())
+        {
+            CachedProfileMessage = QStringLiteral(
+                "Save failed: cannot determine default profile path");
+            emit profileStatusChanged();
+            EmitRuntimeError(CachedProfileMessage);
+            return false;
+        }
+        profilePath = DataPath + QStringLiteral("/profiles/default.json");
+    }
+
+    // 从 RuntimeHost 获取当前 profile 快照
+    auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+
+    // 序列化并写入文件
+    ZProfileManager Manager;
+    auto Result = Manager.SaveProfile(
+        Profile, StdPath(profilePath.toStdString()));
+
+    if (!Result)
+    {
+        auto ErrorMessage = QString::fromStdString(Result.Failure().Message);
+        CachedProfileMessage =
+            QStringLiteral("Profile save failed: %1").arg(ErrorMessage);
+        emit profileStatusChanged();
+        EmitRuntimeError(CachedProfileMessage);
+        return false;
+    }
+
+    // 保存成功，更新状态并通知 QML
+    CachedProfilePath = profilePath;
+    CachedProfileMessage = QStringLiteral("Profile saved");
+    AppendLog(QStringLiteral("Success"), CachedProfileMessage);
+    emit profileStatusChanged();
+    emit profileSaved(profilePath);
+    return true;
 }
 
 // ── 测试辅助 ──

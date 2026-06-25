@@ -43,6 +43,8 @@ class ZAppController final : public QObject
     Q_PROPERTY(ZLogModel* logModel READ LogModel CONSTANT)
     Q_PROPERTY(QString activeProfileName READ ActiveProfileName NOTIFY runtimeStatusChanged)
     Q_PROPERTY(QString outputDisplayText READ OutputDisplayText NOTIFY runtimeStatusChanged)
+    Q_PROPERTY(QString profilePath READ ProfilePath NOTIFY profileStatusChanged)
+    Q_PROPERTY(QString profileMessage READ ProfileMessage NOTIFY profileStatusChanged)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -75,6 +77,8 @@ public:
     NODISCARD ZLogModel* LogModel();
     NODISCARD QString ActiveProfileName() const;
     NODISCARD QString OutputDisplayText() const;
+    NODISCARD QString ProfilePath() const;
+    NODISCARD QString ProfileMessage() const;
 
     // ── QML invokable ──
 
@@ -85,7 +89,7 @@ public:
     Q_INVOKABLE void startPumpTimer(int intervalMs = 16);
     Q_INVOKABLE void stopPumpTimer();
     Q_INVOKABLE bool applySelectedBinding(QString controlId, QString actionText);
-    Q_INVOKABLE void notifySaveProfileNotImplemented();
+    Q_INVOKABLE bool saveActiveProfile(QString profilePath = QString());
 
     // 测试辅助：替换 RuntimeHost 的 active profile 并刷新 UI model。
     // 不暴露给 QML，仅供 C++ 测试代码使用。
@@ -97,6 +101,8 @@ signals:
     void pumpTimerRunningChanged();
     void lastPumpSummaryChanged();
     void runtimeError(QString message);
+    void profileStatusChanged();
+    void profileSaved(QString profilePath);
 
 private:
     // 将 EApplicationBootstrapState 转为 QML 稳定字符串
@@ -147,6 +153,12 @@ private:
 
     // 事件日志模型，供 QML EventLogPanel 绑定
     ZLogModel LogModelInstance;
+
+    // 上次成功保存的 profile 文件路径
+    QString CachedProfilePath;
+
+    // 最近一次保存操作的结果消息
+    QString CachedProfileMessage;
 };
 
 }  // namespace MappyZ
