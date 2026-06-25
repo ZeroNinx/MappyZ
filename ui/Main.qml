@@ -123,7 +123,7 @@ Window {
     // ── 生命周期 ──
 
     Component.onCompleted: {
-        var ok = appController.initializeRuntime(true)
+        var ok = appController.initializeRuntime()
         if (ok) {
             ok = appController.loadProfile()
         }
@@ -213,6 +213,10 @@ Window {
         width: 300
 
         onClearControlRequested: root.selectedControl = ""
+
+        onMappingSelected: function(controlId) {
+            root.selectedControl = controlId
+        }
     }
 
     EventLogPanel {

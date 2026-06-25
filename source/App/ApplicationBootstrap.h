@@ -29,18 +29,11 @@ struct SApplicationBootstrapOptions
     // profile 文件路径，为空时使用默认空 profile
     StdPath ProfilePath;
 
-    // 是否使用 NullOutputBackend（跳过真实输出后端，用于调试）
-    bool bUseNullOutput = false;
-
     // 是否在 StartRuntime 时启动输入后端
     bool bStartInputBackend = true;
 
     // 是否在 StartRuntime 时启用映射
     bool bEnableMapping = true;
-
-    // 跳过 profile 加载/创建，由调用方后续 ReplaceProfile()。
-    // 用于输出模式切换等场景：调用方自行保存和恢复 profile snapshot。
-    bool bSkipProfileSetup = false;
 };
 
 // 应用层 bootstrap 状态
@@ -81,10 +74,6 @@ public:
     // Created/Error 状态下执行完整 setup；Ready/Running 状态下幂等返回 Ok。
     NODISCARD TResult<void> Initialize(SApplicationBootstrapOptions Options = {});
 
-    // 强制重新初始化：无论当前状态都执行完整 teardown + setup。
-    // 用于输出模式切换等需要重建后端的场景。
-    NODISCARD TResult<void> Reinitialize(SApplicationBootstrapOptions Options);
-
     // 启动运行时：调用 RuntimeHost::Start()，透传 options。
     // 要求已 Initialize()，否则返回错误。
     NODISCARD TResult<void> StartRuntime();
@@ -103,18 +92,12 @@ public:
     // 未 initialize 或 InputBackend 为空时返回空 vector，不修改后端状态。
     NODISCARD TVector<SDeviceInfo> ListInputDevices() const;
 
-    // 最近一次成功 Initialize 是否使用了 NullOutputBackend
-    NODISCARD bool IsUsingNullOutput() const;
-
     // 访问内部 RuntimeHost（供 UI Bridge 绑定和测试使用）。
     // 前置条件：Initialize() 已成功（状态为 Ready 或 Running）。
     NODISCARD ZRuntimeHost& GetRuntimeHost();
     NODISCARD const ZRuntimeHost& GetRuntimeHost() const;
 
 private:
-    // 创建输出后端，根据 bUseNullOutput 决定是否跳过 factory
-    NODISCARD TResult<TUniquePtr<IOutputBackend>> CreateOutputBackend(
-        bool bUseNullOutput);
 
     TInputBackendFactory InputFactory;
     TOutputBackendFactory OutputFactory;

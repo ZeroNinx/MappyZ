@@ -208,13 +208,13 @@ QString ZAppController::OutputDisplayText() const
         return QStringLiteral("Output Error");
     }
 
-    // Ready 状态下根据 NullOutput 标志区分
-    if (Bootstrap.IsUsingNullOutput())
+    // Running 时输出实时生效
+    if (Status.State == EApplicationBootstrapState::Running)
     {
-        return QStringLiteral("NullOutput");
+        return QStringLiteral("Live Output");
     }
 
-    return QStringLiteral("RealOutput");
+    return QStringLiteral("Ready");
 }
 
 QString ZAppController::ProfilePath() const
@@ -229,16 +229,15 @@ QString ZAppController::ProfileMessage() const
 
 // ── invokable ──
 
-bool ZAppController::initializeRuntime(bool useNullOutput)
+bool ZAppController::initializeRuntime()
 {
-    // 真实重建路径：Error 状态下 Bootstrap 会走完整 setup，先清理旧输入状态
+    // Error 状态下再次 Initialize 会走完整 setup，先清理旧输入状态
     if (Bootstrap.GetStatus().State == EApplicationBootstrapState::Error)
     {
         InputStateModelInstance.clear();
     }
 
     auto Result = Bootstrap.Initialize({
-        .bUseNullOutput = useNullOutput,
         .bEnableMapping = bCachedMappingEnabled,
     });
 
@@ -458,133 +457,41 @@ bool ZAppController::loadProfile(QString profilePath)
     return true;
 }
 
-bool ZAppController::IsRealOutputEnabled() const
+bool ZAppController::removeBinding(QString ruleId)
 {
+    if (ruleId.isEmpty())
+    {
+        EmitRuntimeError(QStringLiteral("Remove failed: ruleId is empty"));
+        return false;
+    }
+
     auto Status = Bootstrap.GetStatus();
     if (Status.State != EApplicationBootstrapState::Ready
         && Status.State != EApplicationBootstrapState::Running)
     {
-        return false;
-    }
-    return !Bootstrap.IsUsingNullOutput();
-}
-
-bool ZAppController::IsOutputModeSwitching() const
-{
-    return bOutputModeSwitching;
-}
-
-bool ZAppController::setRealOutputEnabled(bool enabled)
-{
-    // 防重入
-    if (bOutputModeSwitching)
-    {
+        EmitRuntimeError(QStringLiteral("Remove failed: runtime not initialized"));
         return false;
     }
 
-    // Runtime 未 initialize 时拒绝
-    auto Status = Bootstrap.GetStatus();
-    if (Status.State != EApplicationBootstrapState::Ready
-        && Status.State != EApplicationBootstrapState::Running)
+    auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+    StdString RuleIdStd = ruleId.toStdString();
+
+    auto Iterator = std::find_if(Profile.Rules.begin(), Profile.Rules.end(),
+        [&RuleIdStd](const SMappingRule& Rule) { return Rule.Id == RuleIdStd; });
+
+    if (Iterator == Profile.Rules.end())
     {
         EmitRuntimeError(
-            QStringLiteral("Output mode switch failed: runtime not initialized"));
+            QStringLiteral("Remove failed: rule \"%1\" not found").arg(ruleId));
         return false;
     }
 
-    // no-op：已处于期望模式
-    bool bCurrentlyReal = !Bootstrap.IsUsingNullOutput();
-    if (bCurrentlyReal == enabled)
-    {
-        return true;
-    }
-
-    bOutputModeSwitching = true;
-    emit outputModeChanged();
-
-    // 保存切换前状态
-    bool bWasRunning = (Status.State == EApplicationBootstrapState::Running);
-    bool bWasPumpTimerActive = PumpTimer.isActive();
-    int PumpTimerInterval = PumpTimer.interval();
-    bool bSavedMappingEnabled = bCachedMappingEnabled;
-    auto SavedProfile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
-
-    // 停止 timer 和 runtime
-    stopPumpTimer();
-    Bootstrap.StopRuntime();
-
-    // 尝试 Reinitialize 到目标输出模式
-    auto ReinitResult = Bootstrap.Reinitialize({
-        .bUseNullOutput = !enabled,
-        .bEnableMapping = bSavedMappingEnabled,
-        .bSkipProfileSetup = true,
-    });
-
-    if (!ReinitResult)
-    {
-        // 目标模式失败（通常是 enabled=true 但真实输出不可用），回退到 NullOutput
-        auto FallbackResult = Bootstrap.Reinitialize({
-            .bUseNullOutput = true,
-            .bEnableMapping = bSavedMappingEnabled,
-            .bSkipProfileSetup = true,
-        });
-
-        if (FallbackResult)
-        {
-            // 恢复 profile 和运行状态，清空输入状态（后端已重建，旧状态无效）
-            Bootstrap.GetRuntimeHost().ReplaceProfile(SavedProfile);
-            Bootstrap.GetRuntimeHost().SetMappingEnabled(bSavedMappingEnabled);
-            RegisterEventHandlers();
-            RefreshDeviceModelFromBootstrap();
-            InputStateModelInstance.clear();
-            RefreshMappingRuleModelFromHost();
-
-            if (bWasRunning)
-            {
-                (void)Bootstrap.StartRuntime();
-            }
-            if (bWasPumpTimerActive)
-            {
-                startPumpTimer(PumpTimerInterval);
-            }
-        }
-
-        bOutputModeSwitching = false;
-        emit outputModeChanged();
-        emit runtimeStatusChanged();
-
-        auto ErrorMsg = QString::fromStdString(ReinitResult.Failure().Message);
-        EmitRuntimeError(
-            QStringLiteral("Real output unavailable: %1").arg(ErrorMsg));
-        return false;
-    }
-
-    // 成功：恢复 profile、mappingEnabled、event handler、model
-    Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(SavedProfile));
-    Bootstrap.GetRuntimeHost().SetMappingEnabled(bSavedMappingEnabled);
-    RegisterEventHandlers();
-    RefreshDeviceModelFromBootstrap();
-    InputStateModelInstance.clear();
+    Profile.Rules.erase(Iterator);
+    Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(Profile));
     RefreshMappingRuleModelFromHost();
 
-    // 恢复 Running 和 pump timer
-    if (bWasRunning)
-    {
-        (void)Bootstrap.StartRuntime();
-        Bootstrap.GetRuntimeHost().SetMappingEnabled(bSavedMappingEnabled);
-    }
-    if (bWasPumpTimerActive)
-    {
-        startPumpTimer(PumpTimerInterval);
-    }
-
-    bOutputModeSwitching = false;
-    emit outputModeChanged();
-    emit runtimeStatusChanged();
-
     AppendLog(QStringLiteral("Success"),
-        enabled ? QStringLiteral("Switched to real output")
-                : QStringLiteral("Switched to null output"));
+        QStringLiteral("Removed binding: %1").arg(ruleId));
     return true;
 }
 

@@ -58,6 +58,9 @@ public:
     // 校验 kind+value 组合是否存在于目录中
     NODISCARD bool Contains(const QString& Kind, const QString& Value) const;
 
+    // 查找 kind+value 在目录中的行索引，不存在返回 -1
+    Q_INVOKABLE int findIndex(const QString& kind, const QString& value) const;
+
 private:
     // 构造时填充的静态目录
     QVector<SActionCatalogItem> Items;

@@ -1,6 +1,6 @@
 import QtQuick
 
-// 设备列表面板：显示已连接设备和运行时消息
+// 设备列表面板：显示已连接设备和空状态提示
 Panel {
     id: devicesPanel
 
@@ -70,11 +70,8 @@ Panel {
                         anchors.rightMargin: 8
                         anchors.top: parent.top
                         anchors.topMargin: 8
-                        label: devicesPanel.appController
-                            ? devicesPanel.appController.runtimeState : ""
-                        tone: devicesPanel.appController
-                                && devicesPanel.appController.runtimeState === "running"
-                            ? devicesPanel.theme.success : "#555555"
+                        label: "Connected"
+                        tone: devicesPanel.theme.success
                     }
 
                     FieldLabel {
@@ -166,40 +163,6 @@ Panel {
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                     lineHeight: 1.3
-                }
-            }
-
-            Rectangle {
-                width: contentColumn.width
-                height: 78
-                radius: 4
-                color: "#1f1f1f"
-                border.color: devicesPanel.theme.border
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    anchors.top: parent.top
-                    anchors.topMargin: 10
-                    text: "Runtime"
-                    color: devicesPanel.theme.text
-                    font.pixelSize: 12
-                    font.bold: true
-                }
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    anchors.top: parent.top
-                    anchors.topMargin: 34
-                    text: devicesPanel.appController
-                        ? (devicesPanel.appController.runtimeMessage || "No runtime message")
-                        : "No runtime message"
-                    color: devicesPanel.theme.muted
-                    font.pixelSize: 11
-                    wrapMode: Text.WordWrap
                 }
             }
         }

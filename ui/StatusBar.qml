@@ -1,6 +1,6 @@
 import QtQuick
 
-// 底部状态栏：显示设备数、运行时状态、mapping 开关、输出状态和事件计数
+// 底部状态栏：显示设备数、运行时状态、mapping 状态、输出状态和事件计数
 Rectangle {
     id: statusBar
 

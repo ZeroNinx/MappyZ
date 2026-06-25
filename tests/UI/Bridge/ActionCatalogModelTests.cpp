@@ -238,3 +238,37 @@ TEST_CASE("[UI][ActionCatalogModel] rowCount returns 0 for valid parent",
     auto ParentIndex = Model.index(0);
     CHECK(Model.rowCount(ParentIndex) == 0);
 }
+
+// ── findIndex ──
+
+TEST_CASE("[UI][ActionCatalogModel] findIndex returns correct index for existing entry",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+
+    int Index = Model.findIndex("Keyboard", "Space");
+    REQUIRE(Index >= 0);
+    REQUIRE(Model.kindAt(Index) == "Keyboard");
+    REQUIRE(Model.valueAt(Index) == "Space");
+}
+
+TEST_CASE("[UI][ActionCatalogModel] findIndex returns correct index for mouse button",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+
+    int Index = Model.findIndex("MouseButton", "Left");
+    REQUIRE(Index >= 0);
+    REQUIRE(Model.kindAt(Index) == "MouseButton");
+    REQUIRE(Model.valueAt(Index) == "Left");
+}
+
+TEST_CASE("[UI][ActionCatalogModel] findIndex returns -1 for nonexistent entry",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+
+    REQUIRE(Model.findIndex("Keyboard", "NonExistentKey") == -1);
+    REQUIRE(Model.findIndex("UnknownKind", "Space") == -1);
+    REQUIRE(Model.findIndex("", "") == -1);
+}

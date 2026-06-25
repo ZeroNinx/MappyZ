@@ -147,4 +147,16 @@ bool ZActionCatalogModel::Contains(const QString& Kind, const QString& Value) co
     return false;
 }
 
+int ZActionCatalogModel::findIndex(const QString& Kind, const QString& Value) const
+{
+    for (int i = 0; i < Items.size(); ++i)
+    {
+        if (Items[i].Kind == Kind && Items[i].Value == Value)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
 }  // namespace MappyZ

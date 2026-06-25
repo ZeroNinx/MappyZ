@@ -219,7 +219,7 @@ TEST_CASE("AppController apply success writes Success log entry",
     "[UI][LogModel]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     auto* Log = Controller.LogModel();
 
     int CountBefore = Log->rowCount();
@@ -240,7 +240,7 @@ TEST_CASE("AppController apply failure writes Error log entry",
     "[UI][LogModel]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     auto* Log = Controller.LogModel();
 
     int CountBefore = Log->rowCount();
@@ -261,7 +261,7 @@ TEST_CASE("AppController saveActiveProfile success writes Success log",
     "[UI][LogModel]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     auto* Log = Controller.LogModel();
 

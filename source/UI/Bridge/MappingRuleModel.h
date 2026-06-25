@@ -29,6 +29,8 @@ public:
         InputRole,
         OutputRole,
         ActionKindRole,
+        ActionValueRole,
+        DisplayKindRole,
         EnabledRole,
     };
 
@@ -67,8 +69,14 @@ private:
     // 从 SAction payload 提取用户可读的输出值文本
     NODISCARD static QString ExtractOutputText(const SAction& Action);
 
-    // 从 SAction type 提取动作类别文本
+    // 从 SAction type 提取目录 kind 文本（与 ActionCatalog Kind 对齐）
     NODISCARD static QString ExtractActionKindText(const SAction& Action);
+
+    // 从 SAction payload 提取目录 value 文本（与 ActionCatalog Value 对齐）
+    NODISCARD static QString ExtractActionValueText(const SAction& Action);
+
+    // 从 SAction type 提取 UI 显示用类别标签（Keyboard / Mouse）
+    NODISCARD static QString ExtractDisplayKindText(const SAction& Action);
 
     TVector<SMappingRule> Rules;
 };

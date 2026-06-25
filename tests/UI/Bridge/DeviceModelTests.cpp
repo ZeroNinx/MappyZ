@@ -304,7 +304,7 @@ TEST_CASE("AppController initialize refreshes DeviceModel from fake backend snap
 
     // 在 initialize 前通过 factory 捕获的 backend 添加设备
     // （factory 在 initialize 内调用，所以先 initialize 再 AddDevice 到快照）
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     REQUIRE(RawBackend != nullptr);
 
     // FakeInputBackend 在 initialize 时已创建但未 Start，
@@ -331,7 +331,7 @@ TEST_CASE("AppController start then AddDevice + pumpOnce updates DeviceModel",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
     REQUIRE(RawBackend != nullptr);
 
@@ -360,7 +360,7 @@ TEST_CASE("AppController RemoveDevice + pumpOnce removes row from DeviceModel",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
     REQUIRE(RawBackend != nullptr);
 
@@ -392,7 +392,7 @@ TEST_CASE("AppController stopRuntime does not clear DeviceModel",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
     REQUIRE(RawBackend != nullptr);
 
@@ -426,7 +426,7 @@ TEST_CASE("AppController initializeRuntime failure does not modify DeviceModel",
     REQUIRE(Model != nullptr);
     REQUIRE(Model->rowCount() == 0);
 
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     // 失败后 DeviceModel 仍为空
     REQUIRE(Model->rowCount() == 0);

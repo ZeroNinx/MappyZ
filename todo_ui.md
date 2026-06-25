@@ -2,7 +2,7 @@
 
 ## Goal
 
-先让现有 UI 跟上已经具备的 Runtime 能力，减少“功能存在但 UI 看不出来 / 点了没反馈 / 状态不清楚”的落差。持久化、加载、真实输出等新功能接入排在 UI 基础体验之后。
+先让现有 UI 跟上已经具备的 Runtime 能力，减少“功能存在但 UI 看不出来 / 点了没反馈 / 状态不清楚”的落差。持久化、加载、运行中实时生效等能力接入排在 UI 基础体验之后。
 
 本文件只规划 UI / UI Bridge / App glue，不规划 Core 重构。详细功能模块设计仍放在 `todo.md`。
 
@@ -11,7 +11,7 @@
 - [ ] 先处理 UI debt，再处理 feature plumbing。
 - [ ] UI catch-up 不应被 Save/Load/Profile 等新功能长期阻塞。
 - [ ] 每一阶段都应该改善用户当前可见体验。
-- [ ] 默认保持 NullOutput 安全模式，真实 SendInput 必须由用户明确开启。
+- [ ] 只要 runtime 在 running，输出就应实时生效；不再引入 `Real Output` 开关。
 
 ## Priority -1: Layout Fixes
 
@@ -32,7 +32,7 @@
 目标：把已有操作的成功、失败、空状态说清楚，不新增持久化或加载能力。
 
 - [x] P0 反馈默认采用所在 panel 内 inline message，不依赖 LogModel。
-- [x] TopBar 操作例外：Mapping On/Off 使用按钮 label + primary state 作为即时反馈，不额外加 inline message。
+- [x] TopBar 操作例外曾使用主按钮 label + primary state 作为即时反馈；当前该按钮已移除，不再保留这条交互。
 - [x] inline message 可被下一次操作覆盖，并在短时间后自动清除，例如 3 秒。
 - [x] 成功反馈使用 accent/success tone，失败反馈使用 warning/danger tone。
 - [x] BindingEditor Apply 成功后给 inline feedback。
@@ -46,7 +46,7 @@
 - [x] Capture active 时 Apply 按钮禁用，或明确显示 Apply 将使用当前 selected control。
 - [x] Current mappings 为空时显示 empty state，例如 `No mappings yet`。
 - [x] DevicesPanel 为空时显示可读说明，不只是一行弱提示。
-- [x] Runtime 已 initialize 但未 running 时，Apply 仍可编辑 active profile snapshot；成功后 inline hint 显示 `Mapping will dispatch after runtime starts`，避免误导用户以为已经真实输出。
+- [x] Runtime 已 initialize 但未 running 时，Apply 仍可编辑 active profile snapshot；成功后 inline hint 显示 `Mapping will dispatch after runtime starts`，避免误导用户以为已经开始实时 dispatch。
 - [x] P0 验收：已有 QML offscreen smoke 仍通过且无 warning。
 
 ## Priority 1: LogModel Lite
@@ -92,7 +92,7 @@
 
 ## Priority 2: Runtime Status Display Cleanup
 
-目标：让 UI 明确显示当前运行时状态、输出模式、profile 名称，不要求先实现保存/加载。
+目标：让 UI 明确显示当前运行时状态、输出后端状态、profile 名称，不要求先实现保存/加载。
 
 - [x] TopBar profile tag 不再硬编码 `Default FPS`。
 - [x] `ZAppController` 暴露当前 active profile name：
@@ -101,27 +101,23 @@
   - [x] Runtime 未 initialize、Error、或 profile name 为空时返回 `Default`。
   - [x] TopBar Tag 绑定 `appController.activeProfileName`。
 - [x] P4 `loadProfile(path)` 成功后通过同一 active profile name 属性自然更新，不在 P2 实现加载逻辑。
-- [x] StatusBar 显示用户可理解的 output mode/display text；`outputState` 保留给调试和测试使用。
-- [x] 输出模式的事实来源放在 `ZApplicationBootstrap`，不在 QML 或 `ZAppController` 里重复缓存：
-  - [x] `ZApplicationBootstrap` 增加 `bool IsUsingNullOutput() const`，读取 `CachedOptions.bUseNullOutput`。
-  - [x] Created/Error 且尚未成功 initialize 时语义为未使用真实输出，UI 展示仍应落到 `Unavailable`。
-  - [x] Ready/Running 状态下 `IsUsingNullOutput()` 反映最近一次成功 Initialize 的选项。
-- [x] `ZAppController` 暴露 output display text，而不是让 QML 拼 mode/state：
+- [x] StatusBar 显示用户可理解的 output backend/status；`outputState` 保留给调试和测试使用。
+- [x] 输出状态的事实来源放在 `ZApplicationBootstrap` / `RuntimeHost`，不在 QML 或 `ZAppController` 里重复缓存可切换 mode。
+- [x] `ZAppController` 暴露 output display text，而不是让 QML 拼底层 state：
   - [x] `Q_PROPERTY(QString outputDisplayText READ OutputDisplayText NOTIFY runtimeStatusChanged)`。
-  - [x] backend state 为 `Unavailable` 或 Runtime 未 initialize 时返回 `Unavailable`。
+  - [x] runtime 未 initialize 或 backend state 为 `Unavailable` 时返回 `Unavailable`。
   - [x] backend state 为 `Error` 时返回 `Output Error`。
-  - [x] backend state 为 `Ready` 且 `Bootstrap.IsUsingNullOutput()` 为 true 时返回 `NullOutput`。
-  - [x] backend state 为 `Ready` 且 `Bootstrap.IsUsingNullOutput()` 为 false 时返回 `RealOutput`。
-- [x] StatusBar 的 `Output:` 使用 `appController.outputDisplayText`，不再直接展示底层 `outputState`，避免 `NullOutput ready` 被误解为真实系统输出就绪。
+  - [x] backend ready 且 runtime running 时返回 `Live Output`。
+  - [x] backend ready 但 runtime 未 running 时返回 `Ready`。
+- [x] StatusBar 的 `Output:` 使用 `appController.outputDisplayText`，不再直接暴露底层 mode/state。
 - [x] StatusBar 已显示 mapping enabled 状态。
-- [x] Runtime message 和 output display text 文案统一，不让用户误以为 NullOutput 已经真实输出。
+- [x] Runtime message 和 output display text 文案统一，不制造”运行但不输出”的模式歧义。
 - [x] 增加测试：
   - [x] 默认 profile name 为 Default。
   - [x] mapping enabled 改变后 UI 状态属性同步。
-  - [x] `ZApplicationBootstrap::IsUsingNullOutput()` 反映最近一次成功 Initialize 的 `bUseNullOutput`。
   - [x] `activeProfileName` 在未 initialize、默认 profile、空 profile name 时返回 `Default`。
   - [x] `outputState` 字符串保持稳定：`unavailable` / `ready` / `error`。
-  - [x] `outputDisplayText` 区分 `NullOutput` / `RealOutput` / `Unavailable` / `Output Error`。
+  - [x] `outputDisplayText` 区分 `Ready` / `Live Output` / `Unavailable` / `Output Error`。
   - [x] StatusBar QML 绑定 `outputDisplayText`，QML smoke 无 warning。
 
 ## Priority 3: Save Active Profile
@@ -148,7 +144,7 @@ UI 侧验收：
 UI 侧验收：
 
 - [x] 使用独立 `loadProfile(path = QString())` 方案，不把 profile 加载继续塞进 `initializeRuntime(...)`。
-- [x] `Main.qml` 在 `initializeRuntime(true)` 成功后显式调用无参 `appController.loadProfile()`。
+- [x] `Main.qml` 在 `initializeRuntime()` 成功后显式调用无参 `appController.loadProfile()`。
 - [x] 默认加载路径与 Save Active Profile 使用同一 `DefaultProfilePath()` helper。
 - [x] 默认 profile 不存在时启动成功且 profile 保持空 Default。
 - [x] 已保存 profile 加载后刷新 `mappingRuleModel`。
@@ -159,27 +155,20 @@ UI 侧验收：
 - [x] 默认 profile 不存在时只写低噪声 Info 日志或不报错。
 - [x] 加载失败后 LogModel 写入 `Profile load failed`。
 
-## Priority 5: Real Output Mode
+## Priority 5: Remove Output Toggle
 
-目标：在保持 NullOutput 安全默认的前提下，提供明确的真实输出开关，用于验证 Apply -> SendInput 的端到端闭环。
+目标：删除显式 `Real Output` 产品流程，改成 runtime running 时输出默认实时生效。
 
-详细设计见 `todo.md` 的 `Real Output Mode`。这里不重复完整 API 签名，避免两份规划分叉。
+详细设计见 `todo.md` 的 `Remove Output Mode Toggle`。这里不重复完整 API 签名，避免两份规划分叉。
 
 UI 侧验收：
 
-- [x] 默认继续使用 NullOutput，避免误触系统输入。
-- [x] TopBar 增加明确的 `Real Output` 开关或按钮，和 `Mapping On/Off`、`Save Profile` 同级，默认关闭。
-- [x] 开启真实输出前给出可见确认；本轮使用两步确认按钮，不引入 Dialog 或设置页。
-- [x] 第一次点击显示 `Confirm Real Output`，3 秒内第二次点击才调用 C++。
-- [x] `Main.qml` 默认仍传 `initializeRuntime(true)`。
-- [x] 用户主动确认后，由 `ZAppController` 负责重建 runtime 到真实输出模式。
-- [x] 真实输出不可用时回退 NullOutput，并显示错误/提示。
-- [x] 切换期间绑定 `appController.outputModeSwitching` 禁用按钮或显示 busy 状态；本轮同步实现下它主要是防御性绑定，不依赖它提供长时间可见 loading。
-- [x] 切换输出模式不丢失当前 mapping enabled 状态。
-- [x] 切换输出模式保留当前 active profile snapshot 和 `mappingRuleModel`。
-- [x] 切换输出模式后清空输入状态显示，避免保留旧按键/轴状态。
-- [x] 切换输出模式后 StatusBar `Output:` 正确显示 `NullOutput` / `RealOutput`。
-- [x] QML 不直接重建 runtime，不直接保存/恢复 profile。
+- [x] TopBar 不再显示 `Real Output` / `Confirm Real Output`。
+- [x] `Main.qml` 改为调用无参 `initializeRuntime()`，不再以 `initializeRuntime(true)` 走 `NullOutput` 启动路径。
+- [x] runtime 启动成功后输出立即生效，不需要二次确认。
+- [x] 输出后端不可用时，initialize / start 直接报错，不进入”运行但不生效”的状态。
+- [x] StatusBar 如显示 `Output:`，应表达 backend 状态，而不是 `NullOutput` / `RealOutput` 模式。
+- [x] QML 不直接持有 output mode 状态。
 
 ## Priority 6: Action Picker
 
@@ -209,16 +198,17 @@ UI 侧验收：
 
 UI 侧验收：
 
-- [ ] DevicesPanel 只显示真实设备，不显示永久 `Runtime` 卡。
-- [ ] 设备卡状态 tag 改为 `Connected`，不显示 runtime state。
-- [ ] TopBar profile tag 显示 `Profile: <name>`。
-- [ ] TopBar 移除含义不明的 `Mapping On/Off` 主按钮。
-- [ ] Real Output 切换后设备列表不清空。
-- [ ] Real Output 切换后输入状态仍继续更新。
-- [ ] Current mappings 每行增加删除按钮。
-- [ ] 点击 Current mappings 行能回填 selected input 和 action picker。
-- [ ] 删除 mapping 成功/失败都有 inline feedback。
-- [ ] QML smoke 无 binding/import/property warning。
+- [x] DevicesPanel 只显示真实设备，不显示永久 `Runtime` 卡。
+- [x] 设备卡状态 tag 改为 `Connected`，不显示 runtime state。
+- [x] TopBar profile tag 显示 `Profile: <name>`。
+- [x] TopBar 移除含义不明的 `Mapping On/Off` 主按钮。
+- [x] runtime running 后设备列表保持稳定，不因输出语义调整而清空。
+- [x] runtime running 后输入状态仍继续更新。
+- [x] Current mappings 每行增加删除按钮。
+- [x] 点击 Current mappings 行能回填 selected input 和 action picker。
+- [x] Current mappings 的 Tag 使用展示向 `displayKind`，不直接显示 `MouseButton`。
+- [x] 删除 mapping 成功/失败都有 inline feedback。
+- [x] QML smoke 无 binding/import/property warning。
 
 ## Out Of Scope For This Catch-Up
 
@@ -236,7 +226,12 @@ UI 侧验收：
 - [x] 4. Runtime Status Display Cleanup。
 - [x] 5. Save Active Profile（详见 `todo.md`）。
 - [x] 6. Load Saved Profile。
-- [x] 7. Real Output Mode。
+- [x] 7. Remove Output Toggle / API Cleanup。
 - [x] 8. Action Picker。
-- [ ] 9. Functional Runtime Pass。
+- [x] 9. Functional Runtime Pass。
+
+建议拆成两步实施：
+
+- [x] Step A 先做删除/清理：output toggle、TopBar 按钮、Runtime 卡、设备 tag 文案、无参 initialize API 和相关死测试。
+- [x] Step B 再做新增交互：removeBinding、mapping row 删除、row 点击回填 action picker、`actionValue` / `displayKind` role。
 

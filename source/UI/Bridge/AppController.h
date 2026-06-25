@@ -47,8 +47,6 @@ class ZAppController final : public QObject
     Q_PROPERTY(QString outputDisplayText READ OutputDisplayText NOTIFY runtimeStatusChanged)
     Q_PROPERTY(QString profilePath READ ProfilePath NOTIFY profileStatusChanged)
     Q_PROPERTY(QString profileMessage READ ProfileMessage NOTIFY profileStatusChanged)
-    Q_PROPERTY(bool realOutputEnabled READ IsRealOutputEnabled NOTIFY outputModeChanged)
-    Q_PROPERTY(bool outputModeSwitching READ IsOutputModeSwitching NOTIFY outputModeChanged)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -84,12 +82,10 @@ public:
     NODISCARD QString OutputDisplayText() const;
     NODISCARD QString ProfilePath() const;
     NODISCARD QString ProfileMessage() const;
-    NODISCARD bool IsRealOutputEnabled() const;
-    NODISCARD bool IsOutputModeSwitching() const;
 
     // ── QML invokable ──
 
-    Q_INVOKABLE bool initializeRuntime(bool useNullOutput = false);
+    Q_INVOKABLE bool initializeRuntime();
     Q_INVOKABLE bool startRuntime();
     Q_INVOKABLE void stopRuntime();
     Q_INVOKABLE void pumpOnce();
@@ -99,7 +95,7 @@ public:
         QString controlId, QString actionKind, QString actionValue);
     Q_INVOKABLE bool saveActiveProfile(QString profilePath = QString());
     Q_INVOKABLE bool loadProfile(QString profilePath = QString());
-    Q_INVOKABLE bool setRealOutputEnabled(bool enabled);
+    Q_INVOKABLE bool removeBinding(QString ruleId);
 
     // 测试辅助：替换 RuntimeHost 的 active profile 并刷新 UI model。
     // 不暴露给 QML，仅供 C++ 测试代码使用。
@@ -114,7 +110,6 @@ signals:
     void profileStatusChanged();
     void profileSaved(QString profilePath);
     void profileLoaded(QString profilePath);
-    void outputModeChanged();
 
 private:
     // 将 EApplicationBootstrapState 转为 QML 稳定字符串
@@ -177,9 +172,6 @@ private:
 
     // 最近一次保存操作的结果消息
     QString CachedProfileMessage;
-
-    // 输出模式切换防重入标志
-    bool bOutputModeSwitching = false;
 };
 
 }  // namespace MappyZ

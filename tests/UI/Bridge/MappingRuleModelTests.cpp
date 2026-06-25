@@ -131,7 +131,7 @@ TEST_CASE("MappingRuleModel actionKind role derives from action type",
     REQUIRE(Model.data(Model.index(0), ZMappingRuleModel::ActionKindRole).toString()
         == "Keyboard");
     REQUIRE(Model.data(Model.index(1), ZMappingRuleModel::ActionKindRole).toString()
-        == "Mouse");
+        == "MouseButton");
 }
 
 // ── Role 语义：ruleId 返回 Rule.Id ──
@@ -298,11 +298,67 @@ TEST_CASE("MappingRuleModel roleNames contains all expected roles",
     REQUIRE(Names.contains(ZMappingRuleModel::InputRole));
     REQUIRE(Names.contains(ZMappingRuleModel::OutputRole));
     REQUIRE(Names.contains(ZMappingRuleModel::ActionKindRole));
+    REQUIRE(Names.contains(ZMappingRuleModel::ActionValueRole));
+    REQUIRE(Names.contains(ZMappingRuleModel::DisplayKindRole));
     REQUIRE(Names.contains(ZMappingRuleModel::EnabledRole));
 
     REQUIRE(Names[ZMappingRuleModel::RuleIdRole] == "ruleId");
     REQUIRE(Names[ZMappingRuleModel::InputRole] == "input");
     REQUIRE(Names[ZMappingRuleModel::OutputRole] == "output");
     REQUIRE(Names[ZMappingRuleModel::ActionKindRole] == "actionKind");
+    REQUIRE(Names[ZMappingRuleModel::ActionValueRole] == "actionValue");
+    REQUIRE(Names[ZMappingRuleModel::DisplayKindRole] == "displayKind");
     REQUIRE(Names[ZMappingRuleModel::EnabledRole] == "enabled");
+}
+
+// ── actionValue role ──
+
+TEST_CASE("MappingRuleModel actionValue role returns catalog value for keyboard",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeKeyboardRule("button_south", "Space"));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.data(Model.index(0), ZMappingRuleModel::ActionValueRole).toString()
+        == "Space");
+}
+
+TEST_CASE("MappingRuleModel actionValue role returns catalog value for mouse buttons",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeMouseButtonRule("btn_a", 0));
+    Rules.push_back(MakeMouseButtonRule("btn_b", 1));
+    Rules.push_back(MakeMouseButtonRule("btn_c", 2));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.data(Model.index(0), ZMappingRuleModel::ActionValueRole).toString()
+        == "Left");
+    REQUIRE(Model.data(Model.index(1), ZMappingRuleModel::ActionValueRole).toString()
+        == "Right");
+    REQUIRE(Model.data(Model.index(2), ZMappingRuleModel::ActionValueRole).toString()
+        == "Middle");
+}
+
+// ── displayKind role ──
+
+TEST_CASE("MappingRuleModel displayKind role returns UI tag for keyboard and mouse",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeKeyboardRule("button_south", "Space"));
+    Rules.push_back(MakeMouseButtonRule("right_trigger", 0));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.data(Model.index(0), ZMappingRuleModel::DisplayKindRole).toString()
+        == "Keyboard");
+    REQUIRE(Model.data(Model.index(1), ZMappingRuleModel::DisplayKindRole).toString()
+        == "Mouse");
 }

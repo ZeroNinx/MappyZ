@@ -106,7 +106,7 @@ TEST_CASE("AppController initializeRuntime succeeds to ready",
 
     QSignalSpy StatusSpy(&Controller, &ZAppController::runtimeStatusChanged);
 
-    bool bResult = Controller.initializeRuntime(true);
+    bool bResult = Controller.initializeRuntime();
 
     REQUIRE(bResult);
     REQUIRE(Controller.RuntimeState() == "ready");
@@ -135,7 +135,7 @@ TEST_CASE("AppController startRuntime succeeds after initialize",
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
 
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     QSignalSpy StatusSpy(&Controller, &ZAppController::runtimeStatusChanged);
 
@@ -152,7 +152,7 @@ TEST_CASE("AppController stopRuntime transitions running to ready",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
     REQUIRE(Controller.RuntimeState() == "running");
 
@@ -167,7 +167,7 @@ TEST_CASE("AppController repeated stopRuntime is safe",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     Controller.stopRuntime();
@@ -189,7 +189,7 @@ TEST_CASE("AppController pumpOnce updates last summary when running",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     // 通过捕获的 FakeInputBackend 注入事件到 event queue
@@ -245,7 +245,7 @@ TEST_CASE("AppController destructor stops timer and runtime safely",
 {
     {
         ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Controller.initializeRuntime(true);
+        (void)Controller.initializeRuntime();
         (void)Controller.startRuntime();
         Controller.startPumpTimer(16);
     }
@@ -267,7 +267,7 @@ TEST_CASE("AppController SetMappingEnabled before initialize caches value",
     REQUIRE_FALSE(Controller.IsMappingEnabled());
     REQUIRE(MappingSpy.count() == 1);
 
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 }
 
 // ── mappingEnabled 在 initialize 后更新缓存并发信号 ──
@@ -276,7 +276,7 @@ TEST_CASE("AppController SetMappingEnabled after initialize updates cache and em
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     QSignalSpy MappingSpy(&Controller, &ZAppController::mappingEnabledChanged);
@@ -307,7 +307,7 @@ TEST_CASE("AppController SetMappingEnabled false before initialize survives star
     // initialize 前设为 false
     Controller.SetMappingEnabled(false);
 
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     // 缓存值在整个生命周期中保持 false
@@ -322,7 +322,7 @@ TEST_CASE("AppController mappingEnabled toggled between initialize and start use
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
 
     // initialize 时 mapping enabled（默认）
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     // initialize 后、start 前切换为 false
     Controller.SetMappingEnabled(false);
@@ -342,7 +342,7 @@ TEST_CASE("AppController emits RuntimeStatusChanged on lifecycle transitions",
 
     QSignalSpy StatusSpy(&Controller, &ZAppController::runtimeStatusChanged);
 
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     REQUIRE(StatusSpy.count() >= 1);
 
     int CountAfterInit = StatusSpy.count();
@@ -368,7 +368,7 @@ TEST_CASE("AppController initializeRuntime fails when input factory fails",
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
     QSignalSpy StatusSpy(&Controller, &ZAppController::runtimeStatusChanged);
 
-    bool bResult = Controller.initializeRuntime(true);
+    bool bResult = Controller.initializeRuntime();
 
     REQUIRE_FALSE(bResult);
     REQUIRE(Controller.RuntimeState() == "error");
@@ -382,32 +382,17 @@ TEST_CASE("AppController initializeRuntime fails when input factory fails",
 
 // ── output factory 失败 ──
 
-TEST_CASE("AppController output factory failure vs useNullOutput bypass",
+TEST_CASE("AppController initializeRuntime fails when output factory fails",
     "[UI][AppController]")
 {
-    SECTION("initializeRuntime(false) uses output factory and fails")
-    {
-        ZAppController Controller(
-            MakeFakeInputFactory(),
-            MakeFailingOutputFactory("output backend unavailable"));
+    ZAppController Controller(
+        MakeFakeInputFactory(),
+        MakeFailingOutputFactory("output backend unavailable"));
 
-        bool bResult = Controller.initializeRuntime(false);
+    bool bResult = Controller.initializeRuntime();
 
-        REQUIRE_FALSE(bResult);
-        REQUIRE(Controller.RuntimeState() == "error");
-    }
-
-    SECTION("initializeRuntime(true) bypasses output factory with NullOutput")
-    {
-        ZAppController Controller(
-            MakeFakeInputFactory(),
-            MakeFailingOutputFactory("output backend unavailable"));
-
-        bool bResult = Controller.initializeRuntime(true);
-
-        REQUIRE(bResult);
-        REQUIRE(Controller.RuntimeState() == "ready");
-    }
+    REQUIRE_FALSE(bResult);
+    REQUIRE(Controller.RuntimeState() == "error");
 }
 
 // ── header 不包含 SDL 或 Win32 ──
@@ -456,7 +441,7 @@ TEST_CASE("AppController pumpOnce updates InputStateModel via input event handle
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
@@ -486,7 +471,7 @@ TEST_CASE("AppController device disconnect cleans up InputStateModel",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
@@ -523,7 +508,7 @@ TEST_CASE("AppController idempotent initialize does not clear InputStateModel",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
@@ -534,8 +519,8 @@ TEST_CASE("AppController idempotent initialize does not clear InputStateModel",
     Controller.pumpOnce();
     REQUIRE(Model->rowCount() == 1);
 
-    // 幂等 re-initialize（Ready 状态短路）
-    (void)Controller.initializeRuntime(true);
+    // 幂等再次 initialize（Ready 状态短路）
+    (void)Controller.initializeRuntime();
 
     // InputStateModel 保持不变
     REQUIRE(Model->rowCount() == 1);
@@ -543,7 +528,7 @@ TEST_CASE("AppController idempotent initialize does not clear InputStateModel",
 
 // ── Error 后重新 initialize 清理 InputStateModel ──
 
-TEST_CASE("AppController re-initialize from Error state clears InputStateModel",
+TEST_CASE("AppController initialize from Error state clears InputStateModel",
     "[UI][AppController]")
 {
     // 第一次用正常工厂初始化并注入事件
@@ -563,7 +548,7 @@ TEST_CASE("AppController re-initialize from Error state clears InputStateModel",
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
 
     // 第一次初始化成功
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     REQUIRE(Controller.RuntimeState() == "ready");
 
     // 手动通过 InputStateModel 添加状态来模拟有旧数据
@@ -588,7 +573,7 @@ TEST_CASE("AppController re-initialize from Error state clears InputStateModel",
         MakeNullOutputFactory());
 
     // 初始化失败 → Error 状态
-    (void)Controller2.initializeRuntime(true);
+    (void)Controller2.initializeRuntime();
     REQUIRE(Controller2.RuntimeState() == "error");
 
     // 手动填充 InputStateModel
@@ -597,7 +582,7 @@ TEST_CASE("AppController re-initialize from Error state clears InputStateModel",
     REQUIRE(Model2->rowCount() == 1);
 
     // 重新 initialize（仍会失败，但应先清理 InputStateModel）
-    (void)Controller2.initializeRuntime(true);
+    (void)Controller2.initializeRuntime();
 
     // Error 路径的 re-init 应已清理旧 InputStateModel
     REQUIRE(Model2->rowCount() == 0);
@@ -618,7 +603,7 @@ TEST_CASE("AppController pumpOnce triggers InputStateModel ControlStateChanged",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
@@ -644,7 +629,7 @@ TEST_CASE("AppController device disconnect triggers InputStateModel DeviceStateR
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* InputModel = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
@@ -678,7 +663,7 @@ TEST_CASE("AppController device connect triggers DeviceModel DeviceAdded",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* DevModel = qobject_cast<ZDeviceModel*>(Controller.DeviceModel());
@@ -705,7 +690,7 @@ TEST_CASE("AppController duplicate device connect triggers DeviceModel DeviceUpd
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* DevModel = qobject_cast<ZDeviceModel*>(Controller.DeviceModel());
@@ -744,7 +729,7 @@ TEST_CASE("AppController device disconnect triggers DeviceModel DeviceRemoved",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* DevModel = qobject_cast<ZDeviceModel*>(Controller.DeviceModel());
@@ -775,7 +760,7 @@ TEST_CASE("AppController device added without input then removed does not trigge
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* InputModel = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
@@ -801,7 +786,7 @@ TEST_CASE("AppController device added without input then removed does not trigge
     REQUIRE(InputRemovedSpy.count() == 0);
 }
 
-TEST_CASE("AppController re-initialize from Error triggers InputStateReset",
+TEST_CASE("AppController initialize from Error triggers InputStateReset",
     "[UI][AppController]")
 {
     ZAppController Controller(
@@ -809,7 +794,7 @@ TEST_CASE("AppController re-initialize from Error triggers InputStateReset",
         MakeNullOutputFactory());
 
     // 初始化失败 → Error 状态
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     REQUIRE(Controller.RuntimeState() == "error");
 
     // 手动填充 InputStateModel
@@ -826,7 +811,7 @@ TEST_CASE("AppController re-initialize from Error triggers InputStateReset",
     QSignalSpy ResetSpy(Model, &ZInputStateModel::inputStateReset);
 
     // 重新 initialize（仍会失败，但应先清理 InputStateModel）
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     REQUIRE(ResetSpy.count() == 1);
 }
@@ -842,7 +827,7 @@ TEST_CASE("AppController idempotent initialize does not trigger InputStateReset"
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* Model = qobject_cast<ZInputStateModel*>(Controller.InputStateModel());
@@ -854,8 +839,8 @@ TEST_CASE("AppController idempotent initialize does not trigger InputStateReset"
 
     QSignalSpy ResetSpy(Model, &ZInputStateModel::inputStateReset);
 
-    // 幂等 re-initialize（Ready 状态短路）
-    (void)Controller.initializeRuntime(true);
+    // 幂等再次 initialize（Ready 状态短路）
+    (void)Controller.initializeRuntime();
 
     REQUIRE(ResetSpy.count() == 0);
     REQUIRE(Model->rowCount() == 1);
@@ -883,7 +868,7 @@ TEST_CASE("AppController begin capture then pumpOnce completes capture",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* Capture = qobject_cast<ZInputCaptureModel*>(Controller.InputCapture());
@@ -915,7 +900,7 @@ TEST_CASE("AppController capture completion has InputStateModel snapshot already
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* Capture = qobject_cast<ZInputCaptureModel*>(Controller.InputCapture());
@@ -948,7 +933,7 @@ TEST_CASE("AppController non-target device input does not complete capture",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* Capture = qobject_cast<ZInputCaptureModel*>(Controller.InputCapture());
@@ -977,7 +962,7 @@ TEST_CASE("AppController capture does not affect LastPumpSummary statistics",
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto* Capture = qobject_cast<ZInputCaptureModel*>(Controller.InputCapture());
@@ -1013,7 +998,7 @@ TEST_CASE("AppController mappingRuleModel is empty after initialize",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     auto* Model = Controller.MappingRuleModel();
     REQUIRE(Model->rowCount() == 0);
@@ -1023,7 +1008,7 @@ TEST_CASE("AppController applySelectedBinding Keyboard Space succeeds",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     bool bResult = Controller.applySelectedBinding("button_south", "Keyboard", "Space");
@@ -1042,7 +1027,7 @@ TEST_CASE("AppController applySelectedBinding Mouse Left Click succeeds",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     bool bResult = Controller.applySelectedBinding("right_trigger", "MouseButton", "Left");
@@ -1053,14 +1038,14 @@ TEST_CASE("AppController applySelectedBinding Mouse Left Click succeeds",
 
     auto Index = Model->index(0);
     REQUIRE(Model->data(Index, ZMappingRuleModel::OutputRole).toString() == "Left Click");
-    REQUIRE(Model->data(Index, ZMappingRuleModel::ActionKindRole).toString() == "Mouse");
+    REQUIRE(Model->data(Index, ZMappingRuleModel::ActionKindRole).toString() == "MouseButton");
 }
 
 TEST_CASE("AppController applySelectedBinding rule id equals controlId",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     Controller.applySelectedBinding("button_south", "Keyboard", "Space");
@@ -1074,7 +1059,7 @@ TEST_CASE("AppController applySelectedBinding empty controlId returns false and 
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
@@ -1089,7 +1074,7 @@ TEST_CASE("AppController applySelectedBinding empty actionKind returns false and
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
@@ -1117,7 +1102,7 @@ TEST_CASE("AppController applySelectedBinding same control replaces old rule",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     Controller.applySelectedBinding("button_south", "Keyboard", "Space");
@@ -1131,14 +1116,14 @@ TEST_CASE("AppController applySelectedBinding same control replaces old rule",
     REQUIRE(Controller.MappingRuleModel()->data(
         Index, ZMappingRuleModel::OutputRole).toString() == "Left Click");
     REQUIRE(Controller.MappingRuleModel()->data(
-        Index, ZMappingRuleModel::ActionKindRole).toString() == "Mouse");
+        Index, ZMappingRuleModel::ActionKindRole).toString() == "MouseButton");
 }
 
 TEST_CASE("AppController applySelectedBinding Axis2D returns false and does not modify model",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
@@ -1154,7 +1139,7 @@ TEST_CASE("AppController applySelectedBinding unknown controlId returns false",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
@@ -1170,7 +1155,7 @@ TEST_CASE("AppController applySelectedBinding updates RuntimeHost profile snapsh
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     Controller.applySelectedBinding("button_south", "Keyboard", "Space");
@@ -1194,7 +1179,7 @@ TEST_CASE("AppController applySelectedBinding then pump dispatches mapped input"
     };
 
     ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     // 创建规则
@@ -1226,7 +1211,7 @@ TEST_CASE("AppController applySelectedBinding Keyboard A writes correct action",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     bool bResult = Controller.applySelectedBinding("button_south", "Keyboard", "A");
     REQUIRE(bResult);
@@ -1245,7 +1230,7 @@ TEST_CASE("AppController applySelectedBinding MouseButton Left writes Button 0",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     bool bResult = Controller.applySelectedBinding("button_south", "MouseButton", "Left");
     REQUIRE(bResult);
@@ -1260,7 +1245,7 @@ TEST_CASE("AppController applySelectedBinding MouseButton Right writes Button 1"
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     bool bResult = Controller.applySelectedBinding("button_south", "MouseButton", "Right");
     REQUIRE(bResult);
@@ -1275,7 +1260,7 @@ TEST_CASE("AppController applySelectedBinding MouseButton Middle writes Button 2
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     bool bResult = Controller.applySelectedBinding("button_south", "MouseButton", "Middle");
     REQUIRE(bResult);
@@ -1290,7 +1275,7 @@ TEST_CASE("AppController applySelectedBinding unknown actionKind returns false",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
@@ -1305,7 +1290,7 @@ TEST_CASE("AppController applySelectedBinding unknown mouse button value returns
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
@@ -1321,7 +1306,7 @@ TEST_CASE("AppController applySelectedBinding unknown keyboard value returns fal
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
@@ -1337,7 +1322,7 @@ TEST_CASE("AppController applySelectedBinding success and failure log semantics 
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     auto* Log = Controller.LogModel();
 
@@ -1369,7 +1354,7 @@ TEST_CASE("AppController activeProfileName is Default after initialize with defa
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     // Bootstrap 默认 profile Name 为 "Default"
     REQUIRE(Controller.ActiveProfileName() == "Default");
@@ -1379,7 +1364,7 @@ TEST_CASE("AppController activeProfileName falls back to Default when profile na
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime(true));
+    REQUIRE(Controller.initializeRuntime());
 
     // 替换为空 Name 的 profile
     SMappingProfile Profile;
@@ -1396,21 +1381,21 @@ TEST_CASE("AppController outputDisplayText is Unavailable before initialize",
     REQUIRE(Controller.OutputDisplayText() == "Unavailable");
 }
 
-TEST_CASE("AppController outputDisplayText is NullOutput after initialize with null output",
+TEST_CASE("AppController outputDisplayText is Ready after initialize",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-    REQUIRE(Controller.OutputDisplayText() == "NullOutput");
+    (void)Controller.initializeRuntime();
+    REQUIRE(Controller.OutputDisplayText() == "Ready");
 }
 
-TEST_CASE("AppController outputDisplayText is RealOutput after initialize with real output",
+TEST_CASE("AppController outputDisplayText is Live Output after startRuntime",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    // bUseNullOutput=false，使用真实 factory（此处为 NullOutputFactory 充当）
-    (void)Controller.initializeRuntime(false);
-    REQUIRE(Controller.OutputDisplayText() == "RealOutput");
+    (void)Controller.initializeRuntime();
+    (void)Controller.startRuntime();
+    REQUIRE(Controller.OutputDisplayText() == "Live Output");
 }
 
 TEST_CASE("AppController outputDisplayText is Unavailable when initialize fails",
@@ -1419,7 +1404,7 @@ TEST_CASE("AppController outputDisplayText is Unavailable when initialize fails"
     ZAppController Controller(
         MakeFailingInputFactory("input failed"),
         MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     REQUIRE(Controller.RuntimeState() == "error");
     REQUIRE(Controller.OutputDisplayText() == "Unavailable");
 }
@@ -1432,7 +1417,7 @@ TEST_CASE("AppController outputState strings are stable",
     // Created 状态下 outputState 返回 unavailable
     REQUIRE(Controller.OutputState() == "unavailable");
 
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     // Ready 状态下 NullOutputBackend state 为 ready
     REQUIRE(Controller.OutputState() == "ready");
 }
@@ -1441,7 +1426,7 @@ TEST_CASE("AppController mappingEnabled change emits signal and property syncs",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     QSignalSpy MappingSpy(&Controller, &ZAppController::mappingEnabledChanged);
 
@@ -1481,7 +1466,7 @@ TEST_CASE("AppController saveActiveProfile with explicit path creates JSON file"
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     auto TempPath = std::filesystem::temp_directory_path()
         / "mappyz_save_test" / "profile.json";
@@ -1499,7 +1484,7 @@ TEST_CASE("AppController saved empty profile can be parsed by ZProfileManager",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     auto TempPath = std::filesystem::temp_directory_path()
         / "mappyz_save_test_empty" / "profile.json";
@@ -1519,7 +1504,7 @@ TEST_CASE("AppController apply binding then save writes mapping rule with expect
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     Controller.applySelectedBinding(
         QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
@@ -1546,7 +1531,7 @@ TEST_CASE("AppController saveActiveProfile creates missing parent directories",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     auto TempPath = std::filesystem::temp_directory_path()
         / "mappyz_save_test_mkdir" / "nested" / "dir" / "profile.json";
@@ -1565,7 +1550,7 @@ TEST_CASE("AppController saveActiveProfile while Running succeeds",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
     (void)Controller.startRuntime();
 
     auto TempPath = std::filesystem::temp_directory_path()
@@ -1583,7 +1568,7 @@ TEST_CASE("AppController saveActiveProfile preserves mappingEnabled value",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     Controller.SetMappingEnabled(false);
     REQUIRE_FALSE(Controller.IsMappingEnabled());
@@ -1603,7 +1588,7 @@ TEST_CASE("AppController successful save emits profileStatusChanged and profileS
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
     QSignalSpy SavedSpy(&Controller, &ZAppController::profileSaved);
@@ -1629,7 +1614,7 @@ TEST_CASE("AppController failed save emits profileStatusChanged and runtimeError
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     // 创建一个普通文件作为阻塞点，使 create_directories 失败
     auto BlockerPath = std::filesystem::temp_directory_path()
@@ -1657,7 +1642,7 @@ TEST_CASE("AppController saveActiveProfile default path creates file under AppDa
     STestModeGuard Guard;
 
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     bool bResult = Controller.saveActiveProfile();
 
@@ -1703,7 +1688,7 @@ TEST_CASE("AppController loadProfile with missing default path returns true and 
     STestModeGuard Guard;
 
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     // 无参调用，test mode 下默认路径不存在
     bool bResult = Controller.loadProfile();
@@ -1717,7 +1702,7 @@ TEST_CASE("AppController loadProfile with explicit missing path returns false an
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
@@ -1738,7 +1723,7 @@ TEST_CASE("AppController loadProfile with explicit path loads saved profile and 
 
     {
         ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime(true);
+        (void)Saver.initializeRuntime();
         Saver.applySelectedBinding(
             QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
         Saver.saveActiveProfile(PathStr);
@@ -1746,7 +1731,7 @@ TEST_CASE("AppController loadProfile with explicit path loads saved profile and 
 
     // 用新 controller 加载
     ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime(true);
+    (void)Loader.initializeRuntime();
     REQUIRE(Loader.MappingRuleModel()->rowCount() == 0);
 
     bool bResult = Loader.loadProfile(PathStr);
@@ -1771,7 +1756,7 @@ TEST_CASE("AppController loadProfile updates activeProfileName from profile Name
 
     {
         ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime(true);
+        (void)Saver.initializeRuntime();
 
         SMappingProfile Profile;
         Profile.Name = "My Custom Profile";
@@ -1781,7 +1766,7 @@ TEST_CASE("AppController loadProfile updates activeProfileName from profile Name
 
     // 加载并验证 activeProfileName
     ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime(true);
+    (void)Loader.initializeRuntime();
     REQUIRE(Loader.ActiveProfileName() == "Default");
 
     Loader.loadProfile(PathStr);
@@ -1800,12 +1785,12 @@ TEST_CASE("AppController loadProfile preserves mappingEnabled value",
 
     {
         ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime(true);
+        (void)Saver.initializeRuntime();
         Saver.saveActiveProfile(PathStr);
     }
 
     ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime(true);
+    (void)Loader.initializeRuntime();
     Loader.SetMappingEnabled(false);
     REQUIRE_FALSE(Loader.IsMappingEnabled());
 
@@ -1825,12 +1810,12 @@ TEST_CASE("AppController loadProfile while Running succeeds and does not stop ru
 
     {
         ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime(true);
+        (void)Saver.initializeRuntime();
         Saver.saveActiveProfile(PathStr);
     }
 
     ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime(true);
+    (void)Loader.initializeRuntime();
     (void)Loader.startRuntime();
     REQUIRE(Loader.RuntimeState() == "running");
 
@@ -1846,7 +1831,7 @@ TEST_CASE("AppController loadProfile failure does not clear existing MappingRule
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     // 先 apply 一条规则
     Controller.applySelectedBinding(
@@ -1868,7 +1853,7 @@ TEST_CASE("AppController loadProfile failure does not change profilePath",
     auto PathStr = QString::fromStdString(TempPath.string());
 
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     // 先保存以设置 profilePath
     Controller.saveActiveProfile(PathStr);
@@ -1891,12 +1876,12 @@ TEST_CASE("AppController successful load emits profileStatusChanged and profileL
 
     {
         ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime(true);
+        (void)Saver.initializeRuntime();
         Saver.saveActiveProfile(PathStr);
     }
 
     ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime(true);
+    (void)Loader.initializeRuntime();
 
     QSignalSpy StatusSpy(&Loader, &ZAppController::profileStatusChanged);
     QSignalSpy LoadedSpy(&Loader, &ZAppController::profileLoaded);
@@ -1923,7 +1908,7 @@ TEST_CASE("AppController default path save then no-arg load round-trips",
 
     // 保存带规则的 profile 到默认路径
     ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Saver.initializeRuntime(true);
+    (void)Saver.initializeRuntime();
     Saver.applySelectedBinding(
         QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
     Saver.saveActiveProfile();
@@ -1931,7 +1916,7 @@ TEST_CASE("AppController default path save then no-arg load round-trips",
 
     // 新 controller 无参 loadProfile 读回
     ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime(true);
+    (void)Loader.initializeRuntime();
     REQUIRE(Loader.MappingRuleModel()->rowCount() == 0);
 
     bool bResult = Loader.loadProfile();
@@ -1945,333 +1930,106 @@ TEST_CASE("AppController default path save then no-arg load round-trips",
         StdPath(SavedPath.toStdString()).parent_path());
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// P5: Output Mode Switching
-// ══════════════════════════════════════════════════════════════════════════════
+// ── removeBinding ──
 
-TEST_CASE("AppController default initialize uses NullOutput and realOutputEnabled is false",
+TEST_CASE("AppController removeBinding returns false for empty ruleId",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-
-    REQUIRE_FALSE(Controller.IsRealOutputEnabled());
-    REQUIRE(Controller.property("outputDisplayText").toString() == "NullOutput");
-}
-
-TEST_CASE("AppController default outputModeSwitching is false",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE_FALSE(Controller.IsOutputModeSwitching());
-}
-
-TEST_CASE("AppController setRealOutputEnabled true calls real output factory",
-    "[UI][AppController]")
-{
-    bool bOutputFactoryCalled = false;
-    auto RealOutputFactory = [&bOutputFactoryCalled]()
-        -> TResult<TUniquePtr<IOutputBackend>> {
-        bOutputFactoryCalled = true;
-        return TResult<TUniquePtr<IOutputBackend>>::Ok(
-            std::make_unique<ZNullOutputBackend>());
-    };
-
-    ZAppController Controller(MakeFakeInputFactory(), RealOutputFactory);
-    (void)Controller.initializeRuntime(true);
-
-    bool bResult = Controller.setRealOutputEnabled(true);
-
-    REQUIRE(bResult);
-    REQUIRE(bOutputFactoryCalled);
-    REQUIRE(Controller.IsRealOutputEnabled());
-}
-
-TEST_CASE("AppController setRealOutputEnabled true shows RealOutput in outputDisplayText",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-
-    (void)Controller.setRealOutputEnabled(true);
-
-    REQUIRE(Controller.property("outputDisplayText").toString() == "RealOutput");
-}
-
-TEST_CASE("AppController setRealOutputEnabled false switches back to NullOutput",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-    (void)Controller.setRealOutputEnabled(true);
-    REQUIRE(Controller.IsRealOutputEnabled());
-
-    bool bResult = Controller.setRealOutputEnabled(false);
-
-    REQUIRE(bResult);
-    REQUIRE_FALSE(Controller.IsRealOutputEnabled());
-    REQUIRE(Controller.property("outputDisplayText").toString() == "NullOutput");
-}
-
-TEST_CASE("AppController setRealOutputEnabled true with failing factory returns false and falls back to NullOutput",
-    "[UI][AppController]")
-{
-    ZAppController Controller(
-        MakeFakeInputFactory(),
-        MakeFailingOutputFactory("no real output available"));
-    (void)Controller.initializeRuntime(true);
+    (void)Controller.initializeRuntime();
 
     QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
 
-    bool bResult = Controller.setRealOutputEnabled(true);
-
-    REQUIRE_FALSE(bResult);
-    REQUIRE_FALSE(Controller.IsRealOutputEnabled());
-    REQUIRE(Controller.property("outputDisplayText").toString() == "NullOutput");
-    REQUIRE(ErrorSpy.count() >= 1);
-}
-
-TEST_CASE("AppController setRealOutputEnabled failure preserves Ready or Running state",
-    "[UI][AppController]")
-{
-    SECTION("Ready state")
-    {
-        ZAppController Controller(
-            MakeFakeInputFactory(),
-            MakeFailingOutputFactory("unavailable"));
-        (void)Controller.initializeRuntime(true);
-
-        (void)Controller.setRealOutputEnabled(true);
-
-        REQUIRE(Controller.property("runtimeState").toString() == "ready");
-    }
-
-    SECTION("Running state")
-    {
-        ZAppController Controller(
-            MakeFakeInputFactory(),
-            MakeFailingOutputFactory("unavailable"));
-        (void)Controller.initializeRuntime(true);
-        (void)Controller.startRuntime();
-
-        (void)Controller.setRealOutputEnabled(true);
-
-        REQUIRE(Controller.property("runtimeState").toString() == "running");
-    }
-}
-
-TEST_CASE("AppController setRealOutputEnabled preserves active profile rules",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-    Controller.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
-    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
-
-    (void)Controller.setRealOutputEnabled(true);
-
-    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
-}
-
-TEST_CASE("AppController setRealOutputEnabled preserves activeProfileName",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-
-    SMappingProfile NamedProfile;
-    NamedProfile.Name = "MyProfile";
-    Controller.ReplaceActiveProfileForTest(std::move(NamedProfile));
-    REQUIRE(Controller.ActiveProfileName() == "MyProfile");
-
-    (void)Controller.setRealOutputEnabled(true);
-
-    REQUIRE(Controller.ActiveProfileName() == "MyProfile");
-}
-
-TEST_CASE("AppController setRealOutputEnabled preserves mappingEnabled",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-    Controller.SetMappingEnabled(false);
-    REQUIRE_FALSE(Controller.IsMappingEnabled());
-
-    (void)Controller.setRealOutputEnabled(true);
-
-    REQUIRE_FALSE(Controller.IsMappingEnabled());
-}
-
-TEST_CASE("AppController setRealOutputEnabled from Running state stays Running after switch",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-    (void)Controller.startRuntime();
-    REQUIRE(Controller.property("runtimeState").toString() == "running");
-
-    (void)Controller.setRealOutputEnabled(true);
-
-    REQUIRE(Controller.property("runtimeState").toString() == "running");
-}
-
-TEST_CASE("AppController setRealOutputEnabled restores pump timer if it was active",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-    (void)Controller.startRuntime();
-    Controller.startPumpTimer(16);
-    REQUIRE(Controller.IsPumpTimerRunning());
-
-    (void)Controller.setRealOutputEnabled(true);
-
-    REQUIRE(Controller.IsPumpTimerRunning());
-}
-
-TEST_CASE("AppController setRealOutputEnabled refreshes mappingRuleModel consistently",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-    Controller.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
-    Controller.applySelectedBinding(
-        QStringLiteral("button_east"), QStringLiteral("MouseButton"), QStringLiteral("Left"));
-    REQUIRE(Controller.MappingRuleModel()->rowCount() == 2);
-
-    (void)Controller.setRealOutputEnabled(true);
-
-    REQUIRE(Controller.MappingRuleModel()->rowCount() == 2);
-}
-
-TEST_CASE("AppController setRealOutputEnabled clears inputStateModel and emits reset",
-    "[UI][AppController]")
-{
-    ZFakeInputBackend* RawBackend = nullptr;
-    auto InputFactory = [&RawBackend]() -> TResult<TUniquePtr<IInputBackend>> {
-        auto Backend = std::make_unique<ZFakeInputBackend>();
-        RawBackend = Backend.get();
-        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
-    };
-
-    ZAppController Controller(InputFactory, MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-    (void)Controller.startRuntime();
-
-    // 注入输入事件，使 inputStateModel 非空
-    SInputEvent Event;
-    Event.DeviceId = SDeviceId{.Value = "dev_1"};
-    Event.ControlId = std::string(ControlId::ButtonSouth);
-    Event.ControlType = EInputControlType::Button;
-    Event.EventType = EInputEventType::Pressed;
-    Event.Value = 1.0f;
-    RawBackend->EmitInput(Event);
-    Controller.pumpOnce();
-
-    QSignalSpy ResetSpy(Controller.InputStateModel(),
-        &ZInputStateModel::inputStateReset);
-
-    (void)Controller.setRealOutputEnabled(true);
-
-    REQUIRE(ResetSpy.count() >= 1);
-    REQUIRE(Controller.InputStateModel()->rowCount() == 0);
-}
-
-TEST_CASE("AppController setRealOutputEnabled same mode is idempotent no-op (defensive for sync impl)",
-    "[UI][AppController]")
-{
-    // 同步实现下 bOutputModeSwitching 不可被外部观测到 true，
-    // 此测试验证的是"已处于目标模式时返回 true 且不触发 reinitialize"的 no-op 分支
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-    (void)Controller.setRealOutputEnabled(true);
-
-    // 已经是 real output，再次调用 true 应为 no-op
-    bool bResult = Controller.setRealOutputEnabled(true);
-    REQUIRE(bResult);
-    REQUIRE(Controller.IsRealOutputEnabled());
-}
-
-TEST_CASE("AppController setRealOutputEnabled emits outputModeChanged when done",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime(true);
-
-    QSignalSpy ModeSpy(&Controller, &ZAppController::outputModeChanged);
-
-    (void)Controller.setRealOutputEnabled(true);
-
-    // 切换开始和结束各 emit 一次
-    REQUIRE(ModeSpy.count() == 2);
-    REQUIRE_FALSE(Controller.IsOutputModeSwitching());
-}
-
-TEST_CASE("AppController setRealOutputEnabled before initialize returns false and emits runtimeError",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-
-    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
-
-    bool bResult = Controller.setRealOutputEnabled(true);
-
-    REQUIRE_FALSE(bResult);
+    REQUIRE_FALSE(Controller.removeBinding(QString()));
     REQUIRE(ErrorSpy.count() == 1);
 }
 
-TEST_CASE("AppController signals include outputModeChanged with lowerCamelCase",
+TEST_CASE("AppController removeBinding returns false before initialize",
     "[UI][AppController]")
 {
-    // 验证 signal 名称存在且 QML 兼容
-    auto* MetaObj = &ZAppController::staticMetaObject;
-    bool bFound = false;
-    for (int i = 0; i < MetaObj->methodCount(); ++i)
-    {
-        if (MetaObj->method(i).name() == "outputModeChanged")
-        {
-            bFound = true;
-            break;
-        }
-    }
-    REQUIRE(bFound);
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    REQUIRE_FALSE(Controller.removeBinding(QStringLiteral("some_rule")));
+    REQUIRE(ErrorSpy.count() == 1);
 }
 
-TEST_CASE("AppController setRealOutputEnabled fallback to NullOutput clears inputStateModel and emits reset",
+TEST_CASE("AppController removeBinding removes existing rule and updates model",
     "[UI][AppController]")
 {
-    ZFakeInputBackend* RawBackend = nullptr;
-    auto InputFactory = [&RawBackend]() -> TResult<TUniquePtr<IInputBackend>> {
-        auto Backend = std::make_unique<ZFakeInputBackend>();
-        RawBackend = Backend.get();
-        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
-    };
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
 
-    ZAppController Controller(InputFactory,
-        MakeFailingOutputFactory("no real output"));
-    (void)Controller.initializeRuntime(true);
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
+
+    QString RuleId = Controller.MappingRuleModel()->ruleIdAt(0);
+    REQUIRE_FALSE(RuleId.isEmpty());
+
+    bool bResult = Controller.removeBinding(RuleId);
+
+    REQUIRE(bResult);
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController removeBinding returns false for unknown ruleId",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    REQUIRE_FALSE(Controller.removeBinding(QStringLiteral("nonexistent_rule")));
+    REQUIRE(ErrorSpy.count() == 1);
+}
+
+TEST_CASE("AppController removeBinding works while runtime is running",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
+
     (void)Controller.startRuntime();
+    REQUIRE(Controller.RuntimeState() == "running");
 
-    // 注入输入事件使 inputStateModel 非空
-    SInputEvent Event;
-    Event.DeviceId = SDeviceId{.Value = "dev_1"};
-    Event.ControlId = std::string(ControlId::ButtonSouth);
-    Event.ControlType = EInputControlType::Button;
-    Event.EventType = EInputEventType::Pressed;
-    Event.Value = 1.0f;
-    RawBackend->EmitInput(Event);
-    Controller.pumpOnce();
+    QString RuleId = Controller.MappingRuleModel()->ruleIdAt(0);
+    bool bResult = Controller.removeBinding(RuleId);
 
-    QSignalSpy ResetSpy(Controller.InputStateModel(),
-        &ZInputStateModel::inputStateReset);
+    REQUIRE(bResult);
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
+}
 
-    // 尝试切换到真实输出（会失败并回退）
-    bool bResult = Controller.setRealOutputEnabled(true);
+TEST_CASE("AppController removeBinding with multiple rules removes only target",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
 
-    REQUIRE_FALSE(bResult);
-    REQUIRE_FALSE(Controller.IsRealOutputEnabled());
-    REQUIRE(ResetSpy.count() >= 1);
-    REQUIRE(Controller.InputStateModel()->rowCount() == 0);
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+    Controller.applySelectedBinding(
+        QStringLiteral("button_north"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Escape"));
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 2);
+
+    QString FirstRuleId = Controller.MappingRuleModel()->ruleIdAt(0);
+    bool bResult = Controller.removeBinding(FirstRuleId);
+
+    REQUIRE(bResult);
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
+    REQUIRE(Controller.MappingRuleModel()->ruleIdAt(0) != FirstRuleId);
 }

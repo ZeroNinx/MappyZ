@@ -12,6 +12,9 @@ Panel {
 
     heading: "Binding Editor"
 
+    // 点击 mapping 行时，通知父级选中该控件
+    signal mappingSelected(string controlId)
+
     // Clear 按钮触发，父级应清空 selectedControl
     signal clearControlRequested()
 
@@ -293,15 +296,38 @@ Panel {
                     ? bindingEditor.appController.mappingRuleModel : null
 
                 Rectangle {
+                    required property string ruleId
                     required property string input
                     required property string output
                     required property string actionKind
+                    required property string actionValue
+                    required property string displayKind
 
                     width: contentColumn.width
                     height: 40
                     radius: 4
-                    color: "#1f1f1f"
+                    color: rowMouseArea.containsMouse ? "#262626" : "#1f1f1f"
                     border.color: bindingEditor.theme.border
+
+                    // 点击行：回填 action picker + 通知父级选中控件
+                    MouseArea {
+                        id: rowMouseArea
+
+                        anchors.fill: parent
+                        anchors.rightMargin: deleteButton.width + 4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (!bindingEditor.appController) return
+                            var catalog = bindingEditor.appController.actionCatalogModel
+                            var idx = catalog.findIndex(actionKind, actionValue)
+                            if (idx >= 0) {
+                                bindingEditor._selectedActionIndex = idx
+                                actionComboBox.currentIndex = idx
+                            }
+                            bindingEditor.mappingSelected(input)
+                        }
+                    }
 
                     Text {
                         anchors.left: parent.left
@@ -330,11 +356,54 @@ Panel {
                         id: typeTag
 
                         theme: bindingEditor.theme
-                        anchors.right: parent.right
-                        anchors.rightMargin: 8
+                        anchors.right: deleteButton.left
+                        anchors.rightMargin: 6
                         anchors.verticalCenter: parent.verticalCenter
-                        label: actionKind
-                        tone: actionKind === "Mouse" ? "#c4710c" : bindingEditor.theme.accentSoft
+                        label: displayKind
+                        tone: displayKind === "Mouse" ? "#c4710c" : bindingEditor.theme.accentSoft
+                    }
+
+                    // 删除按钮
+                    Rectangle {
+                        id: deleteButton
+
+                        anchors.right: parent.right
+                        anchors.rightMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 24
+                        height: 24
+                        radius: 4
+                        color: deleteMouseArea.containsMouse ? "#3a2020" : "transparent"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "×"
+                            color: deleteMouseArea.containsMouse
+                                ? bindingEditor.theme.warning : bindingEditor.theme.muted
+                            font.pixelSize: 14
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: deleteMouseArea
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (!bindingEditor.appController) return
+                                var success = bindingEditor.appController.removeBinding(ruleId)
+                                if (success) {
+                                    deleteFeedback.show(
+                                        "Removed: " + input,
+                                        bindingEditor.theme.muted)
+                                } else {
+                                    deleteFeedback.show(
+                                        "Remove failed",
+                                        bindingEditor.theme.warning)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -346,6 +415,13 @@ Panel {
                 color: bindingEditor.theme.muted
                 font.pixelSize: 12
                 topPadding: 4
+            }
+
+            // 删除操作反馈
+            InlineMessage {
+                id: deleteFeedback
+
+                theme: bindingEditor.theme
             }
         }
     }
