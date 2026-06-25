@@ -751,13 +751,13 @@ bool ZAppController::InferInputFromControlId(
         return true;
     }
 
-    // D-Pad (Hat)
+    // D-Pad（SDL3 Gamepad API 将 DPad 作为普通 Button 上报）
     if (ControlId == MappyZ::ControlId::DpadUp
         || ControlId == MappyZ::ControlId::DpadDown
         || ControlId == MappyZ::ControlId::DpadLeft
         || ControlId == MappyZ::ControlId::DpadRight)
     {
-        OutInput.ControlType = EInputControlType::Hat;
+        OutInput.ControlType = EInputControlType::Button;
         OutInput.EventType = EInputEventType::Pressed;
         OutInput.Threshold = 0.5f;
         OutInput.Deadzone = 0.0f;

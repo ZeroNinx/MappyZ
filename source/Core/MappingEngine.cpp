@@ -48,10 +48,19 @@ bool ZMappingEngine::DoesRuleMatchInput(const SInputEvent& Event, const SMapping
         return false;
     }
 
-    // ControlType 精确匹配
+    // ControlType 匹配：Button 和 Hat 在映射逻辑中行为一致，允许互相匹配。
+    // SDL3 Gamepad API 将 DPad 作为 Button 上报，但旧规则可能存为 Hat。
     if (Event.ControlType != Rule.Input.ControlType)
     {
-        return false;
+        bool bBothButtonLike =
+            (Event.ControlType == EInputControlType::Button
+                || Event.ControlType == EInputControlType::Hat)
+            && (Rule.Input.ControlType == EInputControlType::Button
+                || Rule.Input.ControlType == EInputControlType::Hat);
+        if (!bBothButtonLike)
+        {
+            return false;
+        }
     }
 
     // 根据控件类型和动作模式判断事件类型是否被接受
