@@ -201,21 +201,24 @@ UI 侧验收：
 - [x] Current mappings 展示不退化。
 - [x] QML smoke 无 binding/import/property warning。
 
-## Priority 7: Mapping Rule Editing
+## Priority 7: Functional Runtime Pass
 
-目标：Current mappings 不只是展示，可以删除、替换和禁用规则。
+目标：让主流程真正跑通，而不是只能看输入和创建映射。
 
-- [ ] `ZAppController` 增加 `removeBinding(ruleId)`。
-- [ ] `ZAppController` 增加 `setBindingEnabled(ruleId, enabled)`。
+详细设计见 `todo.md` 的 `Functional Runtime Pass`。这里不重复完整 API 签名，避免两份规划分叉。
+
+UI 侧验收：
+
+- [ ] DevicesPanel 只显示真实设备，不显示永久 `Runtime` 卡。
+- [ ] 设备卡状态 tag 改为 `Connected`，不显示 runtime state。
+- [ ] TopBar profile tag 显示 `Profile: <name>`。
+- [ ] TopBar 移除含义不明的 `Mapping On/Off` 主按钮。
+- [ ] Real Output 切换后设备列表不清空。
+- [ ] Real Output 切换后输入状态仍继续更新。
 - [ ] Current mappings 每行增加删除按钮。
-- [ ] Current mappings 每行增加 enabled 状态展示或切换。
-- [ ] 点击 mapping row 可选中对应 control 和 action。
-- [ ] 删除/禁用后立即 `ReplaceProfile()` 并刷新 `mappingRuleModel`。
-- [ ] 增加测试：
-  - [ ] remove existing rule。
-  - [ ] remove unknown rule no-op 或 false，语义明确。
-  - [ ] disable rule 后输入不再 mapped。
-  - [ ] re-enable 后输入重新 mapped。
+- [ ] 点击 Current mappings 行能回填 selected input 和 action picker。
+- [ ] 删除 mapping 成功/失败都有 inline feedback。
+- [ ] QML smoke 无 binding/import/property warning。
 
 ## Out Of Scope For This Catch-Up
 
@@ -235,5 +238,5 @@ UI 侧验收：
 - [x] 6. Load Saved Profile。
 - [x] 7. Real Output Mode。
 - [x] 8. Action Picker。
-- [ ] 9. Mapping Rule Editing。
+- [ ] 9. Functional Runtime Pass。
 

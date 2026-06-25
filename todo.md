@@ -1,210 +1,282 @@
-# TODO: Action Picker
+# TODO: Functional Runtime Pass
 
 ## Next Step
 
-下一步实现 `Binding Editor` 的 Action Picker：不再用 `"Keyboard: Space"` 这类展示字符串作为业务输入，而是让 UI 从 C++ 提供的 action catalog 中选择结构化 action，再把 `actionKind + actionValue` 传给 `ZAppController` 写入 active profile。
+下一步目标是让软件具备实际可用闭环：连接手柄 -> 选择输入 -> 绑定输出 -> 保存/加载 -> 开启真实输出 -> 映射实时生效 -> 可删除或修改映射。
 
-本轮只做常用键盘键和鼠标按钮选择，不做宏、组合键、长按、鼠标移动预设或完整设置页。
+本轮不继续扩展 action 种类，也不做完整设置页。重点修正当前几个破坏可用性的设计问题：
+
+- [ ] 真实输出开关不能重建输入后端，不能清空设备列表。
+- [ ] 已连接设备必须在切换输出模式后继续可见、继续产生输入事件。
+- [ ] 绑定规则必须能删除。
+- [ ] 运行中 Apply / Load / Delete 后，映射必须立即生效，不需要重启软件。
+- [ ] UI 上的 `Runtime running`、`Mapping On/Off`、`Default` 等文案必须变成用户能理解的状态。
 
 ## Scope
 
 包含：
 
-- [x] 新增 C++ 侧 action catalog，作为 UI 可选输出动作的单一事实来源。
-- [x] `ZAppController` 暴露只读 `actionCatalogModel`。
-- [x] `applySelectedBinding(...)` 改为结构化参数，不再解析展示字符串。
-- [x] `BindingEditor.qml` 使用 action catalog 渲染选项。
-- [x] Apply 后仍写入现有 `SMappingRule` / `SAction`，不改变 Core action 语义。
-- [x] Current mappings 仍使用 `mappingRuleModel` 展示已有规则。
-- [x] 增加 UI Bridge / QML smoke 测试覆盖结构化 action apply 链路。
+- [ ] 输出后端热切换：只替换 output backend，不重建 input backend / event queue / runtime host。
+- [ ] 删除 Mapping On/Off 顶部按钮，避免把内部调试开关暴露成主流程功能。
+- [ ] TopBar profile 标签明确显示 `Profile: <name>`，不再只显示 `Default`。
+- [ ] DevicesPanel 移除永久 `Runtime` 占位卡。
+- [ ] Device card 不再用 runtime state 作为设备状态 tag，改成 `Connected`。
+- [ ] Current mappings 增加删除入口。
+- [ ] 点击 mapping row 能选中对应 input，并把 action picker 切到该规则的 action。
+- [ ] Apply / Load / Delete 在 runtime running 时立即替换 active profile，后续输入马上按新规则 dispatch。
+- [ ] 增加测试覆盖真实输出切换后设备不丢、输入不断、映射仍可 dispatch。
 
 不做：
 
-- [x] 不做组合键，例如 `Ctrl+S`。
-- [x] 不做宏或多 action sequence。
-- [x] 不做 Hold / Toggle / Turbo 模式。
-- [x] 不做 MouseMove / MouseWheel 配置 UI。
-- [x] 不做 per-device action catalog。
-- [x] 不做复杂弹窗或设置页。
+- [ ] 不新增更多 keyboard/mouse action。
+- [ ] 不做复杂 profile 管理页。
+- [ ] 不做 per-device / per-app profile 自动切换。
+- [ ] 不做组合键、宏、长按、双击。
+- [ ] 不做系统权限 UI。
 
-## Design Direction
+## Root Causes
 
-当前字符串解析的问题：
+### Real Output Switch Rebuilds Input
 
-- [x] UI 展示文案和业务语义耦合，后续本地化或文案调整会破坏 apply。
-- [x] `"Keyboard: Space"` / `"Mouse: Left Click"` 这种格式不属于 Core contract。
-- [x] 测试容易只覆盖展示字符串，而不是 action payload。
+当前 `ZAppController::setRealOutputEnabled(...)` 通过 `ZApplicationBootstrap::Reinitialize(...)` 切换输出模式。`Reinitialize()` 会销毁 `RuntimeHost`、`InputBackend`、`OutputBackend`，再重新创建整套 runtime。
 
-本轮改为：
+这会导致：
 
-- [x] C++ 提供 action catalog model。
-- [x] QML 只保存选中项的 `actionKind` 和 `actionValue`。
-- [x] `ZAppController` 根据结构化参数构造 `SAction`。
-- [x] 展示文本只用于 UI，不参与业务解析。
+- [ ] SDL input backend 被重建。
+- [ ] event queue / callback 被 detach 后重新 attach。
+- [ ] DeviceModel 从新 backend 重新枚举，真实设备可能暂时或永久消失。
+- [ ] InputStateModel 被清空。
+- [ ] 用户看到“点 Real Output 后手柄没了”，实际是输出开关误伤输入链路。
 
-## Proposed Types
+正确语义：
 
-新增 `source/UI/Bridge/ActionCatalogModel.h/.cpp`：
+- [ ] 输出模式只影响 action dispatch 目标。
+- [ ] 输出模式不应影响设备枚举、输入事件、当前选中设备、当前按键状态。
+- [ ] 输出切换失败时，保留原 output backend，不改变 input/runtime 状态。
+
+### UI Exposes Internal State As Product Concepts
+
+当前 UI 把一些内部实现概念直接摆到主界面：
+
+- [ ] DevicesPanel 里有一个 `Runtime` 卡，看起来像设备列表占位。
+- [ ] 每个设备卡显示 `running`，但这是 runtime 状态，不是设备状态。
+- [ ] TopBar `Mapping On/Off` 没有解释，用户不知道它是暂停映射还是输出模式。
+- [ ] TopBar `Default` 没有前缀，用户不知道它是 profile 名称。
+
+本轮要把主流程 UI 改成用户任务语言：
+
+- [ ] 设备列表只显示设备。
+- [ ] Runtime 状态只放 StatusBar / EventLog。
+- [ ] Profile tag 显示 `Profile: Default`。
+- [ ] 顶部保留核心操作：Real Output、Save Profile。
+
+### Mapping Cannot Be Managed
+
+当前可以新增/替换同一 input 的 mapping，但 Current mappings 只有展示，没有删除入口，也不能点击回填编辑器。
+
+这会导致：
+
+- [ ] 用户无法删除已保存的错误绑定。
+- [ ] 用户不知道“再次选择同一 control Apply”可以替换。
+- [ ] 已保存 profile 一旦有错误规则，UI 无法修复。
+
+本轮需要让 Current mappings 成为可操作列表。
+
+## API Plan
+
+### Output Backend Hot Swap
+
+`ZActionDispatcher`：
 
 ```cpp
-class ZActionCatalogModel final : public QAbstractListModel
-{
-    Q_OBJECT
-
-public:
-    enum ERole
-    {
-        KindRole = Qt::UserRole + 1,
-        ValueRole,
-        DisplayTextRole,
-        CategoryRole,
-    };
-
-    explicit ZActionCatalogModel(QObject* Parent = nullptr);
-
-    int rowCount(const QModelIndex& Parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex& Index, int Role) const override;
-    QHash<int, QByteArray> roleNames() const override;
-
-    Q_INVOKABLE QString kindAt(int row) const;
-    Q_INVOKABLE QString valueAt(int row) const;
-    Q_INVOKABLE QString displayTextAt(int row) const;
-};
+explicit ZActionDispatcher(IOutputBackend& OutputBackend);
+void SetOutputBackend(IOutputBackend& OutputBackend) noexcept;
+SOutputBackendStatus GetOutputStatus() const;
 ```
 
-Internal item shape:
+Implementation note:
+
+- [ ] `ZActionDispatcher` 内部从 `IOutputBackend& Backend` 改为 `IOutputBackend* Backend`。
+- [ ] `DispatchAction()` / `GetOutputStatus()` 使用当前 backend 指针。
+- [ ] `SetOutputBackend()` 只替换指针，不清空 recent records，不改变 enabled 状态。
+
+`ZRuntimeHost`：
 
 ```cpp
-struct SActionCatalogItem
-{
-    QString Kind;        // "Keyboard" / "MouseButton"
-    QString Value;       // "Space" / "Enter" / "A" / "Left"
-    QString DisplayText; // "Keyboard: Space" / "Mouse: Left Click"
-    QString Category;    // "Keyboard" / "Mouse"
-};
+void ReplaceOutputBackend(IOutputBackend& NewOutputBackend) noexcept;
 ```
+
+Behavior:
+
+- [ ] 更新内部 output backend 指针。
+- [ ] 调用 `Dispatcher.SetOutputBackend(NewOutputBackend)`。
+- [ ] 不 stop input backend。
+- [ ] 不 detach event queue。
+- [ ] 不修改 `HostState`。
+- [ ] 不修改 active profile。
+- [ ] 不清空 mapping/input records。
+
+`ZApplicationBootstrap`：
+
+```cpp
+TResult<void> SwitchOutputBackend(bool bUseNullOutput);
+```
+
+Behavior:
+
+- [ ] 要求 `Initialize()` 已成功，即状态为 Ready 或 Running。
+- [ ] 创建新的 output backend。
+- [ ] 创建失败时返回 error，保留旧 output backend 和 `CachedOptions.bUseNullOutput` 不变。
+- [ ] 创建成功后调用 `RuntimeHost.ReplaceOutputBackend(*NewBackend)`。
+- [ ] 成功后再用 `OutputBackend = std::move(NewBackend)` 接管所有权。
+- [ ] 成功后更新 `CachedOptions.bUseNullOutput`。
+- [ ] 不创建新的 input backend。
+- [ ] 不创建新的 runtime host。
+- [ ] 不调用 `StopRuntime()`。
+- [ ] 不调用 `StartRuntime()`。
+
+`ZAppController::setRealOutputEnabled(bool enabled)`：
+
+- [ ] 改为调用 `Bootstrap.SwitchOutputBackend(!enabled)`。
+- [ ] 不再调用 `Bootstrap.Reinitialize(...)`。
+- [ ] 不再保存/恢复 profile snapshot。
+- [ ] 不再 stop/start pump timer。
+- [ ] 不再 clear `InputStateModel`。
+- [ ] 不再 refresh `DeviceModel`，因为设备没有变化。
+- [ ] 切换成功后 emit `outputModeChanged()` 和 `runtimeStatusChanged()`。
+- [ ] 切换失败后保持原 output mode，写 Error log，emit `runtimeError()`。
+
+### Mapping Rule Management
 
 `ZAppController` 新增：
 
 ```cpp
-Q_PROPERTY(ZActionCatalogModel* actionCatalogModel READ ActionCatalogModel CONSTANT)
-
-NODISCARD ZActionCatalogModel* ActionCatalogModel();
-Q_INVOKABLE bool applySelectedBinding(
-    QString controlId,
-    QString actionKind,
-    QString actionValue);
+Q_INVOKABLE bool removeBinding(QString ruleId);
 ```
 
-`actionKind` 固定集合：
+Behavior:
 
-- [x] `"Keyboard"`：写入 `SKeyboardAction`。
-- [x] `"MouseButton"`：写入 `SMouseButtonAction`。
+- [ ] Runtime 未 initialize 时返回 false，写 Error log。
+- [ ] `ruleId` 为空时返回 false，写 Error log。
+- [ ] 找到 matching `SMappingRule::Id` 后删除。
+- [ ] 删除后 `RuntimeHost.ReplaceProfile(updatedProfile)`。
+- [ ] 删除后 `RefreshMappingRuleModelFromHost()`。
+- [ ] 删除成功写 Success log。
+- [ ] 未找到 ruleId 返回 false，不修改 profile，写 Warning 或 Error log；本轮选择 Error，保持 Apply 失败语义一致。
+- [ ] Runtime running 时删除立即影响后续 mapping dispatch。
 
-`actionValue` 固定集合：
+`ZMappingRuleModel` roles 调整：
 
-- [x] Keyboard: `Space`、`Enter`、`Escape`、`Tab`。
-- [x] Keyboard: `A` 到 `Z`。
-- [x] Keyboard: `0` 到 `9`。
-- [x] Keyboard: `ArrowUp`、`ArrowDown`、`ArrowLeft`、`ArrowRight`。
-- [x] MouseButton: `Left`、`Right`、`Middle`。
+- [ ] 保留 `ruleId`。
+- [ ] 保留 `input`。
+- [ ] 保留 `output` 作为展示文本，例如 `Space` / `Left Click`。
+- [ ] 新增或调整 `actionKind` 为 catalog kind：`Keyboard` / `MouseButton`。
+- [ ] 新增 `actionValue` 为 catalog value：`Space` / `Left` / `Right` / `Middle`。
+- [ ] 如需展示 `Mouse` tag，新增 `displayKind`，不要让展示文案污染业务参数。
 
-Mouse button 映射由 `ZAppController::applySelectedBinding(...)` 内部维护：
+`BindingEditor.qml`：
 
-- [x] `"Left"` -> `SMouseButtonAction.Button = 0`。
-- [x] `"Right"` -> `SMouseButtonAction.Button = 1`。
-- [x] `"Middle"` -> `SMouseButtonAction.Button = 2`。
-
-## Behavior
-
-- [x] `actionCatalogModel` 在 `ZAppController` 构造时初始化，运行期不动态变化。
-- [x] `BindingEditor` 默认选中 `Keyboard / Space`，保持当前用户体验。
-- [x] 用户切换 action option 时，只更新 QML 局部状态：`selectedActionKind` / `selectedActionValue` / `selectedActionDisplayText`。
-- [x] Apply 时调用结构化 `applySelectedBinding(selectedControl, selectedActionKind, selectedActionValue)`。
-- [x] `applySelectedBinding` 不读取 UI 展示字符串。
-- [x] `applySelectedBinding` 对未知 `actionKind` 返回 false，不修改 profile，写 Error log。
-- [x] `applySelectedBinding` 对未知 `actionValue` 返回 false，不修改 profile，写 Error log。
-- [x] `controlId` 为空时返回 false，不修改 profile。
-- [x] Runtime 未 initialize 或 Error 时行为保持 P0 语义：UI 禁用 Apply；C++ 仍防御性返回 false。
-- [x] Apply 成功后刷新 `mappingRuleModel`。
-- [x] Apply 成功后继续写 Success log。
-- [x] Apply 失败后继续写 Error log。
-- [x] `SMappingRule::Id` 仍使用 `controlId`，同一 control apply 替换原 rule。
-- [x] `SMappingRule::Output.Action.Type` 由 `actionKind` 决定，不由 QML 文案决定。
-- [x] Keyboard action 继续使用 `SKeyboardAction.bPressed = true`，与现有 `PressRelease` rule mode 配合生成按下/释放语义。
+- [ ] Current mappings 每行增加删除按钮。
+- [ ] 删除按钮调用 `appController.removeBinding(ruleId)`。
+- [ ] 删除成功后如果当前 selectedControl 等于该 mapping input，则清空 selectedControl 或显示 `Binding removed`。
+- [ ] 点击 mapping row：选中对应 input，并把 action picker 切到该行 `actionKind/actionValue`。
+- [ ] 为此新增信号，例如 `mappingSelected(controlId)`，由 `Main.qml` 更新 `selectedControl`。
+- [ ] `BindingEditor` 内部根据 `actionKind/actionValue` 查找 catalog row 并更新 `_selectedActionIndex`。
 
 ## QML Plan
 
-- [x] `BindingEditor.qml` 移除硬编码 `Keyboard` / `Mouse` 两个 action 按钮。
-- [x] 使用 `appController.actionCatalogModel` 渲染 action choices。
-- [x] UI 采用一个轻量 `ComboBox` 或等价下拉选择，不引入弹窗。
-- [x] 下拉项使用 flat list，不做 section header；`category` role 本轮只用于后续分组扩展和测试验证。
-- [x] 每个 action choice 展示 `displayText`。
-- [x] `BindingEditor` 内部保存 `selectedActionKind`、`selectedActionValue`、`selectedActionDisplayText`。
-- [x] `Main.qml` 不再持有 `selectedAction: "Keyboard: Space"` 这类 root property；Action 选择状态收敛在 `BindingEditor` 内部。
-- [x] `Action output` 显示选中项的 `displayText`。
-- [x] Apply 按钮禁用逻辑继续沿用 P0：无设备、无 control、无 action、runtime error 时禁用。
-- [x] Capture / Clear 交互不变。
-- [x] Current mappings 展示不变，仍由 `mappingRuleModel` 的 `actionKind` / `output` roles 驱动。
-- [x] QML 不拼业务 action 字符串。
+### TopBar
 
-## Compatibility
+- [ ] 移除 `Mapping On/Off` 按钮。
+- [ ] Profile tag 文案改为 `Profile: <activeProfileName>`。
+- [ ] 保留 `Real Output` 两步确认按钮。
+- [ ] 保留 `Save Profile`。
+- [ ] `Real Output` 成功/失败继续通过 EventLog/runtimeError 提示。
 
-- [x] 如果测试或 QML 仍需要旧的 `"Keyboard: Space"` 格式，应在本轮迁移掉，不保留双路径。
-- [x] 迁移所有现有 `applySelectedBinding` 调用，从 2 参数改为 3 参数；当前包含约 30 处 `AppControllerTests.cpp` 调用和 1 处 `BindingEditor.qml` 调用。
-- [x] 删除旧的展示字符串解析 helper，避免新旧路径并存导致行为分叉。
-- [x] 不新增 QML 直接构造 `SAction` 的能力。
-- [x] 不让 `MappingRuleModel` 反向承担 action catalog 职责。
-- [x] 保存/加载 profile 文件格式不变，因为底层仍是现有 `SMappingProfile`。
+### DevicesPanel
+
+- [ ] 删除底部 `Runtime` 卡。
+- [ ] 设备卡右上角 tag 改为 `Connected`，不再显示 runtime state。
+- [ ] Runtime 状态只在 StatusBar 显示。
+- [ ] 无设备时仍显示 empty state。
+
+### StatusBar
+
+- [ ] 保留 Runtime 状态。
+- [ ] 保留 Output 显示。
+- [ ] Mapping 状态如果继续显示，应使用 `Mapping: active/paused`；但主按钮移除后默认应保持 active。
+- [ ] 不再把 mapping pause 作为主流程操作。
+
+### BindingEditor
+
+- [ ] Current mappings 行可点击回填编辑器。
+- [ ] Current mappings 行有删除按钮。
+- [ ] 删除按钮不能被 row click 抢事件。
+- [ ] 删除失败显示 inline feedback。
+- [ ] 删除成功显示 inline feedback。
 
 ## Tests
 
-`ActionCatalogModelTests.cpp`：
+### ActionDispatcher / RuntimeHost
 
-- [x] 默认 rowCount 大于 0。
-- [x] roles 包含 `kind`、`value`、`displayText`、`category`。
-- [x] catalog 包含 `Keyboard / Space`。
-- [x] catalog 包含 `Keyboard / A` 到 `Keyboard / Z`。
-- [x] catalog 包含 `Keyboard / 0` 到 `Keyboard / 9`。
-- [x] catalog 包含 arrow keys。
-- [x] catalog 包含 `MouseButton / Left`、`Right`、`Middle`。
-- [x] `kindAt/valueAt/displayTextAt` 对越界 row 返回空字符串。
+- [ ] `ActionDispatcher.SetOutputBackend()` 后后续 dispatch 使用新 backend。
+- [ ] `SetOutputBackend()` 不改变 enabled 状态。
+- [ ] `RuntimeHost.ReplaceOutputBackend()` 不改变 running state。
+- [ ] `RuntimeHost.ReplaceOutputBackend()` 不 detach event queue。
+- [ ] `RuntimeHost.ReplaceOutputBackend()` 不修改 active profile。
 
-`AppControllerTests.cpp`：
+### ApplicationBootstrap
 
-- [x] `actionCatalogModel` 非空且可读。
-- [x] `applySelectedBinding(controlId, "Keyboard", "Space")` 写入 `SKeyboardAction`。
-- [x] `applySelectedBinding(controlId, "Keyboard", "A")` 写入对应 keyboard action。
-- [x] `applySelectedBinding(controlId, "MouseButton", "Left")` 写入 `SMouseButtonAction.Button = 0`。
-- [x] `applySelectedBinding(controlId, "MouseButton", "Right")` 写入 `SMouseButtonAction.Button = 1`。
-- [x] `applySelectedBinding(controlId, "MouseButton", "Middle")` 写入 `SMouseButtonAction.Button = 2`。
-- [x] 未知 `actionKind` 返回 false，不修改现有 profile。
-- [x] 未知 `actionValue` 返回 false，不修改现有 profile。
-- [x] 空 `controlId` 返回 false。
-- [x] Apply 成功刷新 `mappingRuleModel`。
-- [x] Apply 成功/失败日志语义保持。
-- [x] 旧展示字符串路径被移除，测试不再依赖 `"Keyboard: Space"` 解析。
-- [x] 所有旧签名调用点已迁移，代码库中不再存在 `applySelectedBinding(controlId, actionText)` 形式。
+- [ ] `SwitchOutputBackend(true)` 切到 NullOutput。
+- [ ] `SwitchOutputBackend(false)` 调用真实 output factory。
+- [ ] output factory 失败时保留旧 output mode。
+- [ ] output factory 失败时保留旧 OutputBackend 对象。
+- [ ] output switch 不调用 input factory 第二次。
+- [ ] output switch 不替换 RuntimeHost。
+- [ ] Running 状态下 output switch 后仍 Running。
+- [ ] Ready 状态下 output switch 后仍 Ready。
 
-QML smoke：
+### AppController
 
-- [x] `BindingEditor` 能绑定 `actionCatalogModel`，无 required property warning。
-- [x] 默认选中 action 显示 `Keyboard: Space`。
-- [x] Apply 调用结构化参数，不出现展示字符串解析依赖。
+- [ ] `setRealOutputEnabled(true)` 不清空 `DeviceModel`。
+- [ ] `setRealOutputEnabled(true)` 不清空 `InputStateModel`。
+- [ ] `setRealOutputEnabled(true)` 不停止 pump timer。
+- [ ] `setRealOutputEnabled(true)` 不改变 selected profile/mapping rules。
+- [ ] 真实输出失败时仍保留 NullOutput，设备列表不变。
+- [ ] 切换输出后继续 `EmitInput + pumpOnce`，mapping dispatch 仍发生。
+- [ ] Apply while Running 后下一次输入立即使用新 mapping。
+- [ ] loadProfile while Running 后下一次输入立即使用 loaded mapping。
+- [ ] removeBinding existing rule 成功，model rowCount 减少。
+- [ ] removeBinding unknown rule 返回 false，不修改 profile。
+- [ ] removeBinding while Running 后下一次输入不再 dispatch 被删除规则。
+
+### QML Smoke / UI Bridge
+
+- [ ] TopBar 不再有 Mapping On/Off 按钮文本。
+- [ ] TopBar profile tag 包含 `Profile:`。
+- [ ] DevicesPanel 不再出现永久 `Runtime` 卡。
+- [ ] Device card tag 使用 `Connected`。
+- [ ] BindingEditor mapping row 暴露删除按钮。
+- [ ] BindingEditor mapping row 点击能触发回填信号或更新 action picker。
+- [ ] QML smoke 无 binding/import/property warning。
 
 ## Acceptance Criteria
 
-- [x] UI 能选择 Space / Enter / Escape / Tab / A-Z / 0-9 / Arrow keys / Left-Right-Middle mouse。
-- [x] Apply 写入的 action payload 正确。
-- [x] 修改 display text 不会改变业务语义。
-- [x] 未知 action 被拒绝且不污染 profile。
-- [x] Current mappings 继续正确显示。
-- [x] 所有测试通过。
-- [x] 修改和新增文本文件使用 CRLF 行尾。
+- [ ] 打开软件后设备列表只显示真实设备，不再有 Runtime 占位卡。
+- [ ] 点击 Real Output 后设备列表不清空。
+- [ ] 点击 Real Output 后手柄输入仍然更新 UI。
+- [ ] 点击 Real Output 后已有 mapping 仍然存在。
+- [ ] 运行中新增 binding 后，不重启软件即可 dispatch。
+- [ ] 运行中删除 binding 后，后续输入不再 dispatch。
+- [ ] 已保存并重新加载的 mapping 可以删除。
+- [ ] TopBar 的 profile 标签能看出是 profile 名称。
+- [ ] TopBar 不再出现含义不明的 Mapping On/Off 主按钮。
+- [ ] 所有测试通过。
+- [ ] 修改和新增文本文件使用 CRLF 行尾。
 
 ## Follow-Up
 
-- [ ] 后续增加 MouseMove / MouseWheel picker。
-- [ ] 后续增加组合键和 modifier。
-- [ ] 后续增加搜索或分组 action picker UI。
-- [ ] 后续增加 per-platform key name 展示。
+- [ ] 后续做设置页，把 Mapping Pause、真实输出偏好、启动行为放到设置里。
+- [ ] 后续保存用户上次选择的 output mode。
+- [ ] 后续显示真实输出后端的权限/平台可用性。
+- [ ] 后续支持 rule enable/disable，而不只是删除。
