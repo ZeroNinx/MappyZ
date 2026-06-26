@@ -74,6 +74,34 @@ static_assert(WheelDeltaUnit == WHEEL_DELTA, "WheelDeltaUnit mismatch");
 
 }  // namespace SendInputHelpers
 
+// ── 扩展键判定 ──
+// 扩展键需要在 SendInput 中设置 KEYEVENTF_EXTENDEDKEY 标志，
+// 否则 Windows 会将其误解为小键盘等价键（如方向键变成 Numpad 4/6/8/2）
+static bool IsExtendedKey(WORD VirtualKeyCode)
+{
+    switch (VirtualKeyCode)
+    {
+    case VK_UP:
+    case VK_DOWN:
+    case VK_LEFT:
+    case VK_RIGHT:
+    case VK_HOME:
+    case VK_END:
+    case VK_PRIOR:
+    case VK_NEXT:
+    case VK_INSERT:
+    case VK_DELETE:
+    case VK_NUMLOCK:
+    case VK_SNAPSHOT:
+    case VK_DIVIDE:
+    case VK_RCONTROL:
+    case VK_RMENU:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // ── 默认 NativeSender 实现：调用真实 Win32 SendInput ──
 
 static bool DefaultNativeSender(const SendInputHelpers::SSendInputCommand& Command)
@@ -86,7 +114,15 @@ static bool DefaultNativeSender(const SendInputHelpers::SSendInputCommand& Comma
     {
         Input.type = INPUT_KEYBOARD;
         Input.ki.wVk = static_cast<WORD>(Command.VirtualKeyCode);
-        Input.ki.dwFlags = Command.bKeyUp ? KEYEVENTF_KEYUP : 0;
+        Input.ki.wScan = static_cast<WORD>(
+            ::MapVirtualKey(Input.ki.wVk, MAPVK_VK_TO_VSC));
+
+        DWORD Flags = Command.bKeyUp ? KEYEVENTF_KEYUP : 0;
+        if (IsExtendedKey(Input.ki.wVk))
+        {
+            Flags |= KEYEVENTF_EXTENDEDKEY;
+        }
+        Input.ki.dwFlags = Flags;
         break;
     }
     case SendInputHelpers::ESendInputCommandType::MouseButton:
