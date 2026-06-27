@@ -1,198 +1,238 @@
-# TODO: Analog Mouse Move Binding
+# TODO: Keyboard / Mouse Mapping Picker
 
 ## Goal
 
-把已经存在于 Core / Runtime / Windows output backend 的 `Axis2D -> MouseMove` 能力接到 UI。
+把 BindingEditor 里的 `Action output` 下拉框替换成一个类似 AntiMicroX 的映射选择器。
 
-当前用户可以绑定按钮、扳机、方向键到键盘或鼠标点击，但 `left_stick` / `right_stick` 在 `InferInputFromControlId()` 中被显式拒绝，`ActionCatalogModel` 也没有 `MouseMove` 项。结果是 v0.1 目标中的“摇杆映射鼠标移动”和“基础摇杆死区”没有可用入口。
+用户当前已经可以通过 Capture 或点击 GamepadView 选中一个手柄输入 `selectedControl`，但输出动作只能从 ComboBox 里选。下一步目标是：打开选择器后展示可点击的键盘 / 鼠标布局，用户可以手动点选输出按键，也可以在选择器获得焦点时直接按物理键盘按键让对应虚拟键实时高亮；点击 Confirm 后立即把当前手柄输入和高亮输出按键绑定。
 
-本轮只做一条稳定闭环：选择摇杆输入 -> 选择 Mouse Move -> Apply -> running runtime 中产生鼠标移动 action。
+本轮只做“单个输入 -> 单个 Keyboard / MouseButton 输出”的选择器，不做复杂组合键或宏。
 
 ## Scope
 
 包含：
 
-- [x] `ActionCatalogModel` 新增 `MouseMove` action。
-- [x] `ZAppController::applySelectedBinding()` 支持 `actionKind == "MouseMove"`。
-- [x] `InferInputFromControlId()` 支持 `left_stick` / `right_stick` 作为 `Axis2D`。
-- [x] `Axis2D -> MouseMove` 规则使用 `EMappingActionMode::Analog`。
-- [x] 设置基础 deadzone 和 sensitivity 默认值。
-- [x] `MappingRuleModel` 能展示 MouseMove 规则。
-- [x] BindingEditor 能选择并回填 MouseMove action。
-- [x] 增加 AppController / ActionCatalog / MappingRuleModel 测试。
-- [x] QML smoke 覆盖新 action，无 binding/import/property warning。
+- [ ] 新增 QML 映射选择器，替换 BindingEditor 中的 action ComboBox。
+- [ ] 选择器支持 Keyboard / Mouse 两个页签。
+- [ ] Keyboard 页显示常用键盘布局，按 AntiMicroX 风格使用大按钮网格。
+- [ ] Mouse 页显示 Left / Middle / Right / Wheel Up / Wheel Down / Mouse Button 4 / Mouse Button 5 的按钮布局。
+- [ ] 用户点击虚拟按键时，该按键高亮并成为 pending action。
+- [ ] 选择器拥有焦点时，按物理键盘按键会实时高亮对应虚拟键。
+- [ ] 点击 Confirm 后自动调用现有 `applySelectedBinding(selectedControl, kind, value)`。
+- [ ] Confirm 成功后关闭选择器，并复用 BindingEditor 的 Apply feedback。
+- [ ] Cancel / Esc 关闭选择器，不修改映射。
+- [ ] 当前 mappings 行点击后仍能回填 selected input 和 pending action。
+- [ ] QML smoke 覆盖新组件无 warning。
 
 不做：
 
-- [ ] 不做 sensitivity / deadzone UI slider。
-- [ ] 不做 per-axis 反转。
-- [ ] 不做 response curve。
-- [ ] 不做 MouseWheel。
-- [ ] 不做 Shift / layer / mode switching。
-- [ ] 不做多个 action 绑定到同一个 input。
+- [ ] 不做组合键，例如 Ctrl+Shift+A。
+- [ ] 不做宏、长按、双击、turbo、toggle。
+- [ ] 不做 mouse move / axis 参数 UI，本轮保留已有 MouseMove catalog 能力但不放进键盘页。
+- [ ] 不做全局 OS 级键盘钩子；只捕获选择器窗口获得焦点时的 Qt key event。
+- [ ] 不做完整国际键盘布局，本轮按 US/通用游戏键位布局。
+- [ ] 不做持久化 UI 设置，例如最近使用按键、窗口大小。
 
-## Constants
+## UX Contract
 
-本轮使用保守默认值，后续再做可配置：
+入口：
 
-- [x] `Axis2D` deadzone 默认 `0.20f`。
-- [x] `Axis2D -> MouseMove` sensitivity 默认 `12.0f`。
-- [x] `MouseMove` action payload 存储为 `SMouseMoveAction{0.0f, 0.0f}`；实际 delta 由 `ZMappingEngine::BuildAnalogAction()` 根据输入轴值实时生成。
+- [ ] BindingEditor 的 `Action output` 区域不再显示 ComboBox。
+- [ ] 改为一个只读选择框，显示当前 pending action，例如 `Keyboard: Space`。
+- [ ] 选择框右侧或下方提供 `Choose...` 按钮。
+- [ ] 点击 `Choose...` 打开映射选择器。
+- [ ] 如果 `selectedControl` 为空，`Choose...` 可打开但 Confirm 禁用，并显示 `Select an input first`；或者直接禁用入口。推荐：禁用入口，减少无效操作。
 
-理由：
+选择器：
 
-- deadzone 不能为 0，否则手柄轻微漂移会导致鼠标持续移动。
-- sensitivity 不能沿用 `1.0f`，否则实际移动太弱，用户会误以为没有生效。
-- payload 中不存固定 delta，避免把“配置动作”和“运行时输出”混在一起。
+- [ ] 使用 overlay / modal 风格，不新开原生窗口。
+- [ ] 默认打开 Keyboard 页，并高亮当前 pending action。
+- [ ] 如果当前 pending action 是 MouseButton，则默认打开 Mouse 页。
+- [ ] 选择器顶部显示当前手柄输入，例如 `Mapping button_south to...`。
+- [ ] Keyboard / Mouse 页签放在底部或顶部，文案为 `Keyboard` / `Mouse`。
+- [ ] Confirm 按钮只有在存在 highlighted action 且 `selectedControl` 非空时可用。
+- [ ] Confirm 文案使用 `Confirm`，Cancel 文案使用 `Cancel`。
+- [ ] Enter 键等同 Confirm，Esc 键等同 Cancel。
 
-## Action Catalog Plan
+高亮规则：
 
-`ZActionCatalogModel` 新增一项：
+- [ ] 鼠标悬停只改变 hover 样式，不改变 pending action。
+- [ ] 点击虚拟按键才改变 pending action。
+- [ ] 物理键盘按键事件匹配成功时改变 pending action 并高亮对应虚拟按键。
+- [ ] 如果按下的物理键不在本轮支持列表中，不改变 pending action，可显示短暂 hint：`Unsupported key`。
+- [ ] Confirm 后绑定的是当前 highlighted action，不是 hover 项。
 
-- [x] `Kind = "MouseMove"`。
-- [x] `Value = "Cursor"`。
-- [x] `DisplayText = "Mouse: Move Cursor"`。
-- [x] `Category = "Mouse"`。
+## QML Components
 
-行为：
+新增组件：
 
-- [x] `Contains("MouseMove", "Cursor")` 返回 true。
-- [x] `findIndex("MouseMove", "Cursor")` 返回有效行。
-- [x] 现有 Keyboard / MouseButton 项顺序不做大改；MouseMove 放在 MouseButton 三项之后。
+- [ ] `MappingPickerDialog.qml`
+  - [ ] modal overlay 容器。
+  - [ ] required `theme`。
+  - [ ] required `appController`。
+  - [ ] property `selectedControl`。
+  - [ ] property `initialKind`。
+  - [ ] property `initialValue`。
+  - [ ] signal `accepted(string kind, string value)`。
+  - [ ] signal `cancelled()`。
+  - [ ] function `openFor(controlId, kind, value)`。
+  - [ ] 内部维护 `pendingKind` / `pendingValue` / `pendingDisplayText`。
 
-## AppController Plan
+- [ ] `KeyboardPicker.qml`
+  - [ ] 展示键盘网格。
+  - [ ] 接收 `pendingKind` / `pendingValue`。
+  - [ ] signal `keySelected(string value)`。
+  - [ ] function `handleQtKey(int key, int modifiers)`，识别支持的 Qt key。
+  - [ ] 不直接调用 AppController。
 
-`applySelectedBinding(controlId, actionKind, actionValue)` 新增 MouseMove 分支：
+- [ ] `MousePicker.qml`
+  - [ ] 展示鼠标按钮网格。
+  - [ ] 接收 `pendingKind` / `pendingValue`。
+  - [ ] signal `mouseActionSelected(string value)`。
+  - [ ] 支持 Left / Right / Middle；Button4 / Button5 先作为 UI 项预留，但只有 AppController 支持后才启用。
+  - [ ] 本轮如果 AppController 只支持 Left / Right / Middle，则 Button4 / Button5 置灰并不可 Confirm。
 
-- [x] `actionKind == "MouseMove"` 时必须通过 `ActionCatalogModelInstance.Contains(actionKind, actionValue)` 校验。
-- [x] 仅允许 `left_stick` / `right_stick` 绑定到 `MouseMove`。
-- [x] 如果非 Axis2D 输入尝试绑定 MouseMove，返回 false，`EmitRuntimeError("Apply failed: MouseMove requires stick input")`。
-- [x] `SAction.Type = EActionType::MouseMove`。
-- [x] `SAction.Payload = SMouseMoveAction{.DeltaX = 0.0f, .DeltaY = 0.0f}`。
-- [x] 规则 `Output.Mode = EMappingActionMode::Analog`。
-- [x] 规则 `Output.Sensitivity = 12.0f`。
-- [x] 规则 `Input.ControlType = EInputControlType::Axis2D`。
-- [x] 规则 `Input.EventType = EInputEventType::Changed`。
-- [x] 规则 `Input.Deadzone = 0.20f`。
-- [x] 规则 `Input.Threshold = 0.0f`。
+- [ ] `PickerKey.qml`
+  - [ ] 单个可点击 tile。
+  - [ ] properties：`label`、`kind`、`value`、`selected`、`enabled`、`wide`。
+  - [ ] selected 时使用 accent border / fill。
+  - [ ] disabled 时降低 opacity。
 
-`InferInputFromControlId()` 调整：
+可选：如果组件数量过多，本轮可以把 `PickerKey` 内联在 `KeyboardPicker.qml`，但推荐拆出，避免键盘和鼠标重复样式。
 
-- [x] `left_stick` / `right_stick` 返回 true。
-- [x] 对这两个控件填充 `Axis2D` / `Changed` / deadzone `0.20f` / threshold `0.0f`。
-- [x] 其他按钮、扳机、方向键行为不变。
+## Supported Keyboard Actions
 
-兼容规则：
+本轮支持的 Keyboard action 必须和 `ActionCatalogModel` 当前 catalog 对齐：
 
-- [x] Keyboard / MouseButton 仍使用 `PressRelease`。
-- [x] Button / Trigger 不允许绑定到 MouseMove，本轮不做”扳机控制鼠标移动”这类高级用法。
-- [x] Axis2D 暂不允许绑定 Keyboard / MouseButton，避免生成 Core 当前不支持的规则。
+- [ ] Special：Space、Enter、Escape、Tab。
+- [ ] Letters：A-Z。
+- [ ] Digits：0-9。
+- [ ] Arrows：ArrowUp、ArrowDown、ArrowLeft、ArrowRight。
 
-## MappingRuleModel Plan
+Keyboard 页面布局可以额外显示以下键，但必须按是否支持区分：
 
-MouseMove 展示规则：
+- [ ] Backspace、Delete、Home、End、PageUp、PageDown、F1-F12、Ctrl、Alt、Shift 等本轮如果不在 catalog 中，置灰或不显示。
+- [ ] 不允许点击后生成 catalog 不存在的 value。
 
-- [x] `actionKind` 返回 `"MouseMove"`。
-- [x] `displayKind` 返回 `"Mouse"`。
-- [x] `actionValue` 返回 `"Cursor"`。
-- [x] `output` 返回 `"Move Cursor"`。
-- [x] `ruleEnabled` 行为不变。
+设计约束：
 
-这样 Current mappings 中显示为：
+- [ ] QML 布局中所有可 Confirm 的 key 都必须能通过 `appController.actionCatalogModel.findIndex("Keyboard", value)` 找到。
+- [ ] `KeyboardPicker.handleQtKey()` 映射出的 value 也必须能通过 catalog 找到。
+- [ ] 如果未来扩展 catalog，先扩展 `ActionCatalogModel`，再让 picker 启用对应 tile。
 
-```text
-left_stick -> Move Cursor    Mouse    On
-```
+## Mouse Actions
 
-## QML Plan
+本轮支持的 Mouse action 必须和 AppController 当前 MouseButton 分支对齐：
 
-BindingEditor 不新增复杂控件，只复用现有 action picker：
+- [ ] `MouseButton / Left`
+- [ ] `MouseButton / Right`
+- [ ] `MouseButton / Middle`
 
-- [x] action picker 显示 `Mouse: Move Cursor`。
-- [x] 选中 MouseMove 后 `Apply` 调用 `applySelectedBinding(selectedControl, “MouseMove”, “Cursor”)`。
-- [x] 点击已有 MouseMove mapping 行时，回填 action picker 到 `MouseMove / Cursor`。
-- [x] 如果 selectedControl 不是 stick，Apply 后端会拒绝并显示现有 `Apply failed` inline feedback。
-- [x] 不在 QML 中复制”哪些输入能绑定 MouseMove”的业务规则；业务规则留在 AppController。
+不支持项：
 
-可选 UI polish，不作为阻断：
+- [ ] Wheel Up / Wheel Down 本轮不 Confirm，因为 `MouseWheel` 尚未接入 applySelectedBinding。
+- [ ] Button4 / Button5 本轮不 Confirm，因为 `SMouseButtonAction` 后端映射当前只验证 0/1/2。
 
-- [ ] 当 selectedControl 明显不是 `left_stick` / `right_stick` 且 action 是 MouseMove 时，可显示轻量 hint：`Mouse Move requires a stick input`。
+UI 表达：
 
-## Runtime Behavior
+- [ ] unsupported mouse items 可以显示为 disabled tile，保留后续扩展位置。
+- [ ] disabled tile 点击不改变 pending action。
 
-期望数据流：
+## BindingEditor Integration
 
-```text
-SInputEvent{ControlId="left_stick", ControlType=Axis2D, EventType=Changed, Axis2D={X,Y}}
-  -> ZMappingEngine::BuildAnalogAction()
-  -> SAction{Type=MouseMove, Payload={DeltaX=X*12, DeltaY=Y*12}}
-  -> ZActionDispatcher
-  -> IOutputBackend
-```
+替换当前 ComboBox：
 
-验收行为：
+- [ ] 删除 `ComboBox actionComboBox`。
+- [ ] 保留 `_selectedActionIndex` 作为兼容 state，或改为 `_selectedActionKind` / `_selectedActionValue` / `_selectedActionDisplayText` 三个普通 property。
+- [ ] 推荐改为三属性，避免所有状态都绕 catalog index：
+  - [ ] `property string _selectedActionKind: "Keyboard"`
+  - [ ] `property string _selectedActionValue: "Space"`
+  - [ ] `property string _selectedActionDisplayText: "Keyboard: Space"`
+- [ ] 新增 helper：`setPendingAction(kind, value)`，通过 catalog 查 displayText，找不到则拒绝并显示 warning。
+- [ ] `Current mappings` 行点击时调用 `setPendingAction(actionKind, actionValue)`，保持回填行为。
+- [ ] `Choose...` 打开 `MappingPickerDialog.openFor(selectedControl, _selectedActionKind, _selectedActionValue)`。
+- [ ] `MappingPickerDialog.accepted(kind, value)` 后：
+  - [ ] 调 `setPendingAction(kind, value)`。
+  - [ ] 调 `appController.applySelectedBinding(selectedControl, kind, value)`。
+  - [ ] 成功后显示 `Applied and saved` / `Applied, save failed`。
+  - [ ] 失败后显示 `Apply failed`，选择器关闭与否按下方策略。
 
-- [x] Axis magnitude 小于等于 `0.20` 时不产生 MouseMove action。
-- [x] Axis magnitude 大于 `0.20` 时产生 MouseMove action。
-- [x] 全局 Remap Paused 时不 dispatch。
-- [x] 单条 rule disabled 时不 dispatch。
-- [x] 保存 / 加载后 MouseMove 规则保持 `Analog`、deadzone、sensitivity、enabled 状态。
+Confirm 失败策略：
+
+- [ ] 如果后端返回 false，选择器保持打开，并在 dialog 内显示 inline error。
+- [ ] 如果成功，选择器关闭。
+- [ ] Cancel 永远关闭。
+
+## Keyboard Event Handling
+
+选择器打开时：
+
+- [ ] `MappingPickerDialog` 调用 `forceActiveFocus()`。
+- [ ] `Keys.onPressed` 捕获支持按键。
+- [ ] `Escape`：Cancel。
+- [ ] `Return` / `Enter`：如果 Confirm 可用，则 Confirm。
+- [ ] 其他 supported key：切到 Keyboard 页，更新 pending action，高亮对应 tile，并 `event.accepted = true`。
+- [ ] unsupported key：显示短暂 hint，不覆盖当前 pending action。
+
+Qt key 到 catalog value 映射：
+
+- [ ] `Qt.Key_A` - `Qt.Key_Z` -> `"A"` - `"Z"`。
+- [ ] `Qt.Key_0` - `Qt.Key_9` -> `"0"` - `"9"`。
+- [ ] `Qt.Key_Space` -> `"Space"`。
+- [ ] `Qt.Key_Return` / `Qt.Key_Enter` -> `"Enter"` only when not being used as Confirm? 推荐：如果 no pending action 或 focused tile is Enter，可以选 Enter；否则 Enter confirms. 本轮采用 Confirm 优先。
+- [ ] `Qt.Key_Escape` -> Cancel，不作为 Escape action；如需绑定 Escape，用户点击虚拟 ESC tile。
+- [ ] `Qt.Key_Tab` -> `"Tab"`，需要 `KeyNavigation` 不抢走焦点。
+- [ ] Arrow keys -> `"ArrowUp"` / `"ArrowDown"` / `"ArrowLeft"` / `"ArrowRight"`。
+
+说明：
+
+- [ ] Enter / Escape 作为 dialog 控制键和可绑定键存在冲突。本轮让物理 Enter/Escape 控制 dialog；用户仍可通过点击虚拟 Enter/Escape tile 选择这些输出。
 
 ## Tests
 
-`ActionCatalogModelTests.cpp`：
+QML smoke：
 
-- [x] catalog contains `MouseMove / Cursor`。
-- [x] display text 为 `Mouse: Move Cursor`。
-- [x] category 为 `Mouse`。
-- [x] `findIndex("MouseMove", "Cursor")` 有效。
+- [ ] 新增 QML 文件加入 `qt_add_qml_module`。
+- [ ] `MappyZQmlSmokeTests` 仍无 warning。
 
-`AppControllerTests.cpp`：
+UI Bridge tests：
 
-- [x] `applySelectedBinding("left_stick", "MouseMove", "Cursor")` 成功。
-- [x] 成功后 `MappingRuleModel` row 显示 `actionKind == "MouseMove"`、`actionValue == "Cursor"`、`output == "Move Cursor"`。
-- [x] 生成的 RuntimeHost profile rule 使用 `Input.ControlType == Axis2D`。
-- [x] 生成的 RuntimeHost profile rule 使用 `Output.Mode == Analog`。
-- [x] 生成的 RuntimeHost profile rule 使用 deadzone `0.20f`、sensitivity `12.0f`。
-- [x] `applySelectedBinding("right_stick", "MouseMove", "Cursor")` 成功。
-- [x] `applySelectedBinding("button_south", "MouseMove", "Cursor")` 返回 false 并 emit `runtimeError`。
-- [x] `applySelectedBinding("left_stick", "Keyboard", "Space")` 返回 false，避免生成 Core 不支持的 Axis2D PressRelease 规则。
-- [x] MouseMove rule 保存 / 加载回环后仍保留 mode、deadzone、sensitivity。
+- [ ] 不需要新增 AppController API 测试；Confirm 仍调用现有 `applySelectedBinding()`。
+- [ ] 如果扩展 `ActionCatalogModel` 支持新的键，必须补对应 tests。
+- [ ] 本轮不扩展 catalog 时，现有 ActionCatalog tests 不变。
 
-`MappingRuleModelTests.cpp`：
+QML interaction tests（如果当前测试基础允许）：
 
-- [x] MouseMove output role 返回 `Move Cursor`。
-- [x] MouseMove actionValue role 返回 `Cursor`。
-- [x] MouseMove displayKind role 返回 `Mouse`。
+- [ ] 创建 `MappingPickerDialog`，调用 `openFor("button_south", "Keyboard", "Space")` 后 pending action 为 Space。
+- [ ] 调用 `KeyboardPicker.handleQtKey(Qt.Key_A, 0)` 后 pending action 高亮 A。
+- [ ] 点击 Confirm 后发出 `accepted("Keyboard", "A")`。
+- [ ] 点击 Cancel 后不发 accepted。
+- [ ] unsupported key 不改变 pending action。
 
-Runtime integration test：
+如果 QML 交互测试成本过高，本轮至少：
 
-- [x] 用 fake input + null output 创建 left_stick MouseMove 规则。
-- [x] 注入 deadzone 内 Axis2D 事件，`lastDispatchedInputCount` 不增加。
-- [x] 注入 deadzone 外 Axis2D 事件，`lastDispatchedInputCount` 增加。
-- [x] 禁用该 rule 后再次注入 Axis2D 事件，不再 dispatch。
-
-QML / smoke：
-
-- [x] QML smoke passes。
-- [x] no binding/import/property warning。
+- [ ] 用 QML smoke 覆盖组件创建。
+- [ ] 把 key mapping 逻辑写成 QML function，并在后续 QML test harness 中补测。
 
 ## Acceptance Criteria
 
-- [x] 用户能在 Action output 中选择 `Mouse: Move Cursor`。
-- [x] 用户能把 `left_stick` 或 `right_stick` 绑定到鼠标移动。
-- [x] 绑定后 Current mappings 明确显示 MouseMove 规则。
-- [x] 摇杆 deadzone 内不会移动鼠标。
-- [x] 摇杆 deadzone 外会通过现有 dispatch 链路产生 MouseMove action。
-- [x] 保存 / 重启 / 加载后 MouseMove 规则仍存在并可用。
-- [x] 现有 Keyboard / MouseButton 映射不回退。
-- [x] 所有测试通过。
-- [x] 修改文本文件保持 CRLF 行尾。
+- [ ] BindingEditor 不再使用 action ComboBox 作为主要选择方式。
+- [ ] 用户可以打开键盘 / 鼠标映射选择器。
+- [ ] 用户点击虚拟键盘按键后，该按键高亮。
+- [ ] 选择器获得焦点时，用户按物理键盘 A-Z / 0-9 / Space / Tab / Arrow 能让对应虚拟按键高亮。
+- [ ] 点击 Confirm 后当前 selectedControl 与 highlighted action 自动绑定。
+- [ ] 绑定成功后 Current mappings 立即更新。
+- [ ] 点击 mapping 行仍能回填 selectedControl 和 pending action。
+- [ ] Cancel / Esc 不修改映射。
+- [ ] QML smoke 无 binding/import/property warning。
+- [ ] 所有测试通过。
+- [ ] 修改文本文件保持 CRLF 行尾。
 
 ## Follow-Up
 
-- [ ] 做 MouseMove sensitivity / deadzone UI。
-- [ ] 做 Y-axis invert。
-- [ ] 做 response curve。
-- [ ] 做 profile management：rename / duplicate / delete profile。
-- [ ] 做 Save As / Import / Export。
+- [ ] 扩展 ActionCatalog：Backspace、Delete、Home、End、PageUp、PageDown、F1-F12、modifier keys。
+- [ ] 接入 MouseWheel。
+- [ ] 支持 mouse Button4 / Button5。
+- [ ] 支持组合键和 modifier 状态。
+- [ ] 增加专门 QML interaction test harness。
+- [ ] 做更接近 AntiMicroX 的完整键盘布局缩放和小窗口适配。
