@@ -272,3 +272,42 @@ TEST_CASE("[UI][ActionCatalogModel] findIndex returns -1 for nonexistent entry",
     REQUIRE(Model.findIndex("UnknownKind", "Space") == -1);
     REQUIRE(Model.findIndex("", "") == -1);
 }
+
+// ── catalog 内容：MouseMove ──
+
+TEST_CASE("[UI][ActionCatalogModel] catalog contains MouseMove Cursor",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+    REQUIRE(Model.Contains("MouseMove", "Cursor"));
+}
+
+TEST_CASE("[UI][ActionCatalogModel] MouseMove display text is Mouse Move Cursor",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+    int Index = Model.findIndex("MouseMove", "Cursor");
+    REQUIRE(Index >= 0);
+    REQUIRE(Model.displayTextAt(Index) == "Mouse: Move Cursor");
+}
+
+TEST_CASE("[UI][ActionCatalogModel] MouseMove category is Mouse",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+    int Index = Model.findIndex("MouseMove", "Cursor");
+    REQUIRE(Index >= 0);
+    auto ModelIndex = Model.index(Index);
+    REQUIRE(Model.data(ModelIndex, ZActionCatalogModel::CategoryRole).toString()
+        == "Mouse");
+}
+
+TEST_CASE("[UI][ActionCatalogModel] findIndex MouseMove Cursor returns valid row",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+    int Index = Model.findIndex("MouseMove", "Cursor");
+    REQUIRE(Index >= 0);
+    REQUIRE(Model.kindAt(Index) == "MouseMove");
+    REQUIRE(Model.valueAt(Index) == "Cursor");
+}

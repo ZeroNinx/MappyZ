@@ -1119,7 +1119,7 @@ TEST_CASE("AppController applySelectedBinding same control replaces old rule",
         Index, ZMappingRuleModel::ActionKindRole).toString() == "MouseButton");
 }
 
-TEST_CASE("AppController applySelectedBinding Axis2D returns false and does not modify model",
+TEST_CASE("AppController applySelectedBinding stick to Keyboard rejected",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
@@ -2709,4 +2709,255 @@ TEST_CASE("AppController setBindingEnabled works while runtime is running",
     auto EnabledAfter = Model->data(
         Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
     REQUIRE_FALSE(EnabledAfter);
+}
+
+// ══════════════════════════════════════════════════════════════
+// MouseMove 绑定测试
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController applySelectedBinding left_stick MouseMove succeeds",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+
+    bool bResult = Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor");
+
+    REQUIRE(bResult);
+    auto* Model = Controller.MappingRuleModel();
+    REQUIRE(Model->rowCount() == 1);
+    REQUIRE(Model->data(Model->index(0), ZMappingRuleModel::ActionKindRole).toString()
+        == "MouseMove");
+    REQUIRE(Model->data(Model->index(0), ZMappingRuleModel::ActionValueRole).toString()
+        == "Cursor");
+    REQUIRE(Model->data(Model->index(0), ZMappingRuleModel::OutputRole).toString()
+        == "Move Cursor");
+}
+
+TEST_CASE("AppController applySelectedBinding right_stick MouseMove succeeds",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+
+    bool bResult = Controller.applySelectedBinding("right_stick", "MouseMove", "Cursor");
+
+    REQUIRE(bResult);
+    auto* Model = Controller.MappingRuleModel();
+    REQUIRE(Model->rowCount() == 1);
+    REQUIRE(Model->data(Model->index(0), ZMappingRuleModel::InputRole).toString()
+        == "right_stick");
+}
+
+TEST_CASE("AppController applySelectedBinding MouseMove uses Axis2D input type",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+
+    Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor");
+
+    auto Snapshot = Controller.MappingRuleModel()->ListRulesSnapshot();
+    REQUIRE(Snapshot.size() == 1);
+    REQUIRE(Snapshot[0].Input.ControlType == EInputControlType::Axis2D);
+    REQUIRE(Snapshot[0].Input.EventType == EInputEventType::Changed);
+    REQUIRE(Snapshot[0].Input.Deadzone == 0.20f);
+    REQUIRE(Snapshot[0].Input.Threshold == 0.0f);
+}
+
+TEST_CASE("AppController applySelectedBinding MouseMove uses Analog mode and sensitivity",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+
+    Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor");
+
+    auto Snapshot = Controller.MappingRuleModel()->ListRulesSnapshot();
+    REQUIRE(Snapshot.size() == 1);
+    REQUIRE(Snapshot[0].Output.Mode == EMappingActionMode::Analog);
+    REQUIRE(Snapshot[0].Output.Sensitivity == 12.0f);
+    REQUIRE(Snapshot[0].Output.Action.Type == EActionType::MouseMove);
+}
+
+TEST_CASE("AppController applySelectedBinding button to MouseMove rejected",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+
+    bool bResult = Controller.applySelectedBinding("button_south", "MouseMove", "Cursor");
+
+    REQUIRE_FALSE(bResult);
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController applySelectedBinding MouseMove save load round trip",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    auto TempDir = std::filesystem::temp_directory_path() / "mappyz_test_mousemove_persist";
+    std::filesystem::remove_all(TempDir);
+
+    {
+        ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+        REQUIRE(Controller.initializeRuntime());
+        REQUIRE(Controller.startRuntime());
+        REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
+
+        auto SavePath = TempDir / "profile.json";
+        REQUIRE(Controller.saveActiveProfile(
+            QString::fromStdString(SavePath.string())));
+    }
+
+    {
+        ZAppController Controller2(MakeFakeInputFactory(), MakeNullOutputFactory());
+        REQUIRE(Controller2.initializeRuntime());
+        REQUIRE(Controller2.startRuntime());
+
+        auto LoadPath = TempDir / "profile.json";
+        REQUIRE(Controller2.loadProfile(
+            QString::fromStdString(LoadPath.string())));
+
+        auto Snapshot = Controller2.MappingRuleModel()->ListRulesSnapshot();
+        REQUIRE(Snapshot.size() == 1);
+        REQUIRE(Snapshot[0].Output.Mode == EMappingActionMode::Analog);
+        REQUIRE(Snapshot[0].Output.Sensitivity == 12.0f);
+        REQUIRE(Snapshot[0].Input.ControlType == EInputControlType::Axis2D);
+        REQUIRE(Snapshot[0].Input.Deadzone == 0.20f);
+    }
+
+    std::filesystem::remove_all(TempDir);
+}
+
+// ── Runtime 集成：MouseMove Axis2D 事件 dispatch ──
+
+static SInputEvent MakeAxis2DEvent(
+    const StdString& DeviceId,
+    StdStringView ControlId,
+    float32 X, float32 Y)
+{
+    SInputEvent Event;
+    Event.DeviceId = SDeviceId{.Value = DeviceId};
+    Event.ControlId = StdString(ControlId);
+    Event.ControlType = EInputControlType::Axis2D;
+    Event.EventType = EInputEventType::Changed;
+    Event.Axis2D = {.X = X, .Y = Y};
+    return Event;
+}
+
+TEST_CASE("AppController MouseMove Axis2D inside deadzone does not dispatch",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
+
+    // magnitude = sqrt(0.1^2 + 0.1^2) ≈ 0.14 < deadzone 0.20
+    RawInputBackend->EmitInput(
+        MakeAxis2DEvent("dev_1", ControlId::LeftStick, 0.1f, 0.1f));
+    Controller.pumpOnce();
+
+    REQUIRE(Controller.LastDispatchedInputCount() == 0);
+}
+
+TEST_CASE("AppController MouseMove Axis2D outside deadzone dispatches",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
+
+    // magnitude = sqrt(0.5^2 + 0.5^2) ≈ 0.71 > deadzone 0.20
+    RawInputBackend->EmitInput(
+        MakeAxis2DEvent("dev_1", ControlId::LeftStick, 0.5f, 0.5f));
+    Controller.pumpOnce();
+
+    REQUIRE(Controller.LastDispatchedInputCount() > 0);
+}
+
+TEST_CASE("AppController MouseMove disabled rule does not dispatch",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
+
+    // 禁用该规则
+    auto* Model = Controller.MappingRuleModel();
+    auto RuleId = Model->ruleIdAt(0);
+    REQUIRE(Controller.setBindingEnabled(RuleId, false));
+
+    // 注入超出 deadzone 的事件
+    RawInputBackend->EmitInput(
+        MakeAxis2DEvent("dev_1", ControlId::LeftStick, 0.5f, 0.5f));
+    Controller.pumpOnce();
+
+    REQUIRE(Controller.LastDispatchedInputCount() == 0);
+}
+
+TEST_CASE("AppController MouseMove mapping paused does not dispatch",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZFakeInputBackend* RawInputBackend = nullptr;
+    auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
+        auto Backend = std::make_unique<ZFakeInputBackend>();
+        RawInputBackend = Backend.get();
+        return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
+    };
+
+    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
+
+    // 全局暂停 remap
+    Controller.SetMappingEnabled(false);
+
+    // 注入超出 deadzone 的事件
+    RawInputBackend->EmitInput(
+        MakeAxis2DEvent("dev_1", ControlId::LeftStick, 0.5f, 0.5f));
+    Controller.pumpOnce();
+
+    REQUIRE(Controller.LastDispatchedInputCount() == 0);
 }

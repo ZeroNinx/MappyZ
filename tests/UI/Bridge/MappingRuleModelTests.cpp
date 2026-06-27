@@ -362,3 +362,75 @@ TEST_CASE("MappingRuleModel displayKind role returns UI tag for keyboard and mou
     REQUIRE(Model.data(Model.index(1), ZMappingRuleModel::DisplayKindRole).toString()
         == "Mouse");
 }
+
+// ── MouseMove role 验证 ──
+
+static SMappingRule MakeMouseMoveRule(const StdString& ControlId)
+{
+    SMappingRule Rule;
+    Rule.Id = ControlId;
+    Rule.DisplayName = ControlId;
+    Rule.bEnabled = true;
+    Rule.Input.ControlId = ControlId;
+    Rule.Input.ControlType = EInputControlType::Axis2D;
+    Rule.Input.EventType = EInputEventType::Changed;
+    Rule.Input.Deadzone = 0.20f;
+    Rule.Input.Threshold = 0.0f;
+    Rule.Output.Action.Type = EActionType::MouseMove;
+    Rule.Output.Action.Payload = SMouseMoveAction{.DeltaX = 0.0f, .DeltaY = 0.0f};
+    Rule.Output.Mode = EMappingActionMode::Analog;
+    Rule.Output.Sensitivity = 12.0f;
+    return Rule;
+}
+
+TEST_CASE("MappingRuleModel MouseMove output role returns Move Cursor",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeMouseMoveRule("left_stick"));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.data(Model.index(0), ZMappingRuleModel::OutputRole).toString()
+        == "Move Cursor");
+}
+
+TEST_CASE("MappingRuleModel MouseMove actionValue role returns Cursor",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeMouseMoveRule("left_stick"));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.data(Model.index(0), ZMappingRuleModel::ActionValueRole).toString()
+        == "Cursor");
+}
+
+TEST_CASE("MappingRuleModel MouseMove displayKind role returns Mouse",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeMouseMoveRule("left_stick"));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.data(Model.index(0), ZMappingRuleModel::DisplayKindRole).toString()
+        == "Mouse");
+}
+
+TEST_CASE("MappingRuleModel MouseMove actionKind role returns MouseMove",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeMouseMoveRule("left_stick"));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.data(Model.index(0), ZMappingRuleModel::ActionKindRole).toString()
+        == "MouseMove");
+}

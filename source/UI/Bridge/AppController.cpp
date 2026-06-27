@@ -831,6 +831,19 @@ bool ZAppController::applySelectedBinding(
         Action.Type = EActionType::MouseButton;
         Action.Payload = SMouseButtonAction{.Button = ButtonIndex, .bPressed = true};
     }
+    else if (actionKind == QStringLiteral("MouseMove"))
+    {
+        if (!ActionCatalogModelInstance.Contains(actionKind, actionValue))
+        {
+            EmitRuntimeError(
+                QStringLiteral("Apply failed: unknown mouse move value \"%1\"")
+                    .arg(actionValue));
+            return false;
+        }
+
+        Action.Type = EActionType::MouseMove;
+        Action.Payload = SMouseMoveAction{.DeltaX = 0.0f, .DeltaY = 0.0f};
+    }
     else
     {
         EmitRuntimeError(
@@ -848,6 +861,22 @@ bool ZAppController::applySelectedBinding(
         return false;
     }
 
+    // 兼容性校验：Axis2D 只能绑定 MouseMove，MouseMove 只能绑定 Axis2D
+    if (Input.ControlType == EInputControlType::Axis2D
+        && Action.Type != EActionType::MouseMove)
+    {
+        EmitRuntimeError(
+            QStringLiteral("Apply failed: stick input only supports MouseMove"));
+        return false;
+    }
+    if (Action.Type == EActionType::MouseMove
+        && Input.ControlType != EInputControlType::Axis2D)
+    {
+        EmitRuntimeError(
+            QStringLiteral("Apply failed: MouseMove requires stick input"));
+        return false;
+    }
+
     // 构造规则
     SMappingRule Rule;
     Rule.Id = ControlIdStd;
@@ -855,8 +884,18 @@ bool ZAppController::applySelectedBinding(
     Rule.bEnabled = true;
     Rule.Input = std::move(Input);
     Rule.Output.Action = std::move(Action);
-    Rule.Output.Mode = EMappingActionMode::PressRelease;
-    Rule.Output.Sensitivity = 1.0f;
+
+    // MouseMove 使用 Analog 模式和专用灵敏度
+    if (Rule.Output.Action.Type == EActionType::MouseMove)
+    {
+        Rule.Output.Mode = EMappingActionMode::Analog;
+        Rule.Output.Sensitivity = 12.0f;
+    }
+    else
+    {
+        Rule.Output.Mode = EMappingActionMode::PressRelease;
+        Rule.Output.Sensitivity = 1.0f;
+    }
 
     // 获取当前 profile 快照，按 Input.ControlId 替换或追加
     auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
@@ -900,11 +939,15 @@ bool ZAppController::InferInputFromControlId(
 {
     OutInput.ControlId = ControlId;
 
-    // Axis2D 暂不支持创建
+    // Axis2D：摇杆输入，用于 MouseMove 等模拟量映射
     if (ControlId == MappyZ::ControlId::LeftStick
         || ControlId == MappyZ::ControlId::RightStick)
     {
-        return false;
+        OutInput.ControlType = EInputControlType::Axis2D;
+        OutInput.EventType = EInputEventType::Changed;
+        OutInput.Deadzone = 0.20f;
+        OutInput.Threshold = 0.0f;
+        return true;
     }
 
     // Trigger

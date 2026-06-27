@@ -145,7 +145,7 @@ QString ZMappingRuleModel::ExtractOutputText(const SAction& Action)
         return QStringLiteral("Unknown");
     }
     case EActionType::MouseMove:
-        return QStringLiteral("Mouse Move");
+        return QStringLiteral("Move Cursor");
     case EActionType::MouseWheel:
         return QStringLiteral("Mouse Wheel");
     case EActionType::None:
@@ -216,7 +216,7 @@ QString ZMappingRuleModel::ExtractActionValueText(const SAction& Action)
         return {};
     }
     case EActionType::MouseMove:
-        return QStringLiteral("Move");
+        return QStringLiteral("Cursor");
     case EActionType::MouseWheel:
         return QStringLiteral("Wheel");
     case EActionType::None:

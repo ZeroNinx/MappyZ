@@ -61,6 +61,11 @@ ZActionCatalogModel::ZActionCatalogModel(QObject* Parent)
         QStringLiteral("Mouse: Right Click"), QStringLiteral("Mouse")});
     Items.append({QStringLiteral("MouseButton"), QStringLiteral("Middle"),
         QStringLiteral("Mouse: Middle Click"), QStringLiteral("Mouse")});
+
+    // ── Mouse: 鼠标移动 ──
+
+    Items.append({QStringLiteral("MouseMove"), QStringLiteral("Cursor"),
+        QStringLiteral("Mouse: Move Cursor"), QStringLiteral("Mouse")});
 }
 
 int ZActionCatalogModel::rowCount(const QModelIndex& Parent) const
