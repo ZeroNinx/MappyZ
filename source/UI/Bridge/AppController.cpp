@@ -227,6 +227,16 @@ QString ZAppController::ProfileMessage() const
     return CachedProfileMessage;
 }
 
+bool ZAppController::IsProfileDirty() const
+{
+    return bProfileDirty;
+}
+
+QString ZAppController::ProfileSaveState() const
+{
+    return CachedProfileSaveState;
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime()
@@ -341,56 +351,7 @@ void ZAppController::stopPumpTimer()
 
 bool ZAppController::saveActiveProfile(QString profilePath)
 {
-    // Runtime 未 initialize 时拒绝保存
-    auto Status = Bootstrap.GetStatus();
-    if (Status.State != EApplicationBootstrapState::Ready
-        && Status.State != EApplicationBootstrapState::Running)
-    {
-        CachedProfileMessage = QStringLiteral("Save failed: runtime not initialized");
-        emit profileStatusChanged();
-        EmitRuntimeError(CachedProfileMessage);
-        return false;
-    }
-
-    // 参数为空时使用默认路径
-    if (profilePath.isEmpty())
-    {
-        profilePath = DefaultProfilePath();
-        if (profilePath.isEmpty())
-        {
-            CachedProfileMessage = QStringLiteral(
-                "Save failed: cannot determine default profile path");
-            emit profileStatusChanged();
-            EmitRuntimeError(CachedProfileMessage);
-            return false;
-        }
-    }
-
-    // 从 RuntimeHost 获取当前 profile 快照
-    auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
-
-    // 序列化并写入文件
-    ZProfileManager Manager;
-    auto Result = Manager.SaveProfile(
-        Profile, StdPath(profilePath.toStdString()));
-
-    if (!Result)
-    {
-        auto ErrorMessage = QString::fromStdString(Result.Failure().Message);
-        CachedProfileMessage =
-            QStringLiteral("Profile save failed: %1").arg(ErrorMessage);
-        emit profileStatusChanged();
-        EmitRuntimeError(CachedProfileMessage);
-        return false;
-    }
-
-    // 保存成功，更新状态并通知 QML
-    CachedProfilePath = profilePath;
-    CachedProfileMessage = QStringLiteral("Profile saved");
-    AppendLog(QStringLiteral("Success"), CachedProfileMessage);
-    emit profileStatusChanged();
-    emit profileSaved(profilePath);
-    return true;
+    return SaveActiveProfileInternal(profilePath, false);
 }
 
 bool ZAppController::loadProfile(QString profilePath)
@@ -450,6 +411,8 @@ bool ZAppController::loadProfile(QString profilePath)
 
     CachedProfilePath = profilePath;
     CachedProfileMessage = QStringLiteral("Profile loaded");
+    bProfileDirty = false;
+    CachedProfileSaveState = QStringLiteral("clean");
     AppendLog(QStringLiteral("Success"), CachedProfileMessage);
     emit profileStatusChanged();
     emit runtimeStatusChanged();
@@ -490,8 +453,12 @@ bool ZAppController::removeBinding(QString ruleId)
     Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(Profile));
     RefreshMappingRuleModelFromHost();
 
+    MarkProfileDirty();
+    bool bSaved = AutosaveActiveProfile();
+
     AppendLog(QStringLiteral("Success"),
-        QStringLiteral("Removed binding: %1").arg(ruleId));
+        bSaved ? QStringLiteral("Binding removed and saved: %1").arg(ruleId)
+               : QStringLiteral("Binding removed, save failed: %1").arg(ruleId));
     return true;
 }
 
@@ -596,6 +563,105 @@ QString ZAppController::DefaultProfilePath() const
         return QString();
     }
     return DataPath + QStringLiteral("/profiles/default.json");
+}
+
+void ZAppController::MarkProfileDirty()
+{
+    bProfileDirty = true;
+    CachedProfileSaveState = QStringLiteral("dirty");
+    emit profileStatusChanged();
+}
+
+bool ZAppController::SaveActiveProfileInternal(
+    const QString& ProfilePath, bool bAutosave)
+{
+    // Runtime 未 initialize 时拒绝保存
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        CachedProfileMessage = QStringLiteral("Save failed: runtime not initialized");
+        if (bAutosave)
+        {
+            CachedProfileSaveState = QStringLiteral("error");
+        }
+        emit profileStatusChanged();
+        EmitRuntimeError(CachedProfileMessage);
+        return false;
+    }
+
+    // 确定保存路径
+    QString ResolvedPath = ProfilePath;
+    if (ResolvedPath.isEmpty())
+    {
+        ResolvedPath = CachedProfilePath.isEmpty()
+            ? DefaultProfilePath()
+            : CachedProfilePath;
+        if (ResolvedPath.isEmpty())
+        {
+            CachedProfileMessage = QStringLiteral(
+                "Save failed: cannot determine default profile path");
+            if (bAutosave)
+            {
+                CachedProfileSaveState = QStringLiteral("error");
+            }
+            emit profileStatusChanged();
+            EmitRuntimeError(CachedProfileMessage);
+            return false;
+        }
+    }
+
+    // 确保目标目录存在
+    StdPath FilePath(ResolvedPath.toStdString());
+    if (FilePath.has_parent_path())
+    {
+        std::error_code DirectoryError;
+        std::filesystem::create_directories(FilePath.parent_path(), DirectoryError);
+    }
+
+    // 序列化并写入文件
+    auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+    ZProfileManager Manager;
+    auto Result = Manager.SaveProfile(Profile, FilePath);
+
+    if (!Result)
+    {
+        auto ErrorMessage = QString::fromStdString(Result.Failure().Message);
+        CachedProfileMessage =
+            QStringLiteral("Profile save failed: %1").arg(ErrorMessage);
+        bProfileDirty = true;
+        CachedProfileSaveState = QStringLiteral("error");
+        emit profileStatusChanged();
+        if (!bAutosave)
+        {
+            EmitRuntimeError(CachedProfileMessage);
+        }
+        else
+        {
+            AppendLog(QStringLiteral("Error"), CachedProfileMessage);
+        }
+        return false;
+    }
+
+    // 保存成功
+    CachedProfilePath = ResolvedPath;
+    CachedProfileMessage = QStringLiteral("Profile saved");
+    bProfileDirty = false;
+    CachedProfileSaveState = QStringLiteral("clean");
+
+    if (!bAutosave)
+    {
+        AppendLog(QStringLiteral("Success"), CachedProfileMessage);
+    }
+
+    emit profileStatusChanged();
+    emit profileSaved(ResolvedPath);
+    return true;
+}
+
+bool ZAppController::AutosaveActiveProfile()
+{
+    return SaveActiveProfileInternal(QString(), true);
 }
 
 // ── applySelectedBinding ──
@@ -720,9 +786,14 @@ bool ZAppController::applySelectedBinding(
     // 刷新 UI model
     RefreshMappingRuleModelFromHost();
 
+    MarkProfileDirty();
+    bool bSaved = AutosaveActiveProfile();
+
     AppendLog(QStringLiteral("Success"),
-        QStringLiteral("Applied binding: %1 → %2:%3")
-            .arg(controlId, actionKind, actionValue));
+        bSaved ? QStringLiteral("Applied and saved: %1 → %2:%3")
+                   .arg(controlId, actionKind, actionValue)
+               : QStringLiteral("Applied, save failed: %1 → %2:%3")
+                   .arg(controlId, actionKind, actionValue));
     return true;
 }
 

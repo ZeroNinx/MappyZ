@@ -2033,3 +2033,297 @@ TEST_CASE("AppController removeBinding with multiple rules removes only target",
     REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
     REQUIRE(Controller.MappingRuleModel()->ruleIdAt(0) != FirstRuleId);
 }
+
+// ── Profile Dirty State 测试 ──
+
+TEST_CASE("AppController default profileDirty is false and profileSaveState is clean",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE_FALSE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "clean");
+}
+
+TEST_CASE("AppController apply success sets dirty then autosaves to clean",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
+    QSignalSpy SavedSpy(&Controller, &ZAppController::profileSaved);
+
+    bool bResult = Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+
+    REQUIRE(bResult);
+    REQUIRE_FALSE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "clean");
+    REQUIRE(SavedSpy.count() >= 1);
+    REQUIRE(StatusSpy.count() >= 1);
+
+    // 验证 autosave 写了默认路径
+    REQUIRE_FALSE(Controller.ProfilePath().isEmpty());
+}
+
+TEST_CASE("AppController apply success writes default profile file when no path exists",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    REQUIRE(Controller.ProfilePath().isEmpty());
+
+    bool bResult = Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+
+    REQUIRE(bResult);
+    REQUIRE_FALSE(Controller.ProfilePath().isEmpty());
+
+    // 验证文件确实存在
+    auto FilePath = Controller.ProfilePath().toStdString();
+    REQUIRE(std::filesystem::exists(FilePath));
+
+    std::filesystem::remove_all(
+        std::filesystem::path(FilePath).parent_path());
+}
+
+TEST_CASE("AppController removeBinding success autosaves",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+
+    QString RuleId = Controller.MappingRuleModel()->ruleIdAt(0);
+
+    QSignalSpy SavedSpy(&Controller, &ZAppController::profileSaved);
+    bool bResult = Controller.removeBinding(RuleId);
+
+    REQUIRE(bResult);
+    REQUIRE_FALSE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "clean");
+    REQUIRE(SavedSpy.count() >= 1);
+}
+
+TEST_CASE("AppController manual saveActiveProfile success clears dirty",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+
+    // autosave 已经清除了 dirty；这里验证手动保存仍可写入指定路径
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_manual_save_test" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+
+    bool bResult = Controller.saveActiveProfile(PathStr);
+    REQUIRE(bResult);
+    REQUIRE_FALSE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "clean");
+    REQUIRE(Controller.ProfileMessage() == "Profile saved");
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController manual saveActiveProfile failure preserves dirty from prior mutation",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    // 先成功保存一次，使 CachedProfilePath 有值
+    auto GoodPath = std::filesystem::temp_directory_path()
+        / "mappyz_manual_save_fail_setup" / "profile.json";
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+    REQUIRE(Controller.saveActiveProfile(
+        QString::fromStdString(GoodPath.string())));
+
+    // 删除目录并用文件占位，使后续写入失败
+    std::filesystem::remove_all(GoodPath.parent_path());
+    { std::ofstream(GoodPath.parent_path()).close(); }
+
+    // 再修改 profile 制造真实 dirty 状态（autosave 会失败）
+    Controller.applySelectedBinding(
+        QStringLiteral("button_north"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Escape"));
+    REQUIRE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "error");
+
+    // 手动保存到同样不可写的路径，应保持 dirty
+    bool bResult = Controller.saveActiveProfile(
+        QString::fromStdString(GoodPath.string()));
+    REQUIRE_FALSE(bResult);
+    REQUIRE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "error");
+
+    std::filesystem::remove(GoodPath.parent_path());
+}
+
+TEST_CASE("AppController loadProfile success clears dirty",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+
+    // 先创建一个可以加载的 profile 文件
+    auto TempPath = std::filesystem::temp_directory_path()
+        / "mappyz_load_dirty_test" / "profile.json";
+    auto PathStr = QString::fromStdString(TempPath.string());
+    {
+        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
+        (void)Saver.initializeRuntime();
+        Saver.applySelectedBinding(
+            QStringLiteral("button_south"),
+            QStringLiteral("Keyboard"),
+            QStringLiteral("Space"));
+        Saver.saveActiveProfile(PathStr);
+    }
+
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    bool bResult = Controller.loadProfile(PathStr);
+    REQUIRE(bResult);
+    REQUIRE_FALSE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "clean");
+
+    std::filesystem::remove_all(TempPath.parent_path());
+}
+
+TEST_CASE("AppController loadProfile failure does not clear existing dirty state",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    // 制造一个 dirty 状态后手动保存失败
+    auto BlockerPath = std::filesystem::temp_directory_path()
+        / "mappyz_load_fail_dirty_blocker";
+    { std::ofstream(BlockerPath).close(); }
+    auto BadSavePath = QString::fromStdString(
+        (BlockerPath / "sub" / "profile.json").string());
+    Controller.saveActiveProfile(BadSavePath);
+
+    REQUIRE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "error");
+
+    // 加载一个不存在的 profile
+    auto BadLoadPath = std::filesystem::temp_directory_path()
+        / "mappyz_nonexistent" / "profile.json";
+    bool bResult = Controller.loadProfile(
+        QString::fromStdString(BadLoadPath.string()));
+    REQUIRE_FALSE(bResult);
+
+    // dirty 状态不应被失败的 load 清除
+    REQUIRE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "error");
+
+    std::filesystem::remove(BlockerPath);
+}
+
+TEST_CASE("AppController autosave success does not add duplicate Success log",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    auto* Log = Controller.LogModel();
+    int LogCountBefore = Log->rowCount();
+
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+
+    // apply 本身写一条 Success log，autosave 不应额外写 Success
+    int NewLogCount = Log->rowCount() - LogCountBefore;
+    REQUIRE(NewLogCount == 1);
+
+    auto Level = Log->data(
+        Log->index(Log->rowCount() - 1), ZLogModel::LevelRole).toString();
+    CHECK(Level == "Success");
+}
+
+TEST_CASE("AppController autosave failure writes Error log",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    (void)Controller.initializeRuntime();
+
+    // 先成功保存到一个临时路径，使 CachedProfilePath 被设置
+    auto TempDir = std::filesystem::temp_directory_path()
+        / "mappyz_autosave_error_test";
+    auto ProfilePath = TempDir / "profile.json";
+    auto PathStr = QString::fromStdString(ProfilePath.string());
+
+    Controller.applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+
+    REQUIRE(Controller.saveActiveProfile(PathStr));
+    REQUIRE(Controller.ProfilePath() == PathStr);
+
+    // 删除目录，在同位置创建文件阻塞后续写入
+    std::filesystem::remove_all(TempDir);
+    { std::ofstream(TempDir).close(); }
+
+    auto* Log = Controller.LogModel();
+    int LogCountBefore = Log->rowCount();
+
+    // 再次 apply 触发 autosave（写入被阻塞的路径）
+    Controller.applySelectedBinding(
+        QStringLiteral("button_north"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Escape"));
+
+    bool bFoundError = false;
+    for (int Index = LogCountBefore; Index < Log->rowCount(); ++Index)
+    {
+        auto Level = Log->data(
+            Log->index(Index), ZLogModel::LevelRole).toString();
+        if (Level == "Error")
+        {
+            bFoundError = true;
+            break;
+        }
+    }
+    REQUIRE(bFoundError);
+    REQUIRE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "error");
+
+    std::filesystem::remove(TempDir);
+}
+
+TEST_CASE("AppController profileSaveState uses only clean dirty error",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    auto State = Controller.ProfileSaveState();
+    REQUIRE((State == "clean" || State == "dirty" || State == "error"));
+}

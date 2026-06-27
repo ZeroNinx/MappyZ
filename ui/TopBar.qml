@@ -47,9 +47,24 @@ Rectangle {
 
         Tag {
             theme: topBar.theme
-            label: topBar.appController
-                ? ("Profile: " + topBar.appController.activeProfileName) : "Profile: Default"
-            tone: "#3c3c3c"
+            label: {
+                var name = topBar.appController
+                    ? topBar.appController.activeProfileName : "Default"
+                var suffix = ""
+                if (topBar.appController) {
+                    var state = topBar.appController.profileSaveState
+                    if (state === "dirty") suffix = " *"
+                    else if (state === "error") suffix = " !"
+                }
+                return "Profile: " + name + suffix
+            }
+            tone: {
+                if (!topBar.appController) return "#3c3c3c"
+                var state = topBar.appController.profileSaveState
+                if (state === "error") return topBar.theme.warning
+                if (state === "dirty") return topBar.theme.accentSoft
+                return "#3c3c3c"
+            }
         }
 
         ActionButton {

@@ -20,6 +20,9 @@ Rectangle {
                 + "    Runtime: " + statusBar.appController.runtimeState
                 + "    Mapping: " + (statusBar.appController.mappingEnabled ? "enabled" : "paused")
                 + "    Output: " + statusBar.appController.outputDisplayText
+                + "    Profile: " + (statusBar.appController.profileSaveState === "clean" ? "saved"
+                    : statusBar.appController.profileSaveState === "error" ? "save error"
+                    : "unsaved")
                 + "    Events: " + statusBar.appController.lastDrainedEventCount)
             : "Devices: 0    Runtime: unknown"
         color: "#ffffff"

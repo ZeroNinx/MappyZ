@@ -47,6 +47,8 @@ class ZAppController final : public QObject
     Q_PROPERTY(QString outputDisplayText READ OutputDisplayText NOTIFY runtimeStatusChanged)
     Q_PROPERTY(QString profilePath READ ProfilePath NOTIFY profileStatusChanged)
     Q_PROPERTY(QString profileMessage READ ProfileMessage NOTIFY profileStatusChanged)
+    Q_PROPERTY(bool profileDirty READ IsProfileDirty NOTIFY profileStatusChanged)
+    Q_PROPERTY(QString profileSaveState READ ProfileSaveState NOTIFY profileStatusChanged)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -82,6 +84,8 @@ public:
     NODISCARD QString OutputDisplayText() const;
     NODISCARD QString ProfilePath() const;
     NODISCARD QString ProfileMessage() const;
+    NODISCARD bool IsProfileDirty() const;
+    NODISCARD QString ProfileSaveState() const;
 
     // ── QML invokable ──
 
@@ -137,6 +141,15 @@ private:
     // save/load 共用的默认 profile 路径
     NODISCARD QString DefaultProfilePath() const;
 
+    // 标记 profile 为 dirty 状态
+    void MarkProfileDirty();
+
+    // save 统一实现，bAutosave 控制日志噪声
+    bool SaveActiveProfileInternal(const QString& ProfilePath, bool bAutosave);
+
+    // 自动保存到 CachedProfilePath 或 DefaultProfilePath
+    bool AutosaveActiveProfile();
+
     // 注册 RuntimeHost event handler（设备连接/断开、输入事件）
     void RegisterEventHandlers();
 
@@ -172,6 +185,12 @@ private:
 
     // 最近一次保存操作的结果消息
     QString CachedProfileMessage;
+
+    // profile 是否有未保存的修改
+    bool bProfileDirty = false;
+
+    // profile 保存状态："clean" / "dirty" / "error"
+    QString CachedProfileSaveState = QStringLiteral("clean");
 };
 
 }  // namespace MappyZ

@@ -240,15 +240,17 @@ Panel {
                             bindingEditor._selectedActionKind,
                             bindingEditor._selectedActionValue)
                         if (success) {
+                            var saved = bindingEditor.appController.profileSaveState === "clean"
                             var state = bindingEditor.appController.runtimeState
                             if (state === "running") {
                                 applyFeedback.show(
-                                    "Applied successfully",
-                                    bindingEditor.theme.success)
+                                    saved ? "Applied and saved" : "Applied, save failed",
+                                    saved ? bindingEditor.theme.success : bindingEditor.theme.warning)
                             } else {
                                 applyFeedback.show(
-                                    "Applied — mapping will dispatch after runtime starts",
-                                    bindingEditor.theme.accent)
+                                    saved ? "Applied and saved — will dispatch after runtime starts"
+                                          : "Applied, save failed",
+                                    saved ? bindingEditor.theme.accent : bindingEditor.theme.warning)
                             }
                         } else {
                             applyFeedback.show(
@@ -394,9 +396,11 @@ Panel {
                                 if (!bindingEditor.appController) return
                                 var success = bindingEditor.appController.removeBinding(ruleId)
                                 if (success) {
+                                    var saved = bindingEditor.appController.profileSaveState === "clean"
                                     deleteFeedback.show(
-                                        "Removed: " + input,
-                                        bindingEditor.theme.muted)
+                                        saved ? "Removed and saved: " + input
+                                              : "Removed, save failed: " + input,
+                                        saved ? bindingEditor.theme.muted : bindingEditor.theme.warning)
                                 } else {
                                     deleteFeedback.show(
                                         "Remove failed",
