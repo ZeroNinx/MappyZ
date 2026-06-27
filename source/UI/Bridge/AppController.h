@@ -110,6 +110,7 @@ public:
     Q_INVOKABLE bool saveActiveProfile(QString profilePath = QString());
     Q_INVOKABLE bool loadProfile(QString profilePath = QString());
     Q_INVOKABLE bool removeBinding(QString ruleId);
+    Q_INVOKABLE bool setBindingEnabled(QString ruleId, bool enabled);
 
     // 测试辅助：替换 RuntimeHost 的 active profile 并刷新 UI model。
     // 不暴露给 QML，仅供 C++ 测试代码使用。

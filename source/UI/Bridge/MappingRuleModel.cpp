@@ -68,7 +68,7 @@ QHash<int, QByteArray> ZMappingRuleModel::roleNames() const
         {ActionKindRole,  "actionKind"},
         {ActionValueRole, "actionValue"},
         {DisplayKindRole, "displayKind"},
-        {EnabledRole,     "enabled"},
+        {EnabledRole,     "ruleEnabled"},
     };
 }
 

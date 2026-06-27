@@ -240,7 +240,7 @@ Panel {
                             bindingEditor._selectedActionKind,
                             bindingEditor._selectedActionValue)
                         if (success) {
-                            var saved = bindingEditor.appController.profileSaveState === "clean"
+                            var saved = bindingEditor.appController.profileSaveSeverity === "normal"
                             var state = bindingEditor.appController.runtimeState
                             if (state === "running") {
                                 applyFeedback.show(
@@ -304,19 +304,21 @@ Panel {
                     required property string actionKind
                     required property string actionValue
                     required property string displayKind
+                    required property bool ruleEnabled
 
                     width: contentColumn.width
                     height: 40
                     radius: 4
                     color: rowMouseArea.containsMouse ? "#262626" : "#1f1f1f"
                     border.color: bindingEditor.theme.border
+                    opacity: ruleEnabled ? 1.0 : 0.5
 
                     // 点击行：回填 action picker + 通知父级选中控件
                     MouseArea {
                         id: rowMouseArea
 
                         anchors.fill: parent
-                        anchors.rightMargin: deleteButton.width + 4
+                        anchors.rightMargin: deleteButton.width + toggleButton.width + 12
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
@@ -358,11 +360,61 @@ Panel {
                         id: typeTag
 
                         theme: bindingEditor.theme
-                        anchors.right: deleteButton.left
+                        anchors.right: toggleButton.left
                         anchors.rightMargin: 6
                         anchors.verticalCenter: parent.verticalCenter
                         label: displayKind
                         tone: displayKind === "Mouse" ? "#c4710c" : bindingEditor.theme.accentSoft
+                    }
+
+                    // 启用/禁用切换按钮
+                    Rectangle {
+                        id: toggleButton
+
+                        anchors.right: deleteButton.left
+                        anchors.rightMargin: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: toggleLabel.implicitWidth + 10
+                        height: 24
+                        radius: 4
+                        color: toggleMouseArea.containsMouse
+                            ? (ruleEnabled ? "#203020" : "#2a2a2a") : "transparent"
+
+                        Text {
+                            id: toggleLabel
+
+                            anchors.centerIn: parent
+                            text: ruleEnabled ? "On" : "Off"
+                            color: ruleEnabled
+                                ? bindingEditor.theme.success : bindingEditor.theme.muted
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: toggleMouseArea
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (!bindingEditor.appController) return
+                                var success = bindingEditor.appController.setBindingEnabled(
+                                    ruleId, !ruleEnabled)
+                                if (success) {
+                                    var saved = bindingEditor.appController.profileSaveSeverity === "normal"
+                                    var action = !ruleEnabled ? "Enabled" : "Disabled"
+                                    toggleFeedback.show(
+                                        saved ? action + " and saved: " + input
+                                              : action + ", save failed: " + input,
+                                        saved ? bindingEditor.theme.muted : bindingEditor.theme.warning)
+                                } else {
+                                    toggleFeedback.show(
+                                        "Toggle failed",
+                                        bindingEditor.theme.warning)
+                                }
+                            }
+                        }
                     }
 
                     // 删除按钮
@@ -396,7 +448,7 @@ Panel {
                                 if (!bindingEditor.appController) return
                                 var success = bindingEditor.appController.removeBinding(ruleId)
                                 if (success) {
-                                    var saved = bindingEditor.appController.profileSaveState === "clean"
+                                    var saved = bindingEditor.appController.profileSaveSeverity === "normal"
                                     deleteFeedback.show(
                                         saved ? "Removed and saved: " + input
                                               : "Removed, save failed: " + input,
@@ -424,6 +476,13 @@ Panel {
             // 删除操作反馈
             InlineMessage {
                 id: deleteFeedback
+
+                theme: bindingEditor.theme
+            }
+
+            // 启用/禁用操作反馈
+            InlineMessage {
+                id: toggleFeedback
 
                 theme: bindingEditor.theme
             }

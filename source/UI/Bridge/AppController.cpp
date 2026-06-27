@@ -508,6 +508,56 @@ bool ZAppController::removeBinding(QString ruleId)
     return true;
 }
 
+bool ZAppController::setBindingEnabled(QString ruleId, bool enabled)
+{
+    if (ruleId.isEmpty())
+    {
+        EmitRuntimeError(QStringLiteral("SetEnabled failed: ruleId is empty"));
+        return false;
+    }
+
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        EmitRuntimeError(QStringLiteral("SetEnabled failed: runtime not initialized"));
+        return false;
+    }
+
+    auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
+    StdString RuleIdStd = ruleId.toStdString();
+
+    auto Iterator = std::find_if(Profile.Rules.begin(), Profile.Rules.end(),
+        [&RuleIdStd](const SMappingRule& Rule) { return Rule.Id == RuleIdStd; });
+
+    if (Iterator == Profile.Rules.end())
+    {
+        EmitRuntimeError(
+            QStringLiteral("SetEnabled failed: rule \"%1\" not found").arg(ruleId));
+        return false;
+    }
+
+    // 目标状态与当前一致，无需变更
+    if (Iterator->bEnabled == enabled)
+    {
+        return true;
+    }
+
+    Iterator->bEnabled = enabled;
+    Bootstrap.GetRuntimeHost().ReplaceProfile(std::move(Profile));
+    RefreshMappingRuleModelFromHost();
+
+    MarkProfileDirty();
+    bool bSaved = AutosaveActiveProfile();
+
+    QString Action = enabled ? QStringLiteral("Binding enabled")
+                             : QStringLiteral("Binding disabled");
+    AppendLog(QStringLiteral("Success"),
+        bSaved ? QStringLiteral("%1 and saved: %2").arg(Action, ruleId)
+               : QStringLiteral("%1, save failed: %2").arg(Action, ruleId));
+    return true;
+}
+
 // ── 测试辅助 ──
 
 void ZAppController::ReplaceActiveProfileForTest(SMappingProfile Profile)

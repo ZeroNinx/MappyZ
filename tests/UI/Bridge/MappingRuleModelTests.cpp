@@ -308,7 +308,7 @@ TEST_CASE("MappingRuleModel roleNames contains all expected roles",
     REQUIRE(Names[ZMappingRuleModel::ActionKindRole] == "actionKind");
     REQUIRE(Names[ZMappingRuleModel::ActionValueRole] == "actionValue");
     REQUIRE(Names[ZMappingRuleModel::DisplayKindRole] == "displayKind");
-    REQUIRE(Names[ZMappingRuleModel::EnabledRole] == "enabled");
+    REQUIRE(Names[ZMappingRuleModel::EnabledRole] == "ruleEnabled");
 }
 
 // ── actionValue role ──

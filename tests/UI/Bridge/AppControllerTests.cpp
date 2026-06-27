@@ -2511,3 +2511,202 @@ TEST_CASE("AppController remapDisplayText changes to Paused when disabled",
     Controller.SetMappingEnabled(true);
     REQUIRE(Controller.RemapDisplayText() == "Active");
 }
+
+// ── setBindingEnabled ──
+
+TEST_CASE("AppController setBindingEnabled returns false for empty ruleId",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+    REQUIRE_FALSE(Controller.setBindingEnabled(QString(), false));
+    REQUIRE(ErrorSpy.count() == 1);
+}
+
+TEST_CASE("AppController setBindingEnabled returns false before initialize",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+    REQUIRE_FALSE(Controller.setBindingEnabled(QStringLiteral("some_rule"), false));
+    REQUIRE(ErrorSpy.count() == 1);
+}
+
+TEST_CASE("AppController setBindingEnabled returns false for unknown ruleId",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+    REQUIRE_FALSE(Controller.setBindingEnabled(QStringLiteral("nonexistent"), false));
+    REQUIRE(ErrorSpy.count() == 1);
+}
+
+TEST_CASE("AppController setBindingEnabled disables existing rule",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+
+    auto* Model = Controller.MappingRuleModel();
+    REQUIRE(Model->rowCount() == 1);
+
+    // 默认 enabled
+    auto EnabledBefore = Model->data(
+        Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
+    REQUIRE(EnabledBefore);
+
+    auto RuleId = Model->ruleIdAt(0);
+    REQUIRE(Controller.setBindingEnabled(RuleId, false));
+
+    auto EnabledAfter = Model->data(
+        Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
+    REQUIRE_FALSE(EnabledAfter);
+}
+
+TEST_CASE("AppController setBindingEnabled re-enables disabled rule",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+
+    auto* Model = Controller.MappingRuleModel();
+    auto RuleId = Model->ruleIdAt(0);
+    REQUIRE(Controller.setBindingEnabled(RuleId, false));
+    REQUIRE(Controller.setBindingEnabled(RuleId, true));
+
+    auto EnabledAfter = Model->data(
+        Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
+    REQUIRE(EnabledAfter);
+}
+
+TEST_CASE("AppController setBindingEnabled same state is no-op",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+
+    // 等 autosave 完成，profile 回到 clean
+    REQUIRE(Controller.ProfileSaveState() == "clean");
+
+    auto* Model = Controller.MappingRuleModel();
+    auto RuleId = Model->ruleIdAt(0);
+
+    // 设为 true（已经是 true），不应触发 profileStatusChanged
+    QSignalSpy ProfileSpy(&Controller, &ZAppController::profileStatusChanged);
+    REQUIRE(Controller.setBindingEnabled(RuleId, true));
+    REQUIRE(ProfileSpy.count() == 0);
+    REQUIRE(Controller.ProfileSaveState() == "clean");
+}
+
+TEST_CASE("AppController setBindingEnabled persists through save load round trip",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    auto TempDir = std::filesystem::temp_directory_path() / "mappyz_test_toggle_persist";
+    std::filesystem::remove_all(TempDir);
+
+    {
+        ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+        REQUIRE(Controller.initializeRuntime());
+        REQUIRE(Controller.startRuntime());
+        REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+
+        auto* Model = Controller.MappingRuleModel();
+        auto RuleId = Model->ruleIdAt(0);
+        REQUIRE(Controller.setBindingEnabled(RuleId, false));
+
+        auto SavePath = TempDir / "profile.json";
+        REQUIRE(Controller.saveActiveProfile(
+            QString::fromStdString(SavePath.string())));
+    }
+
+    {
+        ZAppController Controller2(MakeFakeInputFactory(), MakeNullOutputFactory());
+        REQUIRE(Controller2.initializeRuntime());
+        REQUIRE(Controller2.startRuntime());
+
+        auto LoadPath = TempDir / "profile.json";
+        REQUIRE(Controller2.loadProfile(
+            QString::fromStdString(LoadPath.string())));
+
+        auto* Model = Controller2.MappingRuleModel();
+        REQUIRE(Model->rowCount() == 1);
+        auto EnabledAfterLoad = Model->data(
+            Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
+        REQUIRE_FALSE(EnabledAfterLoad);
+    }
+
+    std::filesystem::remove_all(TempDir);
+}
+
+TEST_CASE("AppController setBindingEnabled autosave failure keeps dirty",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+
+    auto* Model = Controller.MappingRuleModel();
+    auto RuleId = Model->ruleIdAt(0);
+
+    // 设置 CachedProfilePath 为成功路径
+    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_toggle_fail";
+    std::filesystem::remove_all(BadDir);
+    std::filesystem::create_directories(BadDir);
+    auto GoodPath = BadDir / "profile.json";
+    REQUIRE(Controller.saveActiveProfile(
+        QString::fromStdString(GoodPath.string())));
+
+    // 用文件阻塞目录使 autosave 失败
+    std::filesystem::remove_all(BadDir);
+    {
+        std::ofstream Blocker(BadDir);
+        Blocker << "block";
+    }
+
+    REQUIRE(Controller.setBindingEnabled(RuleId, false));
+
+    // runtime 中规则已禁用
+    auto EnabledAfter = Model->data(
+        Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
+    REQUIRE_FALSE(EnabledAfter);
+
+    // 但 profile 状态是 error
+    REQUIRE(Controller.IsProfileDirty());
+    REQUIRE(Controller.ProfileSaveState() == "error");
+
+    std::filesystem::remove(BadDir);
+}
+
+TEST_CASE("AppController setBindingEnabled works while runtime is running",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.RuntimeState() == "running");
+
+    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+
+    auto* Model = Controller.MappingRuleModel();
+    auto RuleId = Model->ruleIdAt(0);
+    REQUIRE(Controller.setBindingEnabled(RuleId, false));
+
+    auto EnabledAfter = Model->data(
+        Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
+    REQUIRE_FALSE(EnabledAfter);
+}

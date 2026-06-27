@@ -1,96 +1,108 @@
-# TODO: Runtime UX Semantics Cleanup
+# TODO: Mapping Rule Enable Disable UX
 
 ## Goal
 
-把当前已经能运行的 remapping 流程表达清楚：用户应该能一眼看懂 runtime 是否在跑、映射输出是否启用、profile 是否已保存，以及设备列表里哪些内容是真设备。
+让用户能管理已经保存的映射规则，而不是只能新增、替换或删除。当前 `MappingRuleModel` 已经暴露 `enabled` role，Core profile 也有 `SMappingRule::bEnabled`，下一步只补 UI Bridge 和 QML 操作入口。
 
-本轮只做 UI / UI Bridge 语义清理，不新增后端能力，不做 profile 管理页。
+本轮目标是小范围打通"禁用某条绑定但保留配置"的能力，并保持 running runtime、autosave、MappingRuleModel 三者一致。
 
-## Priority 0: Verify Existing Device Panel Cleanup
+## Scope
 
-`DevicesPanel` 当前已经只显示真实输入设备和空状态提示，`todo_ui.md` P7 已完成 Runtime 卡清理。本轮不再重复实现，只做回归确认。
+包含：
 
-- [x] `DevicesPanel` 只显示真实输入设备和空状态，不再放永久 `Runtime running` 占位卡片。
-- [x] Runtime 状态只出现在全局区域：`TopBar` / `StatusBar` / `EventLogPanel`。
-- [x] 设备列表为空时继续保留明确 empty state，不用 Runtime 卡片填空间。
-- [x] 没有与 Runtime 卡片相关的 QML 属性传递和死布局代码。
-- [x] 跑 QML smoke，确认当前状态无 binding/import/property warning。
+- [x] `ZAppController` 新增 `setBindingEnabled(ruleId, enabled)`。
+- [x] 修改 active profile 中对应 `SMappingRule::bEnabled`。
+- [x] 替换 RuntimeHost active profile，让 running runtime 立即生效。
+- [x] 刷新 `MappingRuleModel`，让 QML 当前列表同步。
+- [x] 复用现有 dirty/autosave 机制，成功后自动保存。
+- [x] BindingEditor 当前映射列表增加启用/禁用入口。
+- [x] 禁用规则在 UI 中有明确视觉状态。
+- [x] 增加 AppController 测试和 QML smoke 覆盖。
 
-## Priority 1: Add Explicit Remap Toggle
+不做：
 
-旧的 `Mapping On/Off` 主按钮已在 `todo_ui.md` P7 移除。本轮是在 `TopBar` 重新接入一个语义明确的 Remap Toggle，不是给现有按钮改名。
+- [ ] 不做批量启用/禁用。
+- [ ] 不做规则拖拽排序。
+- [ ] 不做规则重命名。
+- [ ] 不做高级条件、分组、层级 profile。
+- [ ] 不改 MappingEngine 行为；继续依赖已有 disabled rule skip 逻辑。
 
-实际语义是：
+## API Plan
 
-- 输入采集、按键显示、capture 仍然工作。
-- 只有 mapped action dispatch 会被启用或暂停。
+`ZAppController` 新增 QML API：
 
-实现计划：
+```cpp
+Q_INVOKABLE bool setBindingEnabled(QString ruleId, bool enabled);
+```
 
-- [x] 在 `TopBar` 的右侧 Row 中新增 Remap Toggle，位置靠近 `Save Profile`。
-- [x] 按钮文案根据 `appController.mappingEnabled` 显示 `Remap Active` / `Remap Paused`。
-- [x] active 状态使用 primary 样式；paused 状态使用普通样式，避免误以为输出仍然激活。
-- [x] 点击后执行 `appController.mappingEnabled = !appController.mappingEnabled`，继续复用现有 `SetMappingEnabled()` 行为。
-- [x] `TopBar` 内增加短暂 inline feedback：active 时 `Mapped output dispatch enabled`，paused 时 `Mapped output dispatch paused`。
-- [x] Event Log 继续记录 `Mapping enabled/disabled`，后续可统一为 `Remap active/paused`，本轮先不迁移历史日志语义。
-- [x] 增加或更新 QML smoke，确认按钮文案切换无 warning。
+行为：
 
-## Priority 2: Replace Symbolic Profile Suffix With Explicit Text
+- [x] `ruleId` 为空时返回 false，写 Error log，emit `runtimeError`。
+- [x] runtime 未 initialize 时返回 false，写 Error log，emit `runtimeError`。
+- [x] 找不到 rule 时返回 false，写 Error log，emit `runtimeError`。
+- [x] rule 当前状态已经等于目标状态时返回 true，但不标 dirty、不 autosave、不重复写成功日志。
+- [x] 状态实际变化时：
+  - [x] 更新 profile snapshot 中的 `Rule.bEnabled`。
+  - [x] `RuntimeHost.ReplaceProfile(Profile)`。
+  - [x] `RefreshMappingRuleModelFromHost()`。
+  - [x] `MarkProfileDirty()`。
+  - [x] `AutosaveActiveProfile()`。
+  - [x] 写 Success log：`Binding enabled: <ruleId>` / `Binding disabled: <ruleId>`，保存失败时使用 `..., save failed` 文案。
 
-当前 `Profile: Default *` / `Profile: Default !` 对普通用户不够明确。保存状态应使用文字，不依赖符号。
+## QML Plan
 
-实现计划：
+`BindingEditor.qml` 当前 mapping delegate 已有 `ruleEnabled` role（从 `enabled` 改名避免 Item.enabled 冲突）。新增交互：
 
-- [x] `ZAppController` 增加只读 `profileDisplayText`，由 C++ 统一生成用户可读 profile 名称，不包含 `Profile:` 前缀。
-- [x] `profileDisplayText` 示例：
-  - [x] clean: `Default`
-  - [x] dirty: `Default (unsaved)`
-  - [x] error: `Default (save error)`
-- [x] `TopBar` 显示 `Profile: ` + `appController.profileDisplayText`，移除 QML 内部对 `profileSaveState` 的字符串拼接。
-- [x] `StatusBar` 不复用完整 profile 名称；新增或复用 C++ 提供的短文案，例如 `profileSaveDisplayText`：`Saved` / `Unsaved` / `Save Error`。
-- [x] 保留底层 `profileSaveState` 给测试和后续逻辑使用，但 QML 展示层不直接解释它。
-- [x] `profileDisplayText` 的 NOTIFY 选择 `profileStatusChanged`；加载 profile 成功、保存状态变化都必须触发它。
-- [x] AppController 测试覆盖三种 profile display 文案和三种 profile save display 文案。
+- [x] 每条 mapping 右侧增加一个小 toggle（On/Off 按钮）。
+- [x] toggle 文案使用 `On` / `Off`。
+- [x] 点击 toggle 调用 `appController.setBindingEnabled(ruleId, !ruleEnabled)`。
+- [x] toggle 成功后显示 inline feedback：
+  - [x] autosave 成功：`Enabled and saved: <input>` / `Disabled and saved: <input>`。
+  - [x] autosave 失败：`Enabled, save failed: <input>` / `Disabled, save failed: <input>`。
+- [x] disabled rule 的 mapping 行降低 opacity，仍保留删除入口。
+- [x] disabled rule 点击行仍能回填 selected control/action，方便重新编辑。
+- [x] 删除按钮继续工作，不改变现有 `removeBinding()` 语义。
 
-## Priority 3: Make Runtime / Output Status Copy Consistent
+## Data Flow
 
-状态栏目前信息很多，但文案粒度不统一。目标是压缩且直观。
+- [x] `MappingRuleModel::EnabledRole` 继续作为 QML 数据源，role name 改为 `ruleEnabled` 避免 QML 属性冲突。
+- [x] `setBindingEnabled()` 修改 profile 后通过 `ReplaceProfile()` 和 `RefreshMappingRuleModelFromHost()` 同步 model。
+- [x] autosave 成功后 profile 状态回到 clean。
+- [x] autosave 失败后 runtime 中的启用/禁用仍立即生效，profile 状态显示 save error。
+- [x] `Remap Active/Paused` 是全局 dispatch 开关；单条 rule enabled 是局部规则开关，两者互不替代。
 
-实现计划：
+## Tests
 
-- [x] `ZAppController` 增加只读显示文本属性，QML 不直接解释内部状态：
-  - [x] `runtimeDisplayText`: `Created` / `Ready` / `Running` / `Error`
-  - [x] `remapDisplayText`: `Active` / `Paused`
-  - [x] `profileSaveDisplayText`: `Saved` / `Unsaved` / `Save Error`
-- [x] `StatusBar` 文案统一成稳定格式，例如：
-  `Devices: 1 | Runtime: Running | Remap: Active | Output: Live | Profile: Saved`
-- [x] Runtime state 使用 `runtimeDisplayText`，不直接展示内部小写 `runtimeState`。
-- [x] Output 继续使用 `outputDisplayText`，不恢复 Real Output 开关。
-- [x] Remap 使用 `remapDisplayText`，与 TopBar 文案一致。
-- [x] Profile 使用 `profileSaveDisplayText`，不显示路径。
-- [x] StatusBar 使用 ` | ` 分隔符替换当前多空格拼接。
+`AppControllerTests.cpp`：
 
-## Priority 4: Tests And Acceptance
+- [x] `setBindingEnabled` returns false for empty ruleId。
+- [x] `setBindingEnabled` returns false before initialize。
+- [x] `setBindingEnabled` returns false for unknown ruleId。
+- [x] disabling existing rule updates `MappingRuleModel.ruleEnabled` to false。
+- [x] enabling disabled rule updates `MappingRuleModel.ruleEnabled` to true。
+- [x] repeated set to same state is no-op and does not emit `profileStatusChanged`。
+- [x] disabled rule persists through `saveActiveProfile()` / `loadProfile()` round trip。
+- [ ] disabled rule is not dispatched while enabled sibling rules still work, if existing test infrastructure can assert this cheaply。
+- [x] autosave failure keeps runtime state changed and profile save state error。
 
-- [x] AppController 测试覆盖 profile display text。
-- [x] AppController 测试覆盖 remap display text 或 mapping enabled 状态文案。
-- [x] QML smoke 通过且无 warning。
-- [x] `git diff --check` 无输出。
-- [x] 修改文本文件保持 CRLF 行尾。
+QML / smoke：
 
-## Non-Goals
-
-- [ ] 不做 Profile Manager：rename / duplicate / delete profile。
-- [ ] 不做 Save As / Open File 对话框。
-- [ ] 不做多 profile 切换。
-- [ ] 不做 real output 开关或后端重建流程。
-- [ ] 不改 Core mapping 行为。
-- [ ] 不改 SDL 输入枚举逻辑。
+- [x] QML smoke passes with new delegate controls.
+- [x] no binding/import/property warning.
 
 ## Acceptance Criteria
 
-- [x] 设备列表里不再出现非设备的 Runtime 卡片。
-- [x] 用户能从 TopBar 看懂 remapping 输出是 active 还是 paused。
-- [x] 用户能从 TopBar 看懂当前 profile 是否 saved / unsaved / save error。
-- [x] StatusBar 的 Runtime / Remap / Output / Profile 文案互相一致。
-- [x] 当前 Apply / Delete / Autosave / Startup load 行为不回退。
+- [x] 用户可以在 Current mappings 中禁用一条绑定而不删除它。
+- [x] 禁用后该规则不再产生 mapped output。
+- [x] 再次启用后该规则恢复生效。
+- [x] 禁用/启用会自动保存；保存失败时 UI 明确显示 save error。
+- [x] 全局 Remap Paused 与单条 Disabled 状态在 UI 上可区分。
+- [x] 所有测试通过。
+- [x] 修改文本文件保持 CRLF 行尾。
+
+## Follow-Up
+
+- [ ] 后续做 rule rename / display name。
+- [ ] 后续做 drag reorder。
+- [ ] 后续做 profile management：rename / duplicate / delete profile。
+- [ ] 后续做 Save As / Import / Export。
