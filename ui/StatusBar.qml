@@ -1,6 +1,6 @@
 import QtQuick
 
-// 底部状态栏：显示设备数、运行时状态、mapping 状态、输出状态和事件计数
+// 底部状态栏：显示设备数、运行时状态、映射状态、输出状态和保存状态
 Rectangle {
     id: statusBar
 
@@ -17,14 +17,11 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         text: statusBar.appController
             ? ("Devices: " + statusBar.deviceCount
-                + "    Runtime: " + statusBar.appController.runtimeState
-                + "    Mapping: " + (statusBar.appController.mappingEnabled ? "enabled" : "paused")
-                + "    Output: " + statusBar.appController.outputDisplayText
-                + "    Profile: " + (statusBar.appController.profileSaveState === "clean" ? "saved"
-                    : statusBar.appController.profileSaveState === "error" ? "save error"
-                    : "unsaved")
-                + "    Events: " + statusBar.appController.lastDrainedEventCount)
-            : "Devices: 0    Runtime: unknown"
+                + " | Runtime: " + statusBar.appController.runtimeDisplayText
+                + " | Remap: " + statusBar.appController.remapDisplayText
+                + " | Output: " + statusBar.appController.outputDisplayText
+                + " | Profile: " + statusBar.appController.profileSaveDisplayText)
+            : "Devices: 0 | Runtime: Unknown"
         color: "#ffffff"
         font.pixelSize: 11
     }

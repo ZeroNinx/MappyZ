@@ -2327,3 +2327,187 @@ TEST_CASE("AppController profileSaveState uses only clean dirty error",
     auto State = Controller.ProfileSaveState();
     REQUIRE((State == "clean" || State == "dirty" || State == "error"));
 }
+
+// ── display text properties ──
+
+TEST_CASE("AppController profileDisplayText shows Default when clean",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.ProfileDisplayText() == "Default");
+}
+
+TEST_CASE("AppController profileDisplayText shows unsaved after mutation",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+
+    // 用不可写路径制造 autosave 失败使 dirty 状态保留
+    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_display_dirty";
+    std::filesystem::remove_all(BadDir);
+    std::filesystem::create_directories(BadDir);
+
+    // 先成功保存一次设置 CachedProfilePath
+    auto GoodPath = BadDir / "good.json";
+    REQUIRE(Controller.saveActiveProfile(QString::fromStdString(GoodPath.string())));
+
+    // 删除目录并放置同名文件阻止 autosave 写入
+    std::filesystem::remove_all(BadDir);
+    {
+        std::ofstream Blocker(BadDir);
+        Blocker << "block";
+    }
+
+    Controller.applySelectedBinding("button_south", "Keyboard", "Space");
+
+    // autosave 失败 → dirty → profileDisplayText 包含 unsaved 或 save error
+    auto DisplayText = Controller.ProfileDisplayText();
+    bool bHasSuffix = DisplayText.contains("unsaved") || DisplayText.contains("save error");
+    REQUIRE(bHasSuffix);
+
+    std::filesystem::remove(BadDir);
+}
+
+TEST_CASE("AppController profileDisplayText shows save error on failed save",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+
+    // 保存到不可写路径
+    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_display_error";
+    std::filesystem::remove_all(BadDir);
+    {
+        std::ofstream Blocker(BadDir);
+        Blocker << "block";
+    }
+
+    Controller.saveActiveProfile(
+        QString::fromStdString((BadDir / "sub" / "profile.json").string()));
+
+    REQUIRE(Controller.ProfileDisplayText().contains("save error"));
+
+    std::filesystem::remove(BadDir);
+}
+
+TEST_CASE("AppController profileSaveDisplayText three states",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+
+    // clean → Saved
+    REQUIRE(Controller.ProfileSaveDisplayText() == "Saved");
+
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+
+    // 制造 save error 状态
+    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_save_display";
+    std::filesystem::remove_all(BadDir);
+    {
+        std::ofstream Blocker(BadDir);
+        Blocker << "block";
+    }
+    Controller.saveActiveProfile(
+        QString::fromStdString((BadDir / "sub" / "profile.json").string()));
+
+    REQUIRE(Controller.ProfileSaveDisplayText() == "Save Error");
+
+    std::filesystem::remove(BadDir);
+}
+
+TEST_CASE("AppController profileSaveSeverity maps clean dirty error to visual keys",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+
+    // clean → normal
+    REQUIRE(Controller.ProfileSaveSeverity() == "normal");
+
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+
+    // 制造 save error → danger
+    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_severity";
+    std::filesystem::remove_all(BadDir);
+    {
+        std::ofstream Blocker(BadDir);
+        Blocker << "block";
+    }
+    Controller.saveActiveProfile(
+        QString::fromStdString((BadDir / "sub" / "profile.json").string()));
+
+    REQUIRE(Controller.ProfileSaveSeverity() == "danger");
+
+    std::filesystem::remove(BadDir);
+}
+
+TEST_CASE("AppController profileSaveSeverity emits caution during transient dirty",
+    "[UI][AppController]")
+{
+    STestModeGuard TestMode;
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.startRuntime());
+
+    // 通过 signal 观察捕获 MarkProfileDirty 瞬态
+    QStringList ObservedSeverities;
+    QObject::connect(&Controller, &ZAppController::profileStatusChanged,
+        [&]() { ObservedSeverities.append(Controller.ProfileSaveSeverity()); });
+
+    Controller.applySelectedBinding("button_south", "Keyboard", "Space");
+
+    // MarkProfileDirty 同步触发第一次 profileStatusChanged，此时 severity 为 caution
+    REQUIRE(ObservedSeverities.contains("caution"));
+}
+
+TEST_CASE("AppController runtimeDisplayText reflects lifecycle states",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+
+    // Created
+    REQUIRE(Controller.RuntimeDisplayText() == "Created");
+
+    // Ready
+    REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.RuntimeDisplayText() == "Ready");
+
+    // Running
+    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.RuntimeDisplayText() == "Running");
+}
+
+TEST_CASE("AppController runtimeDisplayText shows Error on failed init",
+    "[UI][AppController]")
+{
+    ZAppController Controller(
+        MakeFailingInputFactory("test error"), MakeNullOutputFactory());
+
+    Controller.initializeRuntime();
+    REQUIRE(Controller.RuntimeDisplayText() == "Error");
+}
+
+TEST_CASE("AppController remapDisplayText default is Active",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    REQUIRE(Controller.RemapDisplayText() == "Active");
+}
+
+TEST_CASE("AppController remapDisplayText changes to Paused when disabled",
+    "[UI][AppController]")
+{
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    Controller.SetMappingEnabled(false);
+    REQUIRE(Controller.RemapDisplayText() == "Paused");
+
+    Controller.SetMappingEnabled(true);
+    REQUIRE(Controller.RemapDisplayText() == "Active");
+}

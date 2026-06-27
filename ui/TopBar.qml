@@ -1,6 +1,6 @@
 import QtQuick
 
-// 顶部工具栏：产品名、运行时副标题、Profile 标签和保存入口
+// 顶部工具栏：产品名、运行时副标题、Remap 开关、Profile 标签和保存入口
 Rectangle {
     id: topBar
 
@@ -40,29 +40,39 @@ Rectangle {
     }
 
     Row {
+        id: topBarActions
+
         anchors.right: parent.right
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
         spacing: 10
 
+        ActionButton {
+            theme: topBar.theme
+            label: topBar.appController && topBar.appController.mappingEnabled
+                ? "Remap Active" : "Remap Paused"
+            primary: topBar.appController ? topBar.appController.mappingEnabled : false
+            onClicked: {
+                if (!topBar.appController) return
+                topBar.appController.mappingEnabled = !topBar.appController.mappingEnabled
+                remapFeedback.show(
+                    topBar.appController.mappingEnabled
+                        ? "Mapped output dispatch enabled"
+                        : "Mapped output dispatch paused",
+                    topBar.appController.mappingEnabled
+                        ? topBar.theme.success : topBar.theme.muted)
+            }
+        }
+
         Tag {
             theme: topBar.theme
-            label: {
-                var name = topBar.appController
-                    ? topBar.appController.activeProfileName : "Default"
-                var suffix = ""
-                if (topBar.appController) {
-                    var state = topBar.appController.profileSaveState
-                    if (state === "dirty") suffix = " *"
-                    else if (state === "error") suffix = " !"
-                }
-                return "Profile: " + name + suffix
-            }
+            label: "Profile: " + (topBar.appController
+                ? topBar.appController.profileDisplayText : "Default")
             tone: {
                 if (!topBar.appController) return "#3c3c3c"
-                var state = topBar.appController.profileSaveState
-                if (state === "error") return topBar.theme.warning
-                if (state === "dirty") return topBar.theme.accentSoft
+                var severity = topBar.appController.profileSaveSeverity
+                if (severity === "danger") return topBar.theme.warning
+                if (severity === "caution") return topBar.theme.accentSoft
                 return "#3c3c3c"
             }
         }
@@ -75,5 +85,17 @@ Rectangle {
                     topBar.appController.saveActiveProfile()
             }
         }
+    }
+
+    // Remap 切换操作反馈
+    InlineMessage {
+        id: remapFeedback
+
+        theme: topBar.theme
+        width: topBarActions.width
+        anchors.right: parent.right
+        anchors.rightMargin: 16
+        anchors.top: topBarActions.bottom
+        anchors.topMargin: 4
     }
 }

@@ -237,6 +237,52 @@ QString ZAppController::ProfileSaveState() const
     return CachedProfileSaveState;
 }
 
+QString ZAppController::ProfileDisplayText() const
+{
+    QString Name = ActiveProfileName();
+    if (CachedProfileSaveState == QStringLiteral("dirty"))
+        return Name + QStringLiteral(" (unsaved)");
+    if (CachedProfileSaveState == QStringLiteral("error"))
+        return Name + QStringLiteral(" (save error)");
+    return Name;
+}
+
+QString ZAppController::ProfileSaveDisplayText() const
+{
+    if (CachedProfileSaveState == QStringLiteral("error"))
+        return QStringLiteral("Save Error");
+    if (CachedProfileSaveState == QStringLiteral("dirty"))
+        return QStringLiteral("Unsaved");
+    return QStringLiteral("Saved");
+}
+
+QString ZAppController::ProfileSaveSeverity() const
+{
+    if (CachedProfileSaveState == QStringLiteral("error"))
+        return QStringLiteral("danger");
+    if (CachedProfileSaveState == QStringLiteral("dirty"))
+        return QStringLiteral("caution");
+    return QStringLiteral("normal");
+}
+
+QString ZAppController::RuntimeDisplayText() const
+{
+    switch (Bootstrap.GetStatus().State)
+    {
+    case EApplicationBootstrapState::Created: return QStringLiteral("Created");
+    case EApplicationBootstrapState::Ready:   return QStringLiteral("Ready");
+    case EApplicationBootstrapState::Running: return QStringLiteral("Running");
+    case EApplicationBootstrapState::Error:   return QStringLiteral("Error");
+    default: return QStringLiteral("Unknown");
+    }
+}
+
+QString ZAppController::RemapDisplayText() const
+{
+    return bCachedMappingEnabled
+        ? QStringLiteral("Active") : QStringLiteral("Paused");
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime()

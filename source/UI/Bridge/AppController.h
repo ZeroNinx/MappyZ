@@ -49,6 +49,11 @@ class ZAppController final : public QObject
     Q_PROPERTY(QString profileMessage READ ProfileMessage NOTIFY profileStatusChanged)
     Q_PROPERTY(bool profileDirty READ IsProfileDirty NOTIFY profileStatusChanged)
     Q_PROPERTY(QString profileSaveState READ ProfileSaveState NOTIFY profileStatusChanged)
+    Q_PROPERTY(QString profileDisplayText READ ProfileDisplayText NOTIFY profileStatusChanged)
+    Q_PROPERTY(QString profileSaveDisplayText READ ProfileSaveDisplayText NOTIFY profileStatusChanged)
+    Q_PROPERTY(QString profileSaveSeverity READ ProfileSaveSeverity NOTIFY profileStatusChanged)
+    Q_PROPERTY(QString runtimeDisplayText READ RuntimeDisplayText NOTIFY runtimeStatusChanged)
+    Q_PROPERTY(QString remapDisplayText READ RemapDisplayText NOTIFY mappingEnabledChanged)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -86,6 +91,11 @@ public:
     NODISCARD QString ProfileMessage() const;
     NODISCARD bool IsProfileDirty() const;
     NODISCARD QString ProfileSaveState() const;
+    NODISCARD QString ProfileDisplayText() const;
+    NODISCARD QString ProfileSaveDisplayText() const;
+    NODISCARD QString ProfileSaveSeverity() const;
+    NODISCARD QString RuntimeDisplayText() const;
+    NODISCARD QString RemapDisplayText() const;
 
     // ── QML invokable ──
 
