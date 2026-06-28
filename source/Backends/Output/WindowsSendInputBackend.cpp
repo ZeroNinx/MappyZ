@@ -59,6 +59,45 @@ static_assert(VirtualKey::VkF10 == VK_F10, "VkF10 mismatch");
 static_assert(VirtualKey::VkF11 == VK_F11, "VkF11 mismatch");
 static_assert(VirtualKey::VkF12 == VK_F12, "VkF12 mismatch");
 
+// 编辑/导航键
+static_assert(VirtualKey::VkDelete   == VK_DELETE, "VkDelete mismatch");
+static_assert(VirtualKey::VkInsert   == VK_INSERT, "VkInsert mismatch");
+static_assert(VirtualKey::VkHome     == VK_HOME,   "VkHome mismatch");
+static_assert(VirtualKey::VkEnd      == VK_END,    "VkEnd mismatch");
+static_assert(VirtualKey::VkPageUp   == VK_PRIOR,  "VkPageUp mismatch");
+static_assert(VirtualKey::VkPageDown == VK_NEXT,   "VkPageDown mismatch");
+
+// 左右修饰键
+static_assert(VirtualKey::VkLeftShift    == VK_LSHIFT,   "VkLeftShift mismatch");
+static_assert(VirtualKey::VkRightShift   == VK_RSHIFT,   "VkRightShift mismatch");
+static_assert(VirtualKey::VkLeftControl  == VK_LCONTROL, "VkLeftControl mismatch");
+static_assert(VirtualKey::VkRightControl == VK_RCONTROL, "VkRightControl mismatch");
+static_assert(VirtualKey::VkLeftAlt      == VK_LMENU,    "VkLeftAlt mismatch");
+static_assert(VirtualKey::VkRightAlt     == VK_RMENU,    "VkRightAlt mismatch");
+static_assert(VirtualKey::VkLeftWin      == VK_LWIN,     "VkLeftWin mismatch");
+
+// 符号键
+static_assert(VirtualKey::VkOemMinus  == VK_OEM_MINUS,  "VkOemMinus mismatch");
+static_assert(VirtualKey::VkOemPlus   == VK_OEM_PLUS,   "VkOemPlus mismatch");
+static_assert(VirtualKey::VkOem4      == VK_OEM_4,      "VkOem4 mismatch");
+static_assert(VirtualKey::VkOem6      == VK_OEM_6,      "VkOem6 mismatch");
+static_assert(VirtualKey::VkOem5      == VK_OEM_5,      "VkOem5 mismatch");
+static_assert(VirtualKey::VkOem1      == VK_OEM_1,      "VkOem1 mismatch");
+static_assert(VirtualKey::VkOem7      == VK_OEM_7,      "VkOem7 mismatch");
+static_assert(VirtualKey::VkOemComma  == VK_OEM_COMMA,  "VkOemComma mismatch");
+static_assert(VirtualKey::VkOemPeriod == VK_OEM_PERIOD, "VkOemPeriod mismatch");
+static_assert(VirtualKey::VkOem2      == VK_OEM_2,      "VkOem2 mismatch");
+static_assert(VirtualKey::VkOem3      == VK_OEM_3,      "VkOem3 mismatch");
+
+// 小键盘
+static_assert(VirtualKey::VkNumpad0  == VK_NUMPAD0,  "VkNumpad0 mismatch");
+static_assert(VirtualKey::VkNumpad9  == VK_NUMPAD9,  "VkNumpad9 mismatch");
+static_assert(VirtualKey::VkMultiply == VK_MULTIPLY, "VkMultiply mismatch");
+static_assert(VirtualKey::VkAdd      == VK_ADD,      "VkAdd mismatch");
+static_assert(VirtualKey::VkSubtract == VK_SUBTRACT, "VkSubtract mismatch");
+static_assert(VirtualKey::VkDecimal  == VK_DECIMAL,  "VkDecimal mismatch");
+static_assert(VirtualKey::VkDivide   == VK_DIVIDE,   "VkDivide mismatch");
+
 // 鼠标标志
 static_assert(MouseFlag::Move       == MOUSEEVENTF_MOVE,       "MouseFlag::Move mismatch");
 static_assert(MouseFlag::LeftDown   == MOUSEEVENTF_LEFTDOWN,   "MouseFlag::LeftDown mismatch");
@@ -67,10 +106,16 @@ static_assert(MouseFlag::RightDown  == MOUSEEVENTF_RIGHTDOWN,  "MouseFlag::Right
 static_assert(MouseFlag::RightUp    == MOUSEEVENTF_RIGHTUP,    "MouseFlag::RightUp mismatch");
 static_assert(MouseFlag::MiddleDown == MOUSEEVENTF_MIDDLEDOWN, "MouseFlag::MiddleDown mismatch");
 static_assert(MouseFlag::MiddleUp   == MOUSEEVENTF_MIDDLEUP,   "MouseFlag::MiddleUp mismatch");
+static_assert(MouseFlag::XDown      == MOUSEEVENTF_XDOWN,      "MouseFlag::XDown mismatch");
+static_assert(MouseFlag::XUp        == MOUSEEVENTF_XUP,        "MouseFlag::XUp mismatch");
 static_assert(MouseFlag::Wheel      == MOUSEEVENTF_WHEEL,      "MouseFlag::Wheel mismatch");
 
 // WHEEL_DELTA
 static_assert(WheelDeltaUnit == WHEEL_DELTA, "WheelDeltaUnit mismatch");
+
+// XButton 数据
+static_assert(XButton::XButton1 == XBUTTON1, "XButton1 mismatch");
+static_assert(XButton::XButton2 == XBUTTON2, "XButton2 mismatch");
 
 }  // namespace SendInputHelpers
 
@@ -96,6 +141,8 @@ static bool IsExtendedKey(WORD VirtualKeyCode)
     case VK_DIVIDE:
     case VK_RCONTROL:
     case VK_RMENU:
+    case VK_LWIN:
+    case VK_RWIN:
         return true;
     default:
         return false;
@@ -129,6 +176,7 @@ static bool DefaultNativeSender(const SendInputHelpers::SSendInputCommand& Comma
     {
         Input.type = INPUT_MOUSE;
         Input.mi.dwFlags = static_cast<DWORD>(Command.MouseFlags);
+        Input.mi.mouseData = static_cast<DWORD>(Command.MouseData);
         break;
     }
     case SendInputHelpers::ESendInputCommandType::MouseMove:

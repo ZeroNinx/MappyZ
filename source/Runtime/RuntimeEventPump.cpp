@@ -74,6 +74,16 @@ void ZRuntimeEventPump::ClearRecentRecords()
     RecentRecords.clear();
 }
 
+void ZRuntimeEventPump::ClearStickDirectionState()
+{
+    StickDirectionSynthesizer.ClearAll();
+}
+
+void ZRuntimeEventPump::ClearStickDirectionStateForDevice(const SDeviceId& DeviceId)
+{
+    StickDirectionSynthesizer.ClearDevice(DeviceId);
+}
+
 void ZRuntimeEventPump::ProcessEvent(
     const SBackendEvent& Event,
     SRuntimeEventPumpSummary& Summary)
@@ -123,6 +133,9 @@ void ZRuntimeEventPump::ProcessEvent(
         ++Summary.DeviceDisconnectedCount;
         Record.bHandled = true;
 
+        // 设备断开时清理方向合成器缓存
+        StickDirectionSynthesizer.ClearDevice(*DeviceId);
+
         if (DeviceDisconnectedHandler)
         {
             DeviceDisconnectedHandler(*DeviceId);
@@ -169,7 +182,46 @@ void ZRuntimeEventPump::ProcessEvent(
             }
         }
 
-        break;
+        // 先记录原始 Axis2D 的 record，再处理方向合成事件
+        AppendRecord(std::move(Record));
+
+        // 对 Axis2D 事件进行方向合成，生成虚拟 Button press/release 事件
+        auto DirectionEvents = StickDirectionSynthesizer.ProcessAxis2D(*InputEvent);
+        for (const auto& DirectionEvent : DirectionEvents)
+        {
+            ++Summary.InputEventCount;
+
+            if (InputEventHandler)
+            {
+                InputEventHandler(DirectionEvent);
+            }
+
+            auto DirectionResult = MappingSession.HandleInputEvent(DirectionEvent);
+
+            // 每个方向事件都生成独立的 record，保证日志可追溯
+            SRuntimeEventPumpRecord DirectionRecord;
+            DirectionRecord.Event.Type = EBackendEventType::Input;
+            DirectionRecord.Event.Payload = DirectionEvent;
+            DirectionRecord.bHandled = true;
+            DirectionRecord.MappingResult = DirectionResult;
+            AppendRecord(std::move(DirectionRecord));
+
+            if (DirectionResult.bMapped)
+            {
+                ++Summary.MappedInputCount;
+
+                if (DirectionResult.bDispatched)
+                {
+                    ++Summary.DispatchedInputCount;
+                }
+                else
+                {
+                    ++Summary.FailedDispatchInputCount;
+                }
+            }
+        }
+
+        return;
     }
 
     default:

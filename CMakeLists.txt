@@ -163,6 +163,7 @@ add_library(MappyZRuntime STATIC
     source/Runtime/BackendEventQueue.cpp
     source/Runtime/RuntimeEventPump.cpp
     source/Runtime/RuntimeHost.cpp
+    source/Runtime/StickDirectionSynthesizer.cpp
 )
 
 target_link_libraries(MappyZRuntime
@@ -446,6 +447,7 @@ if(BUILD_TESTING)
         tests/Runtime/BackendEventQueueTests.cpp
         tests/Runtime/RuntimeEventPumpTests.cpp
         tests/Runtime/RuntimeHostTests.cpp
+        tests/Runtime/StickDirectionSynthesizerTests.cpp
     )
 
     target_link_libraries(MappyZRuntimeTests

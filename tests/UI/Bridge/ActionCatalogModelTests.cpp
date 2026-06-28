@@ -170,6 +170,22 @@ TEST_CASE("[UI][ActionCatalogModel] catalog contains MouseButton Left Right Midd
     }
 }
 
+TEST_CASE("[UI][ActionCatalogModel] catalog contains MouseButton Button4 and Button5",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+    REQUIRE(Model.Contains("MouseButton", "Button4"));
+    REQUIRE(Model.Contains("MouseButton", "Button5"));
+
+    int Button4Index = Model.findIndex("MouseButton", "Button4");
+    auto Button4ModelIndex = Model.index(Button4Index);
+    CHECK(Model.data(Button4ModelIndex, ZActionCatalogModel::CategoryRole) == "Mouse");
+
+    int Button5Index = Model.findIndex("MouseButton", "Button5");
+    auto Button5ModelIndex = Model.index(Button5Index);
+    CHECK(Model.data(Button5ModelIndex, ZActionCatalogModel::CategoryRole) == "Mouse");
+}
+
 // ── kindAt / valueAt / displayTextAt 越界 ──
 
 TEST_CASE("[UI][ActionCatalogModel] kindAt returns empty for out of bounds row",
@@ -310,4 +326,71 @@ TEST_CASE("[UI][ActionCatalogModel] findIndex MouseMove Cursor returns valid row
     REQUIRE(Index >= 0);
     REQUIRE(Model.kindAt(Index) == "MouseMove");
     REQUIRE(Model.valueAt(Index) == "Cursor");
+}
+
+// ── 扩展键位覆盖 ──
+
+TEST_CASE("[UI][ActionCatalogModel] contains expanded keyboard keys",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+
+    // F 键
+    REQUIRE(Model.Contains("Keyboard", "F1"));
+    REQUIRE(Model.Contains("Keyboard", "F5"));
+    REQUIRE(Model.Contains("Keyboard", "F12"));
+
+    // 编辑/导航键
+    REQUIRE(Model.Contains("Keyboard", "Backspace"));
+    REQUIRE(Model.Contains("Keyboard", "Delete"));
+    REQUIRE(Model.Contains("Keyboard", "Insert"));
+    REQUIRE(Model.Contains("Keyboard", "Home"));
+    REQUIRE(Model.Contains("Keyboard", "End"));
+    REQUIRE(Model.Contains("Keyboard", "PageUp"));
+    REQUIRE(Model.Contains("Keyboard", "PageDown"));
+
+    // 修饰键
+    REQUIRE(Model.Contains("Keyboard", "LeftShift"));
+    REQUIRE(Model.Contains("Keyboard", "RightShift"));
+    REQUIRE(Model.Contains("Keyboard", "LeftCtrl"));
+    REQUIRE(Model.Contains("Keyboard", "RightCtrl"));
+    REQUIRE(Model.Contains("Keyboard", "LeftAlt"));
+    REQUIRE(Model.Contains("Keyboard", "RightAlt"));
+    REQUIRE(Model.Contains("Keyboard", "LeftMeta"));
+
+    // 符号键
+    REQUIRE(Model.Contains("Keyboard", "Minus"));
+    REQUIRE(Model.Contains("Keyboard", "Equal"));
+    REQUIRE(Model.Contains("Keyboard", "LeftBracket"));
+    REQUIRE(Model.Contains("Keyboard", "RightBracket"));
+    REQUIRE(Model.Contains("Keyboard", "Backslash"));
+    REQUIRE(Model.Contains("Keyboard", "Semicolon"));
+    REQUIRE(Model.Contains("Keyboard", "Apostrophe"));
+    REQUIRE(Model.Contains("Keyboard", "Comma"));
+    REQUIRE(Model.Contains("Keyboard", "Period"));
+    REQUIRE(Model.Contains("Keyboard", "Slash"));
+    REQUIRE(Model.Contains("Keyboard", "Backquote"));
+}
+
+TEST_CASE("[UI][ActionCatalogModel] numpad keys are distinct from main keys",
+    "[ActionCatalogModel]")
+{
+    ZActionCatalogModel Model;
+
+    // 小键盘 Num0-Num9 与主键区 0-9 分开
+    REQUIRE(Model.Contains("Keyboard", "Num0"));
+    REQUIRE(Model.Contains("Keyboard", "Num1"));
+    REQUIRE(Model.Contains("Keyboard", "Num9"));
+    REQUIRE(Model.Contains("Keyboard", "NumDivide"));
+    REQUIRE(Model.Contains("Keyboard", "NumMultiply"));
+    REQUIRE(Model.Contains("Keyboard", "NumSubtract"));
+    REQUIRE(Model.Contains("Keyboard", "NumAdd"));
+    REQUIRE(Model.Contains("Keyboard", "NumDecimal"));
+
+    // 主键区 "1" 和小键盘 "Num1" 索引不同
+    int MainKey1 = Model.findIndex("Keyboard", "1");
+    int NumKey1 = Model.findIndex("Keyboard", "Num1");
+    REQUIRE(MainKey1 >= 0);
+    REQUIRE(NumKey1 >= 0);
+    REQUIRE(MainKey1 != NumKey1);
 }

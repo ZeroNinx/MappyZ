@@ -352,3 +352,43 @@ TEST_CASE("ProfileManager SaveProfile then LoadProfile round-trips", "[Runtime][
     std::filesystem::remove(TempPath);
 }
 
+// ── 方向规则 round trip ──
+
+TEST_CASE("ProfileManager direction rule serializes and parses correctly",
+    "[Runtime][ProfileManager]")
+{
+    ZProfileManager Manager;
+
+    SMappingProfile Original;
+    Original.Id = "direction_test";
+    Original.Name = "Direction Test";
+    Original.bEnabled = true;
+
+    SMappingRule Rule;
+    Rule.Id = "left_stick_up";
+    Rule.DisplayName = "left_stick_up";
+    Rule.bEnabled = true;
+    Rule.Input.ControlId = "left_stick_up";
+    Rule.Input.ControlType = EInputControlType::Button;
+    Rule.Input.EventType = EInputEventType::Pressed;
+    Rule.Output.Action.Type = EActionType::KeyboardKey;
+    Rule.Output.Action.Payload = SKeyboardAction{.Key = "W", .bPressed = true};
+    Rule.Output.Mode = EMappingActionMode::PressRelease;
+    Original.Rules.push_back(Rule);
+
+    auto SerResult = Manager.SerializeProfileJson(Original);
+    REQUIRE(SerResult.IsOk());
+
+    auto ParseResult = Manager.ParseProfileJson(SerResult.Value());
+    REQUIRE(ParseResult.IsOk());
+
+    auto Parsed = std::move(ParseResult).TakeValue();
+    REQUIRE(Parsed.Rules.size() == 1);
+    REQUIRE(Parsed.Rules[0].Input.ControlId == "left_stick_up");
+    REQUIRE(Parsed.Rules[0].Input.ControlType == EInputControlType::Button);
+
+    auto* Payload = std::get_if<SKeyboardAction>(&Parsed.Rules[0].Output.Action.Payload);
+    REQUIRE(Payload != nullptr);
+    REQUIRE(Payload->Key == "W");
+}
+

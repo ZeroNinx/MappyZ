@@ -46,6 +46,17 @@ inline constexpr StdStringView RightTrigger  = "right_trigger";
 inline constexpr StdStringView LeftStick     = "left_stick";
 inline constexpr StdStringView RightStick    = "right_stick";
 
+// ── 摇杆方向虚拟输入（由方向合成器从 Axis2D 派生） ──
+
+inline constexpr StdStringView LeftStickUp      = "left_stick_up";
+inline constexpr StdStringView LeftStickDown    = "left_stick_down";
+inline constexpr StdStringView LeftStickLeft    = "left_stick_left";
+inline constexpr StdStringView LeftStickRight   = "left_stick_right";
+inline constexpr StdStringView RightStickUp     = "right_stick_up";
+inline constexpr StdStringView RightStickDown   = "right_stick_down";
+inline constexpr StdStringView RightStickLeft   = "right_stick_left";
+inline constexpr StdStringView RightStickRight  = "right_stick_right";
+
 // ── 方向键 ──
 
 inline constexpr StdStringView DpadUp        = "dpad_up";

@@ -618,3 +618,35 @@ TEST_CASE("InputStateModel snapshot queries remain unchanged after signal refact
     REQUIRE(Model.displayValue("dev_1", "button_south") == "pressed");
     REQUIRE(Model.latestControlId("dev_1") == "left_stick");
 }
+
+// ── 方向 Button 状态查询 ──
+
+TEST_CASE("InputStateModel stick direction button events update pressed state",
+    "[UI][InputStateModel]")
+{
+    ZInputStateModel Model;
+
+    // 方向虚拟 Button 事件
+    SInputEvent UpPressed;
+    UpPressed.DeviceId = SDeviceId{.Value = "dev_1"};
+    UpPressed.ControlId = "left_stick_up";
+    UpPressed.ControlType = EInputControlType::Button;
+    UpPressed.EventType = EInputEventType::Pressed;
+    UpPressed.Value = 1.0f;
+
+    Model.ApplyInputEvent(UpPressed);
+
+    REQUIRE(Model.isPressed("dev_1", "left_stick_up") == true);
+    REQUIRE(Model.displayValue("dev_1", "left_stick_up") == "pressed");
+    REQUIRE(Model.latestControlId("dev_1") == "left_stick_up");
+
+    // 释放
+    SInputEvent UpReleased = UpPressed;
+    UpReleased.EventType = EInputEventType::Released;
+    UpReleased.Value = 0.0f;
+
+    Model.ApplyInputEvent(UpReleased);
+
+    REQUIRE(Model.isPressed("dev_1", "left_stick_up") == false);
+    REQUIRE(Model.displayValue("dev_1", "left_stick_up") == "released");
+}

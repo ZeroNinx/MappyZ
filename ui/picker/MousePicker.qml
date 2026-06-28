@@ -89,8 +89,12 @@ Item {
                     }
                     PickerKey {
                         theme: mousePicker.theme; label: "侧键1"
+                        kind: "MouseButton"; value: "Button4"
                         keyWidth: 2.44; height: 36
-                        enabled: false
+                        enabled: true
+                        selected: mousePicker.pendingKind === "MouseButton"
+                            && mousePicker.pendingValue === "Button4"
+                        onClicked: mousePicker.mouseActionSelected("MouseButton", "Button4")
                     }
                 }
 
@@ -105,8 +109,12 @@ Item {
                     }
                     PickerKey {
                         theme: mousePicker.theme; label: "侧键2"
+                        kind: "MouseButton"; value: "Button5"
                         keyWidth: 2.44; height: 36
-                        enabled: false
+                        enabled: true
+                        selected: mousePicker.pendingKind === "MouseButton"
+                            && mousePicker.pendingValue === "Button5"
+                        onClicked: mousePicker.mouseActionSelected("MouseButton", "Button5")
                     }
                 }
             }

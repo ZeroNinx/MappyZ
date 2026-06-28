@@ -820,6 +820,14 @@ bool ZAppController::applySelectedBinding(
         {
             ButtonIndex = 2;
         }
+        else if (actionValue == QStringLiteral("Button4"))
+        {
+            ButtonIndex = 3;
+        }
+        else if (actionValue == QStringLiteral("Button5"))
+        {
+            ButtonIndex = 4;
+        }
         else
         {
             EmitRuntimeError(
@@ -974,7 +982,7 @@ bool ZAppController::InferInputFromControlId(
         return true;
     }
 
-    // Button 白名单：面板按钮、功能键、肩键、摇杆按下
+    // Button 白名单：面板按钮、功能键、肩键、摇杆按下、摇杆方向虚拟输入
     if (ControlId == MappyZ::ControlId::ButtonSouth
         || ControlId == MappyZ::ControlId::ButtonEast
         || ControlId == MappyZ::ControlId::ButtonWest
@@ -985,7 +993,15 @@ bool ZAppController::InferInputFromControlId(
         || ControlId == MappyZ::ControlId::LeftShoulder
         || ControlId == MappyZ::ControlId::RightShoulder
         || ControlId == MappyZ::ControlId::LeftStickButton
-        || ControlId == MappyZ::ControlId::RightStickButton)
+        || ControlId == MappyZ::ControlId::RightStickButton
+        || ControlId == MappyZ::ControlId::LeftStickUp
+        || ControlId == MappyZ::ControlId::LeftStickDown
+        || ControlId == MappyZ::ControlId::LeftStickLeft
+        || ControlId == MappyZ::ControlId::LeftStickRight
+        || ControlId == MappyZ::ControlId::RightStickUp
+        || ControlId == MappyZ::ControlId::RightStickDown
+        || ControlId == MappyZ::ControlId::RightStickLeft
+        || ControlId == MappyZ::ControlId::RightStickRight)
     {
         OutInput.ControlType = EInputControlType::Button;
         OutInput.EventType = EInputEventType::Pressed;

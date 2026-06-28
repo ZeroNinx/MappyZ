@@ -535,3 +535,54 @@ TEST_CASE("RuntimeEventPump header has no platform dependencies",
     SPumpTestContext Context;
     REQUIRE(Context.Pump.GetRecentRecordCount() == 0);
 }
+
+// ── 方向合成事件记录 ──
+
+static SInputEvent MakeAxis2DEvent(
+    const StdString& DeviceId,
+    const StdString& ControlId,
+    float32 X,
+    float32 Y)
+{
+    SInputEvent Event;
+    Event.DeviceId = SDeviceId{.Value = DeviceId};
+    Event.ControlId = ControlId;
+    Event.ControlType = EInputControlType::Axis2D;
+    Event.EventType = EInputEventType::Changed;
+    Event.Axis2D = SAxis2DValue{.X = X, .Y = Y};
+    return Event;
+}
+
+TEST_CASE("RuntimeEventPump direction events produce individual records",
+    "[Runtime][RuntimeEventPump]")
+{
+    SPumpTestContext Context;
+
+    // 添加方向到按键映射
+    Context.Session.ReplaceProfile(MakeTestProfile({
+        MakeButtonToKeyRule("dir_r", "left_stick_right", "D"),
+    }));
+
+    // 推右：产生原始 Axis2D + 合成 right pressed，应有 2 条 record
+    Context.InputBackend.EmitInput(
+        MakeAxis2DEvent("dev_1", "left_stick", 0.7f, 0.0f));
+    auto Summary = Context.Pump.PumpOnce();
+
+    REQUIRE(Summary.InputEventCount == 2);
+    REQUIRE(Summary.MappedInputCount == 1);
+
+    auto Records = Context.Pump.ListRecentRecords();
+    REQUIRE(Records.size() == 2);
+
+    // 第一条：原始 Axis2D
+    auto* OriginalInput = std::get_if<SInputEvent>(&Records[0].Event.Payload);
+    REQUIRE(OriginalInput != nullptr);
+    REQUIRE(OriginalInput->ControlId == "left_stick");
+
+    // 第二条：方向 Button 事件
+    auto* DirectionInput = std::get_if<SInputEvent>(&Records[1].Event.Payload);
+    REQUIRE(DirectionInput != nullptr);
+    REQUIRE(DirectionInput->ControlId == "left_stick_right");
+    REQUIRE(DirectionInput->EventType == EInputEventType::Pressed);
+    REQUIRE(Records[1].MappingResult.bMapped);
+}

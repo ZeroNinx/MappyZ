@@ -407,7 +407,7 @@ TEST_CASE("InputCaptureModel Axis2D at deadzone boundary does not complete captu
     REQUIRE(Model.IsActive());
 }
 
-TEST_CASE("InputCaptureModel Axis2D above deadzone completes capture",
+TEST_CASE("InputCaptureModel Axis2D above deadzone completes capture for non-stick axis",
     "[UI][InputCaptureModel]")
 {
     ZInputCaptureModel Model;
@@ -415,12 +415,37 @@ TEST_CASE("InputCaptureModel Axis2D above deadzone completes capture",
 
     QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
 
-    // sqrt(0.71^2 + 0.0^2) = 0.71 > 0.7
+    // 非摇杆的 Axis2D 仍按原逻辑捕获
     Model.HandleInputEvent(
-        MakeAxis2DEvent("dev_1", ControlId::LeftStick, 0.71f, 0.0f));
+        MakeAxis2DEvent("dev_1", "some_other_axis", 0.71f, 0.0f));
 
     REQUIRE_FALSE(Model.IsActive());
-    REQUIRE(Model.ControlId() == "left_stick");
+    REQUIRE(Model.ControlId() == "some_other_axis");
+    REQUIRE(CompleteSpy.count() == 1);
+}
+
+TEST_CASE("InputCaptureModel stick Axis2D is rejected in favor of direction buttons",
+    "[UI][InputCaptureModel]")
+{
+    ZInputCaptureModel Model;
+    Model.begin("dev_1");
+
+    // left_stick/right_stick 的 Axis2D 即使超过阈值也不捕获
+    Model.HandleInputEvent(
+        MakeAxis2DEvent("dev_1", ControlId::LeftStick, 0.9f, 0.0f));
+    REQUIRE(Model.IsActive());
+
+    Model.HandleInputEvent(
+        MakeAxis2DEvent("dev_1", ControlId::RightStick, 0.0f, -0.9f));
+    REQUIRE(Model.IsActive());
+
+    // 方向 Button pressed 完成捕获
+    QSignalSpy CompleteSpy(&Model, &ZInputCaptureModel::captureCompleted);
+    Model.HandleInputEvent(
+        MakeButtonEvent("dev_1", "left_stick_up", EInputEventType::Pressed));
+
+    REQUIRE_FALSE(Model.IsActive());
+    REQUIRE(Model.ControlId() == "left_stick_up");
     REQUIRE(CompleteSpy.count() == 1);
 }
 

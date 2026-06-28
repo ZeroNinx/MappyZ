@@ -123,6 +123,12 @@ bool ZInputCaptureModel::IsCaptureWorthyInput(const SInputEvent& Event)
 
     case EInputControlType::Axis2D:
     {
+        // left_stick / right_stick 的 Axis2D 由方向合成器拆分为 Button 事件，
+        // 应通过方向 Button pressed 完成捕获，而非粗粒度 Axis2D。
+        if (Event.ControlId == "left_stick" || Event.ControlId == "right_stick")
+        {
+            return false;
+        }
         float32 Magnitude = std::sqrt(
             Event.Axis2D.X * Event.Axis2D.X + Event.Axis2D.Y * Event.Axis2D.Y);
         return Magnitude > AxisCaptureDeadzone;

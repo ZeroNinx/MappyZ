@@ -14,6 +14,7 @@
 #include "Core/ProjectCore.h"
 #include "Runtime/BackendEventQueue.h"
 #include "Runtime/MappingSession.h"
+#include "Runtime/StickDirectionSynthesizer.h"
 
 #include <functional>
 
@@ -83,6 +84,12 @@ public:
     // 清空处理记录，不影响 handlers、EventQueue 或 MappingSession
     void ClearRecentRecords();
 
+    // 清空摇杆方向合成器状态（设备断开或全局清理时自动调用）
+    void ClearStickDirectionState();
+
+    // 清空指定设备的摇杆方向合成器状态
+    void ClearStickDirectionStateForDevice(const SDeviceId& DeviceId);
+
 private:
     // 处理单个后端事件，更新 summary 并追加 record
     void ProcessEvent(const SBackendEvent& Event, SRuntimeEventPumpSummary& Summary);
@@ -98,6 +105,8 @@ private:
     std::function<void(const SInputEvent&)> InputEventHandler;
 
     TVector<SRuntimeEventPumpRecord> RecentRecords;
+
+    ZStickDirectionSynthesizer StickDirectionSynthesizer;
 };
 
 }  // namespace MappyZ

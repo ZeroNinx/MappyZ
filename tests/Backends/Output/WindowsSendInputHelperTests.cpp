@@ -152,9 +152,29 @@ TEST_CASE("MapMouseButtonToFlags maps button 2 to middle", "[Backends][SendInput
 
 TEST_CASE("MapMouseButtonToFlags returns nullopt for unknown button", "[Backends][SendInputHelpers]")
 {
-    REQUIRE_FALSE(MapMouseButtonToFlags(3, true).has_value());
+    REQUIRE_FALSE(MapMouseButtonToFlags(5, true).has_value());
     REQUIRE_FALSE(MapMouseButtonToFlags(-1, false).has_value());
     REQUIRE_FALSE(MapMouseButtonToFlags(99, true).has_value());
+}
+
+TEST_CASE("MapMouseButtonToFlags maps button 3 to XDown/XUp", "[Backends][SendInputHelpers]")
+{
+    REQUIRE(MapMouseButtonToFlags(3, true).value()  == MouseFlag::XDown);
+    REQUIRE(MapMouseButtonToFlags(3, false).value() == MouseFlag::XUp);
+}
+
+TEST_CASE("MapMouseButtonToFlags maps button 4 to XDown/XUp", "[Backends][SendInputHelpers]")
+{
+    REQUIRE(MapMouseButtonToFlags(4, true).value()  == MouseFlag::XDown);
+    REQUIRE(MapMouseButtonToFlags(4, false).value() == MouseFlag::XUp);
+}
+
+TEST_CASE("MapMouseButtonToXButtonData returns correct data", "[Backends][SendInputHelpers]")
+{
+    REQUIRE(MapMouseButtonToXButtonData(3) == XButton::XButton1);
+    REQUIRE(MapMouseButtonToXButtonData(4) == XButton::XButton2);
+    REQUIRE(MapMouseButtonToXButtonData(0) == 0);
+    REQUIRE(MapMouseButtonToXButtonData(2) == 0);
 }
 
 // ── BuildCommandFromAction: 正常路径 ──
@@ -189,6 +209,29 @@ TEST_CASE("BuildCommandFromAction builds mouse button command", "[Backends][Send
     auto Command = Result.Value();
     REQUIRE(Command.Type == ESendInputCommandType::MouseButton);
     REQUIRE(Command.MouseFlags == MouseFlag::LeftDown);
+    REQUIRE(Command.MouseData == 0);
+}
+
+TEST_CASE("BuildCommandFromAction builds XButton down command for button 3", "[Backends][SendInputHelpers]")
+{
+    auto Result = BuildCommandFromAction(MakeMouseButtonAction(3, true));
+    REQUIRE(Result.IsOk());
+
+    auto Command = Result.Value();
+    REQUIRE(Command.Type == ESendInputCommandType::MouseButton);
+    REQUIRE(Command.MouseFlags == MouseFlag::XDown);
+    REQUIRE(Command.MouseData == XButton::XButton1);
+}
+
+TEST_CASE("BuildCommandFromAction builds XButton up command for button 4", "[Backends][SendInputHelpers]")
+{
+    auto Result = BuildCommandFromAction(MakeMouseButtonAction(4, false));
+    REQUIRE(Result.IsOk());
+
+    auto Command = Result.Value();
+    REQUIRE(Command.Type == ESendInputCommandType::MouseButton);
+    REQUIRE(Command.MouseFlags == MouseFlag::XUp);
+    REQUIRE(Command.MouseData == XButton::XButton2);
 }
 
 TEST_CASE("BuildCommandFromAction builds mouse move command", "[Backends][SendInputHelpers]")
@@ -240,7 +283,7 @@ TEST_CASE("BuildCommandFromAction rejects unknown key name", "[Backends][SendInp
 
 TEST_CASE("BuildCommandFromAction rejects unknown mouse button", "[Backends][SendInputHelpers]")
 {
-    auto Result = BuildCommandFromAction(MakeMouseButtonAction(5, true));
+    auto Result = BuildCommandFromAction(MakeMouseButtonAction(6, true));
     REQUIRE(Result.IsErr());
 }
 
@@ -282,4 +325,52 @@ TEST_CASE("BuildCommandFromAction rejects mismatched mouse wheel payload", "[Bac
 
     auto Result = BuildCommandFromAction(Action);
     REQUIRE(Result.IsErr());
+}
+
+// ── 扩展键映射 ──
+
+TEST_CASE("MapKeyNameToVirtualKey maps editing and navigation keys",
+    "[Backends][SendInputHelpers]")
+{
+    REQUIRE(MapKeyNameToVirtualKey("Backspace").value() == VirtualKey::VkBackspace);
+    REQUIRE(MapKeyNameToVirtualKey("Delete").value()    == VirtualKey::VkDelete);
+    REQUIRE(MapKeyNameToVirtualKey("Insert").value()    == VirtualKey::VkInsert);
+    REQUIRE(MapKeyNameToVirtualKey("Home").value()      == VirtualKey::VkHome);
+    REQUIRE(MapKeyNameToVirtualKey("End").value()       == VirtualKey::VkEnd);
+    REQUIRE(MapKeyNameToVirtualKey("PageUp").value()    == VirtualKey::VkPageUp);
+    REQUIRE(MapKeyNameToVirtualKey("PageDown").value()  == VirtualKey::VkPageDown);
+}
+
+TEST_CASE("MapKeyNameToVirtualKey maps left/right modifier keys",
+    "[Backends][SendInputHelpers]")
+{
+    REQUIRE(MapKeyNameToVirtualKey("LeftShift").value()  == VirtualKey::VkLeftShift);
+    REQUIRE(MapKeyNameToVirtualKey("RightShift").value() == VirtualKey::VkRightShift);
+    REQUIRE(MapKeyNameToVirtualKey("LeftCtrl").value()   == VirtualKey::VkLeftControl);
+    REQUIRE(MapKeyNameToVirtualKey("RightCtrl").value()  == VirtualKey::VkRightControl);
+    REQUIRE(MapKeyNameToVirtualKey("LeftAlt").value()    == VirtualKey::VkLeftAlt);
+    REQUIRE(MapKeyNameToVirtualKey("RightAlt").value()   == VirtualKey::VkRightAlt);
+    REQUIRE(MapKeyNameToVirtualKey("LeftMeta").value()   == VirtualKey::VkLeftWin);
+}
+
+TEST_CASE("MapKeyNameToVirtualKey maps symbol keys",
+    "[Backends][SendInputHelpers]")
+{
+    REQUIRE(MapKeyNameToVirtualKey("Minus").value()     == VirtualKey::VkOemMinus);
+    REQUIRE(MapKeyNameToVirtualKey("Equal").value()     == VirtualKey::VkOemPlus);
+    REQUIRE(MapKeyNameToVirtualKey("Semicolon").value() == VirtualKey::VkOem1);
+    REQUIRE(MapKeyNameToVirtualKey("Backquote").value() == VirtualKey::VkOem3);
+}
+
+TEST_CASE("MapKeyNameToVirtualKey maps numpad keys",
+    "[Backends][SendInputHelpers]")
+{
+    REQUIRE(MapKeyNameToVirtualKey("Num0").value()        == VirtualKey::VkNumpad0);
+    REQUIRE(MapKeyNameToVirtualKey("Num1").value()        == VirtualKey::VkNumpad1);
+    REQUIRE(MapKeyNameToVirtualKey("Num9").value()        == VirtualKey::VkNumpad9);
+    REQUIRE(MapKeyNameToVirtualKey("NumDivide").value()   == VirtualKey::VkDivide);
+    REQUIRE(MapKeyNameToVirtualKey("NumMultiply").value() == VirtualKey::VkMultiply);
+    REQUIRE(MapKeyNameToVirtualKey("NumSubtract").value() == VirtualKey::VkSubtract);
+    REQUIRE(MapKeyNameToVirtualKey("NumAdd").value()      == VirtualKey::VkAdd);
+    REQUIRE(MapKeyNameToVirtualKey("NumDecimal").value()  == VirtualKey::VkDecimal);
 }

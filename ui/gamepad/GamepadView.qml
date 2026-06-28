@@ -383,6 +383,56 @@ Panel {
             controlId: "left_stick_button"
         }
 
+        // 左摇杆方向高亮指示器
+        InputControlState {
+            id: lsUpState
+            inputStateModel: gamepadView._inputStateModel
+            deviceId: gamepadView.selectedDevice
+            controlId: "left_stick_up"
+        }
+        InputControlState {
+            id: lsDownState
+            inputStateModel: gamepadView._inputStateModel
+            deviceId: gamepadView.selectedDevice
+            controlId: "left_stick_down"
+        }
+        InputControlState {
+            id: lsLeftState
+            inputStateModel: gamepadView._inputStateModel
+            deviceId: gamepadView.selectedDevice
+            controlId: "left_stick_left"
+        }
+        InputControlState {
+            id: lsRightState
+            inputStateModel: gamepadView._inputStateModel
+            deviceId: gamepadView.selectedDevice
+            controlId: "left_stick_right"
+        }
+
+        Repeater {
+            model: [
+                { dirState: lsUpState,    dx: 0,   dy: -26 },
+                { dirState: lsDownState,  dx: 0,   dy: 26  },
+                { dirState: lsLeftState,  dx: -26, dy: 0   },
+                { dirState: lsRightState, dx: 26,  dy: 0   }
+            ]
+
+            Rectangle {
+                required property var modelData
+                x: layout.lsX - 5 + modelData.dx
+                y: layout.lsY - 5 + modelData.dy
+                width: 10
+                height: 10
+                radius: 5
+                color: modelData.dirState.pressed
+                    ? gamepadView.theme.accent : "transparent"
+                border.color: modelData.dirState.pressed
+                    ? gamepadView.theme.accent : gamepadView.theme.border
+                border.width: 1
+                opacity: modelData.dirState.pressed ? 1.0 : 0.3
+            }
+        }
+
         ControlDot {
             id: leftStickDot
 
@@ -412,6 +462,56 @@ Panel {
             inputStateModel: gamepadView._inputStateModel
             deviceId: gamepadView.selectedDevice
             controlId: "right_stick_button"
+        }
+
+        // 右摇杆方向高亮指示器
+        InputControlState {
+            id: rsUpState
+            inputStateModel: gamepadView._inputStateModel
+            deviceId: gamepadView.selectedDevice
+            controlId: "right_stick_up"
+        }
+        InputControlState {
+            id: rsDownState
+            inputStateModel: gamepadView._inputStateModel
+            deviceId: gamepadView.selectedDevice
+            controlId: "right_stick_down"
+        }
+        InputControlState {
+            id: rsLeftState
+            inputStateModel: gamepadView._inputStateModel
+            deviceId: gamepadView.selectedDevice
+            controlId: "right_stick_left"
+        }
+        InputControlState {
+            id: rsRightState
+            inputStateModel: gamepadView._inputStateModel
+            deviceId: gamepadView.selectedDevice
+            controlId: "right_stick_right"
+        }
+
+        Repeater {
+            model: [
+                { dirState: rsUpState,    dx: 0,   dy: -26 },
+                { dirState: rsDownState,  dx: 0,   dy: 26  },
+                { dirState: rsLeftState,  dx: -26, dy: 0   },
+                { dirState: rsRightState, dx: 26,  dy: 0   }
+            ]
+
+            Rectangle {
+                required property var modelData
+                x: layout.rsX - 5 + modelData.dx
+                y: layout.rsY - 5 + modelData.dy
+                width: 10
+                height: 10
+                radius: 5
+                color: modelData.dirState.pressed
+                    ? gamepadView.theme.accent : "transparent"
+                border.color: modelData.dirState.pressed
+                    ? gamepadView.theme.accent : gamepadView.theme.border
+                border.width: 1
+                opacity: modelData.dirState.pressed ? 1.0 : 0.3
+            }
         }
 
         ControlDot {

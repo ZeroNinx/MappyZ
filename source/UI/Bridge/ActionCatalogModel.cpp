@@ -23,6 +23,12 @@ ZActionCatalogModel::ZActionCatalogModel(QObject* Parent)
         QStringLiteral("Keyboard: Escape"), QStringLiteral("Keyboard")});
     Items.append({QStringLiteral("Keyboard"), QStringLiteral("Tab"),
         QStringLiteral("Keyboard: Tab"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Backspace"),
+        QStringLiteral("Keyboard: Backspace"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Delete"),
+        QStringLiteral("Keyboard: Delete"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Insert"),
+        QStringLiteral("Keyboard: Insert"), QStringLiteral("Keyboard")});
 
     // ── Keyboard: A-Z ──
 
@@ -42,6 +48,15 @@ ZActionCatalogModel::ZActionCatalogModel(QObject* Parent)
             QStringLiteral("Keyboard: %1").arg(Value), QStringLiteral("Keyboard")});
     }
 
+    // ── Keyboard: F1-F12 ──
+
+    for (int FnIndex = 1; FnIndex <= 12; ++FnIndex)
+    {
+        QString Value = QStringLiteral("F%1").arg(FnIndex);
+        Items.append({QStringLiteral("Keyboard"), Value,
+            QStringLiteral("Keyboard: %1").arg(Value), QStringLiteral("Keyboard")});
+    }
+
     // ── Keyboard: 方向键 ──
 
     Items.append({QStringLiteral("Keyboard"), QStringLiteral("ArrowUp"),
@@ -53,6 +68,79 @@ ZActionCatalogModel::ZActionCatalogModel(QObject* Parent)
     Items.append({QStringLiteral("Keyboard"), QStringLiteral("ArrowRight"),
         QStringLiteral("Keyboard: Arrow Right"), QStringLiteral("Keyboard")});
 
+    // ── Keyboard: 导航键 ──
+
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Home"),
+        QStringLiteral("Keyboard: Home"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("End"),
+        QStringLiteral("Keyboard: End"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("PageUp"),
+        QStringLiteral("Keyboard: Page Up"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("PageDown"),
+        QStringLiteral("Keyboard: Page Down"), QStringLiteral("Keyboard")});
+
+    // ── Keyboard: 修饰键 ──
+
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("LeftShift"),
+        QStringLiteral("Keyboard: Left Shift"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("RightShift"),
+        QStringLiteral("Keyboard: Right Shift"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("LeftCtrl"),
+        QStringLiteral("Keyboard: Left Ctrl"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("RightCtrl"),
+        QStringLiteral("Keyboard: Right Ctrl"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("LeftAlt"),
+        QStringLiteral("Keyboard: Left Alt"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("RightAlt"),
+        QStringLiteral("Keyboard: Right Alt"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("LeftMeta"),
+        QStringLiteral("Keyboard: Left Win"), QStringLiteral("Keyboard")});
+
+    // ── Keyboard: 符号键 (US layout) ──
+
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Minus"),
+        QStringLiteral("Keyboard: - (Minus)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Equal"),
+        QStringLiteral("Keyboard: = (Equal)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("LeftBracket"),
+        QStringLiteral("Keyboard: [ (Left Bracket)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("RightBracket"),
+        QStringLiteral("Keyboard: ] (Right Bracket)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Backslash"),
+        QStringLiteral("Keyboard: \\ (Backslash)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Semicolon"),
+        QStringLiteral("Keyboard: ; (Semicolon)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Apostrophe"),
+        QStringLiteral("Keyboard: ' (Apostrophe)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Comma"),
+        QStringLiteral("Keyboard: , (Comma)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Period"),
+        QStringLiteral("Keyboard: . (Period)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Slash"),
+        QStringLiteral("Keyboard: / (Slash)"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("Backquote"),
+        QStringLiteral("Keyboard: ` (Backquote)"), QStringLiteral("Keyboard")});
+
+    // ── Keyboard: 小键盘 ──
+
+    for (int NumIndex = 0; NumIndex <= 9; ++NumIndex)
+    {
+        QString Value = QStringLiteral("Num%1").arg(NumIndex);
+        Items.append({QStringLiteral("Keyboard"), Value,
+            QStringLiteral("Keyboard: Numpad %1").arg(NumIndex),
+            QStringLiteral("Keyboard")});
+    }
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("NumDivide"),
+        QStringLiteral("Keyboard: Numpad /"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("NumMultiply"),
+        QStringLiteral("Keyboard: Numpad *"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("NumSubtract"),
+        QStringLiteral("Keyboard: Numpad -"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("NumAdd"),
+        QStringLiteral("Keyboard: Numpad +"), QStringLiteral("Keyboard")});
+    Items.append({QStringLiteral("Keyboard"), QStringLiteral("NumDecimal"),
+        QStringLiteral("Keyboard: Numpad ."), QStringLiteral("Keyboard")});
+
     // ── Mouse: 鼠标按钮 ──
 
     Items.append({QStringLiteral("MouseButton"), QStringLiteral("Left"),
@@ -61,6 +149,10 @@ ZActionCatalogModel::ZActionCatalogModel(QObject* Parent)
         QStringLiteral("Mouse: Right Click"), QStringLiteral("Mouse")});
     Items.append({QStringLiteral("MouseButton"), QStringLiteral("Middle"),
         QStringLiteral("Mouse: Middle Click"), QStringLiteral("Mouse")});
+    Items.append({QStringLiteral("MouseButton"), QStringLiteral("Button4"),
+        QStringLiteral("Mouse: Button 4 (Back)"), QStringLiteral("Mouse")});
+    Items.append({QStringLiteral("MouseButton"), QStringLiteral("Button5"),
+        QStringLiteral("Mouse: Button 5 (Forward)"), QStringLiteral("Mouse")});
 
     // ── Mouse: 鼠标移动 ──
 

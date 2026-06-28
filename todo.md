@@ -1,156 +1,211 @@
-# TODO: Mapping Picker Visual Regression Fix
+# TODO: Stick Direction Inputs And Expanded Action Catalog
 
 ## Goal
 
-修复上一轮映射选择器布局调整带来的视觉回归。当前版本已经完成 QML 目录拆分，但 picker 的可读性和按键布局还没有达标。
+让左摇杆、右摇杆先以 4 个方向虚拟输入参与映射，并补齐当前键盘、鼠标选择器里缺失但常用的输出按钮。
 
-本轮只修映射选择器 UI，不新增映射功能，不改 Core / Runtime / Backend。
+本轮目标是把"可绑定输入"和"可选输出"补到更实用的程度；不做完整模拟鼠标移动，不做 8 向摇杆，不做高级参数页。
 
 ## Scope
 
 包含：
 
-- [ ] 回退失败的低对比度改动，让可用/禁用/选中状态重新肉眼可辨。
-- [ ] 修复 Keyboard 页右侧区域和底部行的对齐问题。
-- [ ] 修复 Mouse 页按键重叠、尺寸比例失衡和鼠标移动布局错误。
-- [ ] 保持当前能力边界：Keyboard / MouseButton 可绑定，DInput 仅占位，MouseMove 不提供新建入口。
+- [x] 将 Left Stick / Right Stick 各拆成 4 个方向虚拟输入：
+  - [x] `left_stick_up`
+  - [x] `left_stick_down`
+  - [x] `left_stick_left`
+  - [x] `left_stick_right`
+  - [x] `right_stick_up`
+  - [x] `right_stick_down`
+  - [x] `right_stick_left`
+  - [x] `right_stick_right`
+- [x] 让这些虚拟输入可以像普通按钮一样绑定 Keyboard / MouseButton 输出。
+- [x] 扩展 Keyboard action catalog 和 Keyboard picker 可用按键。
+- [x] 扩展 Mouse action catalog 和 Mouse picker 可用按钮。
+- [x] 保持现有 Axis2D 原始状态显示，不破坏 GamepadView 的摇杆高亮/数值显示。
+- [x] 摇杆方向输入线（P1-P3）和 Keyboard/Mouse catalog 扩展线（P4-P5）彼此独立，可并行实现；实际执行时按风险和依赖选择顺序。
 
 不包含：
 
-- [ ] 不新增 DInput 映射。
-- [ ] 不恢复 MouseMove / Cursor 新建入口。
-- [ ] 不新增 MouseWheel / Button4 / Button5。
-- [ ] 不新增组合键、宏、turbo、toggle。
-- [ ] 不继续调整主界面三栏布局。
+- 不做 8 向摇杆。
+- 不做摇杆到连续 MouseMove 的完整模拟。
+- 不做 deadzone / sensitivity / curve / invert 配置 UI。
+- 不做组合键，例如 Ctrl+Shift+A。
+- 不做宏、连发、长按、toggle。
+- 不做 DInput 输出功能。
 
-## Priority 0: Contrast Rollback
+## Priority 0: Design Contract
 
-当前问题：
+输入语义：
 
-- [ ] 上一轮对比度调整失败，禁用按键、禁用文字、背景之间区分过低。
-- [ ] 肉眼已经很难辨认键盘上的 disabled key、鼠标页 disabled movement tile、DInput disabled preview。
-- [ ] 当前状态不是“降低视觉干扰”，而是“信息不可读”。
+- [x] Stick direction 是从 Axis2D 派生出的虚拟 button-like input。
+- [x] Direction threshold 暂定 `0.5`，超过阈值视为 pressed，回落到阈值内视为 released。
+- [x] X/Y 轴互相独立：左摇杆右推只影响 `left_stick_right`，不影响 `left_stick_up/down`。
+- [x] Y 轴方向约定固定为 SDL/gamepad 常见屏幕坐标：`Y > 0.5` -> `*_down`，`Y < -0.5` -> `*_up`。
+- [x] 同一轴正负方向互斥：`left_stick_left` 和 `left_stick_right` 不应同时 pressed。
+- [x] 对角输入允许两个方向同时 pressed，例如 up + right。
+- [x] 方向虚拟输入产生的事件应进入现有 capture / mapping / UI state 流程，而不是只在 QML 里显示。
 
-Implementation plan：
+命名：
 
-- [ ] 回退 `PickerKey` disabled 视觉到更可读的版本。
-- [ ] disabled tile 仍要明显不可点，但文字和边框必须可辨认。
-- [ ] enabled tile、selected tile、disabled tile 使用三档清晰层级：
-  - [ ] enabled：正常文字亮度和正常边框。
-  - [ ] selected：accent border + accent fill，必须最醒目。
-  - [ ] disabled：低亮度但仍可读，不能接近背景色。
-- [ ] 避免通过整体页面 opacity 降低可读性；优先在 tile 内部分别控制 text / border / fill。
-- [ ] 不要让 disabled 状态影响布局尺寸。
+- [x] 使用 snake_case control id，和现有 `button_south` / `left_trigger` 风格一致。
+- [x] 当前 mappings 中先显示 raw control id；展示美化可后续独立做。
 
-Acceptance：
+架构约束：
 
-- [ ] Keyboard 页 disabled function keys 仍能读出标签。
-- [ ] Mouse 页 disabled wheel / movement tiles 仍能读出标签。
-- [ ] DInput 页所有 disabled controls 可读，但明确不可点击。
-- [ ] 当前选中的 `Keyboard: Space` 在视觉上明显强于 enabled/disabled 普通按键。
+- [x] 不在 QML 中临时推导 stick direction；方向拆分应发生在 runtime/input bridge 层，保证 capture、profile、mapping engine 都看到同一套输入。
+- [x] 保留原始 Axis2D state，用于 GamepadView 摇杆显示。
+- [x] 方向虚拟输入应有测试覆盖，避免后续改 SDL axis 合并逻辑时破坏映射。
 
-## Priority 1: Keyboard Grid Alignment
+## Priority 1: Stick Direction Input Pipeline
 
-当前问题：
+需要先定位现有 Axis2D 流程：
 
-- [ ] Keyboard 页下面三列布局有明显错位。
-- [ ] `Enter` 右侧没有和右边导航/小键盘区域形成稳定对齐。
-- [ ] 右侧 `Shift` 行没有和 `Enter`、方向键、导航区对齐。
-- [ ] 小键盘变成阶梯式排列：`7/8/9`、`4/5/6`、`1/2/3` 每行水平位置不一致。
-- [ ] 底部一栏完全没有对齐：Space、右侧 Ctrl/Fn/Alt、方向键、数字小键盘 `0` 之间像是多个 Row 临时拼接。
-- [ ] 当前基于多个 `Row + Item spacer` 的布局很难保证列对齐，缩放后问题更明显。
+- [x] SDL backend / runtime 当前如何把 X/Y 合并成 `SInputEvent::Axis2D`。
+- [x] `InputRuntime` 如何记录 Axis2D state。
+- [x] `InputCaptureModel::IsCaptureWorthyInput()` 当前如何处理 Axis2D。
+- [x] `MappingEngine` 当前如何处理 Axis2D -> MouseMove。
+- [x] `InputStateModel` 当前如何暴露 Axis2D 给 QML。
 
-Implementation plan：
+实现方案：
 
-- [ ] 不再用自由 `Row` 加 spacer 拼整张键盘。
-- [ ] 把 Keyboard 页拆成明确的区域：
-  - [ ] main keys：主键区。
-  - [ ] nav keys：Insert/Home/PageUp、Delete/End/PageDn。
-  - [ ] arrows：方向键。
-  - [ ] numpad：数字小键盘。
-- [ ] 每个区域使用固定列宽和固定行高，区域之间使用固定 gap。
-- [ ] 小键盘必须使用同一个 3 列 grid，三行左边界一致。
-- [ ] 方向键使用倒 T 布局，`Up` 居中在 `Left/Down/Right` 上方。
-- [ ] `Enter`、右 `Shift`、底部右侧 modifier 区不要再通过临时 spacer 假装对齐。
-- [ ] 如果继续保留缩放，缩放应作用于整个 keyboard grid 的统一容器，不能破坏区域内部行列关系。
-- [ ] 优先考虑通过可变单位尺寸生成布局，而不是对已排好的整树做 `Scale` transform。
+- [x] 新增 stick direction 派生逻辑，输入为 Axis2D event，输出为 0-4 个 button-like `SInputEvent`。
+- [x] 派生事件复用现有 Button 控件类型：`ControlType = Button`，`ControlId = left_stick_up` 等；本轮不新增 `EInputControlType::VirtualButton`。
+- [x] 每个方向保存上一帧 pressed 状态，只在状态变化时发出 press/release，避免每帧重复刷 mapping。
+- [x] 初始状态默认全部 released。
+- [x] Clear / device removed 时清理对应 device 的 stick direction cache。
+- [x] 原始 Axis2D event 仍继续进入 `InputStateModel`，但 mapping/capture 可消费派生方向事件。
 
-Acceptance：
+建议落点：
 
-- [ ] `Enter` 行、右 `Shift` 行、底部 modifier 行与右侧区域边界稳定对齐。
-- [ ] 小键盘 `7/8/9`、`4/5/6`、`1/2/3` 三行垂直列完全一致。
-- [ ] 方向键保持标准倒 T，不出现横向漂移。
-- [ ] 底部 `Space` 行和右侧方向键/小键盘 `0` 行视觉上属于同一基线系统。
-- [ ] 选中 `Space` 后不影响任何其他按键位置。
-- [ ] 最小窗口 `1040x700` 下不出现横向裁切。
+- [x] 优先在 Runtime 层增加一个小型 `ZStickDirectionSynthesizer`，避免把方向状态散落在 UI 或 backend。
+- [x] `ZRuntimeEventPump` 或 `ZMappingSession` 处理 input event 前，先将 Axis2D 展开为原始事件 + 派生事件队列。
+- [x] 保持 FIFO：原始 Axis2D state 更新先发生，随后方向 press/release 进入 capture/mapping。
 
-## Priority 2: Mouse Picker Layout Fix
+Tests：
 
-当前问题：
+- [x] Axis2D `(0, 0)` 不产生方向 press。
+- [x] Axis2D `(0.6, 0)` 产生 `*_right pressed`。
+- [x] Axis2D `(0.4, 0)` 从 pressed 回落时产生 `*_right released`。
+- [x] 序列测试：先发 `(0.6, 0)` -> `*_right pressed`，再发 `(-0.6, 0)` -> `*_left pressed` + `*_right released`。
+- [x] Axis2D `(0, -0.6)` 产生 `*_up pressed`。
+- [x] Axis2D `(0, 0.6)` 产生 `*_down pressed`。
+- [x] Axis2D `(0.7, -0.7)` 可同时产生 right + up。
+- [x] 多设备 stick direction cache 互不影响。
+- [x] Clear / device removed 清理 direction cache。
 
-- [ ] Mouse 页发生按键重叠，侧键标签压到鼠标按钮区或鼠标轮廓附近。
-- [ ] 左侧鼠标按钮、鼠标轮廓、右侧移动按钮尺寸差距过大，视觉比例失衡。
-- [ ] 左键/右键/中键过大，侧键过小，鼠标轮廓又偏窄，导致整页不像同一套控件。
-- [ ] 鼠标移动现在是 2x2 方块排列，但它表达的是方向，应改成十字键 / D-pad 形式。
-- [ ] 当前三列虽然比上一版清晰，但仍缺少统一基线和稳定间距。
+## Priority 2: Capture And UI State Integration
 
-Implementation plan：
+Capture：
 
-- [ ] 重新定义 Mouse 页三块区域：
-  - [ ] left：鼠标按钮，包括 Left / Right / Middle / Wheel Up / Wheel Down。
-  - [ ] center：鼠标示意图，包括侧键 preview。
-  - [ ] right：鼠标移动方向 preview。
-- [ ] 三块区域使用统一行高、统一标题样式、统一 tile 尺寸体系。
-- [ ] Left / Right / Middle 尺寸不要明显大于移动方向 tile。
-- [ ] Side Button 1 / Side Button 2 只作为 disabled preview，必须不覆盖 Left / Right / Middle。
-- [ ] 鼠标轮廓保持居中，侧键标签与轮廓保持固定间距。
-- [ ] 鼠标移动改为十字键布局：
-  - [ ] 上移在上方居中。
-  - [ ] 左移 / 右移在中间左右。
-  - [ ] 下移在下方居中。
-- [ ] 鼠标移动方向本轮仍 disabled，不产生 action selected。
-- [ ] Confirm 只对 Left / Right / Middle 可用。
+- [x] Capture Input 时，摇杆超过阈值应捕获对应 direction control id，而不是捕获粗粒度 `left_stick` / `right_stick` Axis2D。
+- [x] 摇杆轻微漂移低于阈值不应完成 capture。
+- [x] 捕获完成后 selectedControl 应显示 direction control id，例如 `left_stick_up`。
 
-Acceptance：
+InputStateModel：
 
-- [ ] Mouse 页没有任何 tile 或文字重叠。
-- [ ] Left / Right / Middle、Wheel、Side Button、Movement preview 尺寸比例协调。
-- [ ] 鼠标移动方向呈十字键布局，不再是 2x2 方块。
-- [ ] 点击 Left / Right / Middle 可以高亮并 Confirm。
-- [ ] Wheel / Side Button / Movement 点击无效，Confirm 不因此启用。
+- [x] direction press/release 更新 `PressedRole`。
+- [x] `latestControlId(deviceId)` 能返回最近触发的 direction control id。
+- [x] QML `isPressed(deviceId, "left_stick_up")` 可用。
 
-## Priority 3: Dialog Content Positioning
+GamepadView：
 
-当前问题：
+- [x] 左/右摇杆 UI 可在四个方向上显示 pressed/highlight 状态。
+- [x] 不破坏原有 LS/RS 或轴值显示。
+- [x] 本轮不强制拆分摇杆 dot 的 4 个点击区域；点击摇杆 dot 仍可选择粗粒度 stick 或进入 capture，用户通过推摇杆方向完成 direction capture。
 
-- [ ] Keyboard / Mouse / DInput 内容仍然偏上，下面留白过大。
-- [ ] Dialog 中段没有形成稳定的“选择器主体”区域。
-- [ ] Footer 固定是正确的，但 content 区没有利用剩余空间做垂直居中。
+Tests：
 
-Implementation plan：
+- [x] Capture stick direction 成功。
+- [x] Stick drift 不抢占 capture。
+- [x] InputStateModel direction 状态可查询。
+- [x] GamepadView 相关 QML smoke 不报 warning。
 
-- [ ] `MappingPickerDialog` 的 content 区保留在 selection summary 和 footer 之间。
-- [ ] 每个 page 在 content 区中垂直居中；内容超过可用高度时才滚动。
-- [ ] 不用页面整体 opacity 或页面级缩放去解决视觉层级。
-- [ ] Tab / 当前选择 / Footer 不被 page 内容挤压或覆盖。
+## Priority 3: Mapping Engine / Profile Integration
 
-Acceptance：
+Mapping profile：
 
-- [ ] Keyboard 页在 dialog 中垂直位置自然，不贴上不贴下。
-- [ ] Mouse 页主体居中，Footer 附近不出现大面积空白。
-- [ ] DInput 页主体居中，预览面板和 Footer 间距合理。
-- [ ] 切换三个 tab 时 Footer 不跳动。
+- [x] `SMappingInput` 可表达 stick direction control id。
+- [x] 方向输入按 button-like PressRelease 规则映射 Keyboard / MouseButton。
+- [x] 保存 profile 后 direction 规则可序列化。
+- [x] 加载 profile 后 direction 规则可恢复。
 
-## Priority 4: Verification
+Mapping behavior：
 
-- [ ] `git diff --check`
-- [ ] `cmake --build build --config Debug`
-- [ ] `.\build\Debug\MappyZQmlSmokeTests.exe`
-- [ ] `ctest --test-dir build -C Debug --output-on-failure`
-- [ ] 手动检查：
-  - [ ] Keyboard 页标签可读。
-  - [ ] Keyboard 页网格对齐。
-  - [ ] Mouse 页无重叠。
-  - [ ] Mouse movement 是十字键布局。
-  - [ ] DInput 页 disabled preview 可读。
-  - [ ] Keyboard / MouseButton 绑定仍能成功写入 Current mappings。
+- [x] Stick direction pressed 输出 key/mouse pressed action。
+- [x] Stick direction released 输出 key/mouse released action。
+- [x] 同方向重复 pressed 状态不重复 dispatch。
+- [x] 对角方向可同时 dispatch 两个输出。
+
+Tests：
+
+- [x] `left_stick_up -> Keyboard W` press/release。
+- [x] `left_stick_left -> Keyboard A` press/release。
+- [x] `right_stick_right -> MouseButton Right` press/release。
+- [x] profile save/load round trip preserves direction rules。
+
+## Priority 4: Expanded Keyboard Catalog
+
+当前 Keyboard picker 里大量键位显示为 disabled。下一步优先补常用键，不一次性追求完整国际键盘。
+
+新增 Keyboard actions：
+
+- [x] Function keys：F1-F12。
+- [x] Editing/navigation：Backspace、Delete、Insert、Home、End、PageUp、PageDown。
+- [x] Modifiers：LeftShift、RightShift、LeftCtrl、RightCtrl、LeftAlt、RightAlt、LeftMeta/Win。
+- [x] Symbols for US layout：Minus、Equal、LeftBracket、RightBracket、Backslash、Semicolon、Apostrophe、Comma、Period、Slash、Backquote。
+- [x] Numpad：Num0-Num9、NumDivide、NumMultiply、NumSubtract、NumAdd、NumDecimal。
+
+实现要求：
+
+- [x] 扩展 `ActionCatalogModel`，为每个 key 定义 stable value 和 display text。
+- [x] `applySelectedBinding(controlId, "Keyboard", value)` 支持新增 value。
+- [x] `KeyboardPicker.handleQtKey()` 尽量识别新增 Qt key。
+- [x] Picker 中对应 key 从 disabled 变 enabled。
+- [x] 小键盘必须和主键区数字分开：主键区保持 `"0"`-`"9"`，小键盘使用 `"Num0"`-`"Num9"` 等独立 value。
+- [x] KeyboardPicker 小键盘区域点击 `7` 应提交 `"Num7"`，不能继续提交主键区 `"7"`。
+- [x] display text 保持用户可读，例如 `Keyboard: Backspace`、`Keyboard: F5`。
+
+Tests：
+
+- [x] ActionCatalogModel 包含新增 key。
+- [x] applySelectedBinding 支持至少 Backspace / F5 / LeftShift / Minus / Num1。
+- [x] 主键区 `1` 和小键盘 `Num1` 生成不同 action value。
+- [x] MappingRuleModel output/actionValue 正确显示新增 key。
+- [x] QML smoke 通过。
+
+## Priority 5: Expanded Mouse Catalog
+
+新增 Mouse actions：
+
+- [x] MouseButton Button4 / Button5。
+- [ ] MouseWheel Up / Down（当前 PressRelease 管线无持续滚动语义，暂不启用）。
+- 可选：MouseWheel Left / Right，如果底层 action 已支持或容易扩展。
+
+实现要求：
+
+- [x] 扩展 `ActionCatalogModel`：`MouseButton / Button4`、`MouseButton / Button5`。
+- [x] `applySelectedBinding()` 支持新增 mouse values。
+- [x] `SAction` / `MappingEngine` / `OutputBackend` 当前 MouseWheel 类型已有但 PressRelease 语义不完整，先只启用 Button4/Button5。
+- [x] MousePicker 中 Button4/Button5 变 enabled。
+- [ ] Wheel Up/Down 只有在完整 dispatch 语义打通后才能 enabled。
+
+Tests：
+
+- [x] Button4/Button5 可创建 mapping rule。
+- [x] MousePicker 点击 Button4/Button5 可 Confirm。
+- [ ] 如果启用 MouseWheel，则 MappingEngine 和 OutputBackend tests 覆盖 wheel action。
+- [x] 未完成的 MouseMove 仍不可新建。
+
+## Priority 6: Verification
+
+- [x] `git diff --check`
+- [x] `cmake --build build --config Debug`
+- [x] `.\build\Debug\MappyZQmlSmokeTests.exe`
+- [x] `ctest --test-dir build -C Debug --output-on-failure`
+- [ ] 手动验证：
+  - [ ] Capture 左摇杆上方向，绑定到 `W`。
+  - [ ] Capture 左摇杆左方向，绑定到 `A`。
+  - [ ] Capture 右摇杆右方向，绑定到鼠标右键。
+  - [ ] 保存 profile，重启或 reload 后规则仍存在。
+  - [ ] F1-F12 / Backspace / Delete / Button4 / Button5 可在 picker 中选择。

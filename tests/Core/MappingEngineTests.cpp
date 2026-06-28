@@ -400,3 +400,52 @@ TEST_CASE("MappingEngine header is self-contained", "[Core][MappingEngine]")
     auto Actions = Engine.MapInput(SInputEvent{}, Profile);
     REQUIRE(Actions.empty());
 }
+
+// ── 方向虚拟输入映射 ──
+
+TEST_CASE("MappingEngine stick direction button maps to keyboard press/release",
+    "[Core][MappingEngine]")
+{
+    ZMappingEngine Engine;
+    SMappingProfile Profile;
+    Profile.bEnabled = true;
+    Profile.Rules.push_back(
+        MakeButtonToKeyRule("r1", ControlId::LeftStickUp, "W"));
+
+    // pressed
+    auto PressActions = Engine.MapInput(
+        MakeButtonEvent(ControlId::LeftStickUp, EInputEventType::Pressed), Profile);
+    REQUIRE(PressActions.size() == 1);
+    REQUIRE(PressActions[0].Type == EActionType::KeyboardKey);
+    auto* PressPayload = std::get_if<SKeyboardAction>(&PressActions[0].Payload);
+    REQUIRE(PressPayload != nullptr);
+    REQUIRE(PressPayload->Key == "W");
+    REQUIRE(PressPayload->bPressed == true);
+
+    // released
+    auto ReleaseActions = Engine.MapInput(
+        MakeButtonEvent(ControlId::LeftStickUp, EInputEventType::Released), Profile);
+    REQUIRE(ReleaseActions.size() == 1);
+    auto* ReleasePayload = std::get_if<SKeyboardAction>(&ReleaseActions[0].Payload);
+    REQUIRE(ReleasePayload != nullptr);
+    REQUIRE(ReleasePayload->bPressed == false);
+}
+
+TEST_CASE("MappingEngine stick direction button maps to mouse button",
+    "[Core][MappingEngine]")
+{
+    ZMappingEngine Engine;
+    SMappingProfile Profile;
+    Profile.bEnabled = true;
+    Profile.Rules.push_back(
+        MakeButtonToMouseRule("r1", ControlId::RightStickRight, 1));
+
+    auto PressActions = Engine.MapInput(
+        MakeButtonEvent(ControlId::RightStickRight, EInputEventType::Pressed), Profile);
+    REQUIRE(PressActions.size() == 1);
+    REQUIRE(PressActions[0].Type == EActionType::MouseButton);
+    auto* Payload = std::get_if<SMouseButtonAction>(&PressActions[0].Payload);
+    REQUIRE(Payload != nullptr);
+    REQUIRE(Payload->Button == 1);
+    REQUIRE(Payload->bPressed == true);
+}
