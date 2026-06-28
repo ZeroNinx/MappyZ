@@ -1,6 +1,6 @@
 import QtQuick
 
-// 鼠标映射选择页：左侧鼠标按钮、中间鼠标轮廓、右侧鼠标移动方向
+// 鼠标映射选择页：左侧鼠标按钮 + 中间鼠标轮廓 + 右侧移动方向（十字键）
 Item {
     id: mousePicker
 
@@ -13,20 +13,20 @@ Item {
 
     implicitHeight: mouseContainer.implicitHeight
 
-    // 统一容器：固定宽度、圆角边框、水平居中
+    // 统一容器，水平居中
     Rectangle {
         id: mouseContainer
 
         anchors.horizontalCenter: parent.horizontalCenter
-        width: Math.min(parent.width, 784)
-        implicitHeight: containerRow.implicitHeight + 32
+        width: Math.min(parent.width, 760)
+        implicitHeight: contentRow.implicitHeight + 32
         radius: 6
         color: "transparent"
         border.color: mousePicker.theme.border
         border.width: 1
 
         Row {
-            id: containerRow
+            id: contentRow
 
             anchors.centerIn: parent
             spacing: 24
@@ -35,8 +35,8 @@ Item {
             Column {
                 id: buttonColumn
 
-                width: 264
-                spacing: 10
+                width: 240
+                spacing: 8
 
                 Text {
                     text: "鼠标按钮"
@@ -45,80 +45,95 @@ Item {
                     font.bold: true
                 }
 
-                // 左键 / 右键 / 中键
+                // 左键 / 中键 / 右键
                 Row {
                     spacing: 6
 
                     PickerKey {
                         theme: mousePicker.theme; label: "左键"
                         kind: "MouseButton"; value: "Left"
-                        keyWidth: 1.75; height: 64
+                        keyWidth: 1.58; height: 48
                         enabled: true
                         selected: mousePicker.pendingKind === "MouseButton"
                             && mousePicker.pendingValue === "Left"
                         onClicked: mousePicker.mouseActionSelected("MouseButton", "Left")
                     }
                     PickerKey {
-                        theme: mousePicker.theme; label: "右键"
-                        kind: "MouseButton"; value: "Right"
-                        keyWidth: 1.75; height: 64
-                        enabled: true
-                        selected: mousePicker.pendingKind === "MouseButton"
-                            && mousePicker.pendingValue === "Right"
-                        onClicked: mousePicker.mouseActionSelected("MouseButton", "Right")
-                    }
-                    PickerKey {
                         theme: mousePicker.theme; label: "中键"
                         kind: "MouseButton"; value: "Middle"
-                        keyWidth: 1.75; height: 64
+                        keyWidth: 1.58; height: 48
                         enabled: true
                         selected: mousePicker.pendingKind === "MouseButton"
                             && mousePicker.pendingValue === "Middle"
                         onClicked: mousePicker.mouseActionSelected("MouseButton", "Middle")
                     }
+                    PickerKey {
+                        theme: mousePicker.theme; label: "右键"
+                        kind: "MouseButton"; value: "Right"
+                        keyWidth: 1.58; height: 48
+                        enabled: true
+                        selected: mousePicker.pendingKind === "MouseButton"
+                            && mousePicker.pendingValue === "Right"
+                        onClicked: mousePicker.mouseActionSelected("MouseButton", "Right")
+                    }
                 }
 
-                // 滚轮上 / 滚轮下
+                // 滚轮上 / 侧键1
                 Row {
                     spacing: 6
 
                     PickerKey {
                         theme: mousePicker.theme; label: "滚轮上"
-                        keyWidth: 2.7; height: 44
+                        keyWidth: 2.44; height: 36
                         enabled: false
                     }
                     PickerKey {
+                        theme: mousePicker.theme; label: "侧键1"
+                        keyWidth: 2.44; height: 36
+                        enabled: false
+                    }
+                }
+
+                // 滚轮下 / 侧键2
+                Row {
+                    spacing: 6
+
+                    PickerKey {
                         theme: mousePicker.theme; label: "滚轮下"
-                        keyWidth: 2.7; height: 44
+                        keyWidth: 2.44; height: 36
+                        enabled: false
+                    }
+                    PickerKey {
+                        theme: mousePicker.theme; label: "侧键2"
+                        keyWidth: 2.44; height: 36
                         enabled: false
                     }
                 }
             }
 
-            // ── 中列：鼠标轮廓简化图形（垂直居中于左右按钮组）──
+            // ── 中列：鼠标轮廓图形 ──
             Item {
-                width: 120
+                width: 100
                 height: buttonColumn.height
                 anchors.verticalCenter: buttonColumn.verticalCenter
 
-                // 鼠标主体
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 80
-                    height: 140
-                    radius: 40
+                    width: 70
+                    height: 120
+                    radius: 35
                     color: "transparent"
                     border.color: mousePicker.theme.accent
                     border.width: 1.5
                     opacity: 0.5
 
-                    // 中键/滚轮指示
+                    // 滚轮指示
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.top: parent.top
-                        anchors.topMargin: 22
+                        anchors.topMargin: 20
                         width: 10
-                        height: 22
+                        height: 20
                         radius: 5
                         color: Qt.rgba(
                             mousePicker.theme.accent.r,
@@ -126,43 +141,21 @@ Item {
                             mousePicker.theme.accent.b, 0.4)
                     }
 
-                    // 顶部线缆
+                    // 线缆
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.bottom: parent.top
                         width: 2
-                        height: 16
+                        height: 14
                         color: mousePicker.theme.border
                     }
                 }
-
-                // 侧键 1
-                PickerKey {
-                    theme: mousePicker.theme; label: "侧1"
-                    keyWidth: 1.0; height: 24
-                    enabled: false
-                    anchors.right: parent.horizontalCenter
-                    anchors.rightMargin: 48
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.verticalCenterOffset: -16
-                }
-
-                // 侧键 2
-                PickerKey {
-                    theme: mousePicker.theme; label: "侧2"
-                    keyWidth: 1.0; height: 24
-                    enabled: false
-                    anchors.right: parent.horizontalCenter
-                    anchors.rightMargin: 48
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.verticalCenterOffset: 16
-                }
             }
 
-            // ── 右列：鼠标移动方向 ──
+            // ── 右列：鼠标移动方向（十字键布局）──
             Column {
-                width: 264
-                spacing: 10
+                width: 240
+                spacing: 8
 
                 Text {
                     text: "鼠标移动"
@@ -171,32 +164,45 @@ Item {
                     font.bold: true
                 }
 
-                Row {
-                    spacing: 6
+                // 十字键：上
+                Item {
+                    width: parent.width
+                    height: 36
 
                     PickerKey {
-                        theme: mousePicker.theme; label: "← 左移"
-                        keyWidth: 2.7; height: 64
-                        enabled: false
-                    }
-                    PickerKey {
-                        theme: mousePicker.theme; label: "→ 右移"
-                        keyWidth: 2.7; height: 64
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        theme: mousePicker.theme; label: "↑ 上移"
+                        keyWidth: 2.0; height: 36
                         enabled: false
                     }
                 }
 
+                // 十字键：左 + 右
                 Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 6
 
                     PickerKey {
-                        theme: mousePicker.theme; label: "↑ 上移"
-                        keyWidth: 2.7; height: 64
+                        theme: mousePicker.theme; label: "← 左移"
+                        keyWidth: 2.0; height: 36
                         enabled: false
                     }
                     PickerKey {
+                        theme: mousePicker.theme; label: "→ 右移"
+                        keyWidth: 2.0; height: 36
+                        enabled: false
+                    }
+                }
+
+                // 十字键：下
+                Item {
+                    width: parent.width
+                    height: 36
+
+                    PickerKey {
+                        anchors.horizontalCenter: parent.horizontalCenter
                         theme: mousePicker.theme; label: "↓ 下移"
-                        keyWidth: 2.7; height: 64
+                        keyWidth: 2.0; height: 36
                         enabled: false
                     }
                 }
