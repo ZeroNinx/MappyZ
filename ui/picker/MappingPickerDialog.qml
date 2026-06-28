@@ -143,7 +143,13 @@ Rectangle {
 
         anchors.centerIn: parent
         width: Math.min(parent.width - 40, 1020)
-        height: Math.min(parent.height - 40, 600)
+        // 自适应高度：根据内容计算，clamp 在 400~parent-40 之间
+        height: Math.min(parent.height - 40, Math.max(400,
+            headerSection.height + 12
+            + tabsSection.height + 10
+            + selectionSection.height + 10
+            + pageContainer.implicitHeight + 8
+            + footerSection.height + 40 + 20))
         radius: 8
         color: pickerDialog.theme.panel
         border.color: pickerDialog.theme.border
@@ -155,14 +161,16 @@ Rectangle {
             onClicked: function(event) { event.accepted = true }
         }
 
+        // ── Section 1: Header（标题 + 上下文提示）──
         Column {
-            id: dialogContent
+            id: headerSection
 
-            anchors.fill: parent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
             anchors.margins: 20
-            spacing: 12
+            spacing: 4
 
-            // ── 标题行 ──
             Text {
                 text: "选择映射目标"
                 color: "#ffffff"
@@ -170,7 +178,6 @@ Rectangle {
                 font.bold: true
             }
 
-            // ── 上下文提示 ──
             Text {
                 text: pickerDialog.selectedControl !== ""
                     ? "为 '" + pickerDialog.selectedControl + "' 选择映射目标"
@@ -178,141 +185,173 @@ Rectangle {
                 color: pickerDialog.theme.muted
                 font.pixelSize: 12
             }
+        }
 
-            // ── 页签栏 ──
-            PickerTabs {
-                id: pickerTabs
+        // ── Section 2: Tabs ──
+        PickerTabs {
+            id: tabsSection
 
-                theme: pickerDialog.theme
-                currentIndex: pickerDialog.currentTab
-                onTabClicked: function(index) {
-                    pickerDialog.currentTab = index
-                }
+            theme: pickerDialog.theme
+            currentIndex: pickerDialog.currentTab
+            anchors.left: parent.left
+            anchors.leftMargin: 20
+            anchors.top: headerSection.bottom
+            anchors.topMargin: 12
+
+            onTabClicked: function(index) {
+                pickerDialog.currentTab = index
+            }
+        }
+
+        // ── Section 3: Selection Summary（当前选择 pill）──
+        Row {
+            id: selectionSection
+
+            anchors.left: parent.left
+            anchors.leftMargin: 20
+            anchors.right: parent.right
+            anchors.rightMargin: 20
+            anchors.top: tabsSection.bottom
+            anchors.topMargin: 10
+            spacing: 8
+
+            Text {
+                text: "当前选择："
+                color: pickerDialog.theme.muted
+                font.pixelSize: 12
+                anchors.verticalCenter: parent.verticalCenter
             }
 
-            // ── 当前 pending action 显示 ──
-            Row {
-                spacing: 8
+            Rectangle {
+                width: pendingText.implicitWidth + 16
+                height: 26
+                radius: 3
+                color: pickerDialog.pendingDisplayText !== ""
+                    ? Qt.rgba(pickerDialog.theme.accent.r,
+                        pickerDialog.theme.accent.g,
+                        pickerDialog.theme.accent.b, 0.15)
+                    : "transparent"
+                border.color: pickerDialog.pendingDisplayText !== ""
+                    ? pickerDialog.theme.accent : pickerDialog.theme.border
+                border.width: 1
 
                 Text {
-                    text: "当前选择："
-                    color: pickerDialog.theme.muted
-                    font.pixelSize: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                }
+                    id: pendingText
 
-                Rectangle {
-                    width: pendingText.implicitWidth + 16
-                    height: 26
-                    radius: 3
+                    anchors.centerIn: parent
+                    text: pickerDialog.pendingDisplayText !== ""
+                        ? pickerDialog.pendingDisplayText : "未选择"
                     color: pickerDialog.pendingDisplayText !== ""
-                        ? Qt.rgba(pickerDialog.theme.accent.r,
-                            pickerDialog.theme.accent.g,
-                            pickerDialog.theme.accent.b, 0.15)
-                        : "transparent"
-                    border.color: pickerDialog.pendingDisplayText !== ""
-                        ? pickerDialog.theme.accent : pickerDialog.theme.border
-                    border.width: 1
-
-                    Text {
-                        id: pendingText
-
-                        anchors.centerIn: parent
-                        text: pickerDialog.pendingDisplayText !== ""
-                            ? pickerDialog.pendingDisplayText : "未选择"
-                        color: pickerDialog.pendingDisplayText !== ""
-                            ? pickerDialog.theme.accent : pickerDialog.theme.muted
-                        font.pixelSize: 12
-                    }
-                }
-
-                // MouseMove 不可用提示
-                Text {
-                    visible: pickerDialog.pendingKind === "MouseMove"
-                    text: "(不支持：MouseMove 将在未来版本中由独立模块提供)"
-                    color: pickerDialog.theme.warning
-                    font.pixelSize: 11
-                    anchors.verticalCenter: parent.verticalCenter
+                        ? pickerDialog.theme.accent : pickerDialog.theme.muted
+                    font.pixelSize: 12
                 }
             }
 
-            // ── 页面内容区（可滚动）──
-            Flickable {
+            // MouseMove 不可用提示
+            Text {
+                visible: pickerDialog.pendingKind === "MouseMove"
+                text: "(不支持：MouseMove 将在未来版本中由独立模块提供)"
+                color: pickerDialog.theme.warning
+                font.pixelSize: 11
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        // ── Section 4: Content（页面内容区，填充中间剩余空间）──
+        Flickable {
+            id: contentSection
+
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: selectionSection.bottom
+            anchors.bottom: footerSection.top
+            anchors.leftMargin: 20
+            anchors.rightMargin: 20
+            anchors.topMargin: 10
+            anchors.bottomMargin: 8
+            clip: true
+            contentWidth: width
+            contentHeight: pageContainer.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+
+            Item {
+                id: pageContainer
+
                 width: parent.width
-                height: parent.height - y + dialogContent.anchors.margins
-                    - bottomRow.height - dialogErrorMessage.height - 16
-                clip: true
-                contentWidth: width
-                contentHeight: pageContainer.implicitHeight
-                boundsBehavior: Flickable.StopAtBounds
+                // 内容不足时垂直居中，超出时顶部对齐
+                y: implicitHeight < contentSection.height
+                    ? Math.round((contentSection.height - implicitHeight) / 2)
+                    : 0
+                implicitHeight: {
+                    if (pickerDialog.currentTab === 0) return keyboardPage.implicitHeight
+                    if (pickerDialog.currentTab === 1) return mousePage.implicitHeight
+                    return dinputPage.implicitHeight
+                }
 
-                Item {
-                    id: pageContainer
+                KeyboardPicker {
+                    id: keyboardPage
 
-                    width: parent.width
-                    implicitHeight: {
-                        if (pickerDialog.currentTab === 0) return keyboardPage.implicitHeight
-                        if (pickerDialog.currentTab === 1) return mousePage.implicitHeight
-                        return dinputPage.implicitHeight
-                    }
+                    visible: pickerDialog.currentTab === 0
+                    theme: pickerDialog.theme
+                    appController: pickerDialog.appController
+                    pendingValue: pickerDialog.pendingKind === "Keyboard"
+                        ? pickerDialog.pendingValue : ""
+                    anchors.left: parent.left
+                    anchors.right: parent.right
 
-                    KeyboardPicker {
-                        id: keyboardPage
-
-                        visible: pickerDialog.currentTab === 0
-                        theme: pickerDialog.theme
-                        appController: pickerDialog.appController
-                        pendingValue: pickerDialog.pendingKind === "Keyboard"
-                            ? pickerDialog.pendingValue : ""
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-
-                        onKeySelected: function(value) {
-                            pickerDialog._setPending("Keyboard", value)
-                        }
-                    }
-
-                    MousePicker {
-                        id: mousePage
-
-                        visible: pickerDialog.currentTab === 1
-                        theme: pickerDialog.theme
-                        pendingKind: pickerDialog.pendingKind
-                        pendingValue: pickerDialog.pendingValue
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-
-                        onMouseActionSelected: function(kind, value) {
-                            pickerDialog._setPending(kind, value)
-                        }
-                    }
-
-                    DInputPicker {
-                        id: dinputPage
-
-                        visible: pickerDialog.currentTab === 2
-                        theme: pickerDialog.theme
-                        anchors.left: parent.left
-                        anchors.right: parent.right
+                    onKeySelected: function(value) {
+                        pickerDialog._setPending("Keyboard", value)
                     }
                 }
-            }
 
-            // ── Dialog 内错误提示 ──
+                MousePicker {
+                    id: mousePage
+
+                    visible: pickerDialog.currentTab === 1
+                    theme: pickerDialog.theme
+                    pendingKind: pickerDialog.pendingKind
+                    pendingValue: pickerDialog.pendingValue
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+
+                    onMouseActionSelected: function(kind, value) {
+                        pickerDialog._setPending(kind, value)
+                    }
+                }
+
+                DInputPicker {
+                    id: dinputPage
+
+                    visible: pickerDialog.currentTab === 2
+                    theme: pickerDialog.theme
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                }
+            }
+        }
+
+        // ── Section 5: Footer（错误消息 + 操作按钮，锚定底部）──
+        Column {
+            id: footerSection
+
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 20
+            spacing: 8
+
             InlineMessage {
                 id: dialogErrorMessage
 
                 theme: pickerDialog.theme
             }
 
-            // ── 底部操作栏 ──
             Row {
                 id: bottomRow
 
                 anchors.right: parent.right
                 spacing: 8
 
-                // 不支持键提示
                 Text {
                     visible: pickerDialog.currentTab === 0
                     text: "提示：按下物理键盘按键可快速选择"

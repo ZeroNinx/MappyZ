@@ -229,53 +229,54 @@ endif()
 qt_add_library(MappyZQml STATIC)
 
 set_source_files_properties(ui/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
-set_source_files_properties(ui/Theme.qml PROPERTIES QT_RESOURCE_ALIAS Theme.qml)
-set_source_files_properties(ui/Panel.qml PROPERTIES QT_RESOURCE_ALIAS Panel.qml)
-set_source_files_properties(ui/ActionButton.qml PROPERTIES QT_RESOURCE_ALIAS ActionButton.qml)
-set_source_files_properties(ui/Tag.qml PROPERTIES QT_RESOURCE_ALIAS Tag.qml)
-set_source_files_properties(ui/FieldLabel.qml PROPERTIES QT_RESOURCE_ALIAS FieldLabel.qml)
-set_source_files_properties(ui/ValueText.qml PROPERTIES QT_RESOURCE_ALIAS ValueText.qml)
-set_source_files_properties(ui/InputControlState.qml PROPERTIES QT_RESOURCE_ALIAS InputControlState.qml)
-set_source_files_properties(ui/ControlDot.qml PROPERTIES QT_RESOURCE_ALIAS ControlDot.qml)
-set_source_files_properties(ui/TopBar.qml PROPERTIES QT_RESOURCE_ALIAS TopBar.qml)
-set_source_files_properties(ui/DevicesPanel.qml PROPERTIES QT_RESOURCE_ALIAS DevicesPanel.qml)
-set_source_files_properties(ui/GamepadView.qml PROPERTIES QT_RESOURCE_ALIAS GamepadView.qml)
-set_source_files_properties(ui/BindingEditor.qml PROPERTIES QT_RESOURCE_ALIAS BindingEditor.qml)
-set_source_files_properties(ui/EventLogPanel.qml PROPERTIES QT_RESOURCE_ALIAS EventLogPanel.qml)
-set_source_files_properties(ui/StatusBar.qml PROPERTIES QT_RESOURCE_ALIAS StatusBar.qml)
-set_source_files_properties(ui/PickerKey.qml PROPERTIES QT_RESOURCE_ALIAS PickerKey.qml)
-set_source_files_properties(ui/PickerTabs.qml PROPERTIES QT_RESOURCE_ALIAS PickerTabs.qml)
-set_source_files_properties(ui/KeyboardPicker.qml PROPERTIES QT_RESOURCE_ALIAS KeyboardPicker.qml)
-set_source_files_properties(ui/MousePicker.qml PROPERTIES QT_RESOURCE_ALIAS MousePicker.qml)
-set_source_files_properties(ui/DInputPicker.qml PROPERTIES QT_RESOURCE_ALIAS DInputPicker.qml)
-set_source_files_properties(ui/MappingPickerDialog.qml PROPERTIES QT_RESOURCE_ALIAS MappingPickerDialog.qml)
+set_source_files_properties(ui/theme/Theme.qml PROPERTIES QT_RESOURCE_ALIAS Theme.qml)
+set_source_files_properties(ui/common/Panel.qml PROPERTIES QT_RESOURCE_ALIAS Panel.qml)
+set_source_files_properties(ui/common/ActionButton.qml PROPERTIES QT_RESOURCE_ALIAS ActionButton.qml)
+set_source_files_properties(ui/common/Tag.qml PROPERTIES QT_RESOURCE_ALIAS Tag.qml)
+set_source_files_properties(ui/common/FieldLabel.qml PROPERTIES QT_RESOURCE_ALIAS FieldLabel.qml)
+set_source_files_properties(ui/common/ValueText.qml PROPERTIES QT_RESOURCE_ALIAS ValueText.qml)
+set_source_files_properties(ui/gamepad/InputControlState.qml PROPERTIES QT_RESOURCE_ALIAS InputControlState.qml)
+set_source_files_properties(ui/gamepad/ControlDot.qml PROPERTIES QT_RESOURCE_ALIAS ControlDot.qml)
+set_source_files_properties(ui/panels/TopBar.qml PROPERTIES QT_RESOURCE_ALIAS TopBar.qml)
+set_source_files_properties(ui/panels/DevicesPanel.qml PROPERTIES QT_RESOURCE_ALIAS DevicesPanel.qml)
+set_source_files_properties(ui/gamepad/GamepadView.qml PROPERTIES QT_RESOURCE_ALIAS GamepadView.qml)
+set_source_files_properties(ui/panels/BindingEditor.qml PROPERTIES QT_RESOURCE_ALIAS BindingEditor.qml)
+set_source_files_properties(ui/panels/EventLogPanel.qml PROPERTIES QT_RESOURCE_ALIAS EventLogPanel.qml)
+set_source_files_properties(ui/panels/StatusBar.qml PROPERTIES QT_RESOURCE_ALIAS StatusBar.qml)
+set_source_files_properties(ui/picker/PickerKey.qml PROPERTIES QT_RESOURCE_ALIAS PickerKey.qml)
+set_source_files_properties(ui/picker/PickerTabs.qml PROPERTIES QT_RESOURCE_ALIAS PickerTabs.qml)
+set_source_files_properties(ui/picker/KeyboardPicker.qml PROPERTIES QT_RESOURCE_ALIAS KeyboardPicker.qml)
+set_source_files_properties(ui/picker/MousePicker.qml PROPERTIES QT_RESOURCE_ALIAS MousePicker.qml)
+set_source_files_properties(ui/picker/DInputPicker.qml PROPERTIES QT_RESOURCE_ALIAS DInputPicker.qml)
+set_source_files_properties(ui/picker/MappingPickerDialog.qml PROPERTIES QT_RESOURCE_ALIAS MappingPickerDialog.qml)
+set_source_files_properties(ui/common/InlineMessage.qml PROPERTIES QT_RESOURCE_ALIAS InlineMessage.qml)
 
 qt_add_qml_module(MappyZQml
     URI MappyZUI
     VERSION 1.0
     QML_FILES
         ui/Main.qml
-        ui/Theme.qml
-        ui/Panel.qml
-        ui/ActionButton.qml
-        ui/Tag.qml
-        ui/FieldLabel.qml
-        ui/ValueText.qml
-        ui/InputControlState.qml
-        ui/InlineMessage.qml
-        ui/ControlDot.qml
-        ui/TopBar.qml
-        ui/DevicesPanel.qml
-        ui/GamepadView.qml
-        ui/BindingEditor.qml
-        ui/EventLogPanel.qml
-        ui/StatusBar.qml
-        ui/PickerKey.qml
-        ui/PickerTabs.qml
-        ui/KeyboardPicker.qml
-        ui/MousePicker.qml
-        ui/DInputPicker.qml
-        ui/MappingPickerDialog.qml
+        ui/theme/Theme.qml
+        ui/common/Panel.qml
+        ui/common/ActionButton.qml
+        ui/common/Tag.qml
+        ui/common/FieldLabel.qml
+        ui/common/ValueText.qml
+        ui/gamepad/InputControlState.qml
+        ui/common/InlineMessage.qml
+        ui/gamepad/ControlDot.qml
+        ui/panels/TopBar.qml
+        ui/panels/DevicesPanel.qml
+        ui/gamepad/GamepadView.qml
+        ui/panels/BindingEditor.qml
+        ui/panels/EventLogPanel.qml
+        ui/panels/StatusBar.qml
+        ui/picker/PickerKey.qml
+        ui/picker/PickerTabs.qml
+        ui/picker/KeyboardPicker.qml
+        ui/picker/MousePicker.qml
+        ui/picker/DInputPicker.qml
+        ui/picker/MappingPickerDialog.qml
 )
 
 # ── 主应用 ──

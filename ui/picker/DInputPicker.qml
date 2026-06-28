@@ -19,16 +19,17 @@ Item {
             text: "提示：选择一个 DInput 控制来作为映射目标"
             color: dinputPicker.theme.accent
             font.pixelSize: 12
-            anchors.right: parent.right
+            anchors.horizontalCenter: parent.horizontalCenter
         }
 
         Row {
+            anchors.horizontalCenter: parent.horizontalCenter
             spacing: 24
 
             // ── 摇杆 / 轴（模拟）──
             Rectangle {
                 width: 340
-                height: 200
+                height: 210
                 radius: 4
                 color: "transparent"
                 border.color: dinputPicker.theme.border
@@ -46,7 +47,6 @@ Item {
                         font.bold: true
                     }
 
-                    // 左摇杆 X / Y
                     Repeater {
                         model: [
                             { axis: "左摇杆 X", neg: "X-", pos: "X+" },
@@ -84,7 +84,7 @@ Item {
             // ── 扳机（轴）──
             Rectangle {
                 width: 200
-                height: 200
+                height: 210
                 radius: 4
                 color: "transparent"
                 border.color: dinputPicker.theme.border
@@ -135,7 +135,7 @@ Item {
             // ── 方向键（D-Pad）──
             Rectangle {
                 width: 180
-                height: 200
+                height: 210
                 radius: 4
                 color: "transparent"
                 border.color: dinputPicker.theme.border
@@ -193,15 +193,16 @@ Item {
 
         // ── 按钮（Button）──
         Rectangle {
-            width: parent.width
-            height: buttonColumn.implicitHeight + 24
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 340 + 200 + 180 + 2 * 24
+            height: dinputButtonColumn.implicitHeight + 24
             radius: 4
             color: "transparent"
             border.color: dinputPicker.theme.border
             border.width: 1
 
             Column {
-                id: buttonColumn
+                id: dinputButtonColumn
 
                 anchors.fill: parent
                 anchors.margins: 12
@@ -215,6 +216,7 @@ Item {
                 }
 
                 Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 4
                     Repeater {
                         model: ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8"]
@@ -227,6 +229,7 @@ Item {
                 }
 
                 Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 4
                     Repeater {
                         model: ["B9", "B10", "B11", "B12", "B13", "B14", "B15", "B16"]
