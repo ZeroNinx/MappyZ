@@ -206,6 +206,7 @@ Window {
         appController: root._appController
         selectedDevice: root.selectedDevice
         selectedControl: root.selectedControl
+        mappingPickerDialog: mappingPicker
         anchors.right: parent.right
         anchors.rightMargin: 12
         anchors.top: devicePanel.top
@@ -216,6 +217,45 @@ Window {
 
         onMappingSelected: function(controlId) {
             root.selectedControl = controlId
+        }
+    }
+
+    // ── 映射选择器弹窗（全窗口 overlay）──
+
+    MappingPickerDialog {
+        id: mappingPicker
+
+        theme: theme
+        appController: root._appController
+
+        onAccepted: function(kind, value) {
+            if (!root._appController) return
+            var success = root._appController.applySelectedBinding(
+                root.selectedControl, kind, value)
+            if (success) {
+                bindingPanel.setPendingAction(kind, value)
+                mappingPicker.close()
+                var saved = root._appController.profileSaveSeverity === "normal"
+                var state = root._appController.runtimeState
+                if (state === "running") {
+                    bindingPanel.applyFeedbackMessage(
+                        saved ? "Applied and saved" : "Applied, save failed",
+                        saved ? theme.success : theme.warning)
+                } else {
+                    bindingPanel.applyFeedbackMessage(
+                        saved ? "Applied and saved — will dispatch after runtime starts"
+                              : "Applied, save failed",
+                        saved ? theme.accent : theme.warning)
+                }
+            } else {
+                mappingPicker.showError(
+                    "Apply failed — check input/action compatibility",
+                    theme.warning)
+            }
+        }
+
+        onCancelled: {
+            mappingPicker.close()
         }
     }
 

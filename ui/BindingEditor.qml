@@ -1,8 +1,6 @@
 import QtQuick
-import QtQuick.Controls.Basic
 
-// 绑定编辑面板：控件选择、Capture、Action 输出和 mapping 列表
-// P6：使用 actionCatalogModel 下拉选择，结构化 action apply
+// 绑定编辑面板：控件选择、Capture、映射选择器和 mapping 列表
 Panel {
     id: bindingEditor
 
@@ -18,17 +16,29 @@ Panel {
     // Clear 按钮触发，父级应清空 selectedControl
     signal clearControlRequested()
 
-    // action 选择状态由 BindingEditor 内部管理
-    property int _selectedActionIndex: 0
+    // 外部注入的映射选择器弹窗引用（由 Main.qml 传入）
+    property var mappingPickerDialog: null
 
-    readonly property string _selectedActionKind: appController && appController.actionCatalogModel
-        ? appController.actionCatalogModel.kindAt(_selectedActionIndex) : ""
+    // action 选择状态：不再依赖 ComboBox index，直接维护 kind/value
+    property string _selectedActionKind: "Keyboard"
+    property string _selectedActionValue: "Space"
+    property string _selectedActionDisplayText: "Keyboard: Space"
 
-    readonly property string _selectedActionValue: appController && appController.actionCatalogModel
-        ? appController.actionCatalogModel.valueAt(_selectedActionIndex) : ""
+    // 通过 catalog 查 displayText 设置 pending action
+    function setPendingAction(kind, value) {
+        if (!appController || !appController.actionCatalogModel) return false
+        var idx = appController.actionCatalogModel.findIndex(kind, value)
+        if (idx < 0) return false
+        _selectedActionKind = kind
+        _selectedActionValue = value
+        _selectedActionDisplayText = appController.actionCatalogModel.displayTextAt(idx)
+        return true
+    }
 
-    readonly property string _selectedActionDisplayText: appController && appController.actionCatalogModel
-        ? appController.actionCatalogModel.displayTextAt(_selectedActionIndex) : ""
+    // 供外部（Main.qml 的 accepted handler）显示 apply 反馈
+    function applyFeedbackMessage(message, tone) {
+        applyFeedback.show(message, tone)
+    }
 
     readonly property bool captureMode: appController
         ? appController.inputCapture.active : false
@@ -44,12 +54,8 @@ Panel {
     readonly property bool _canCapture: appController
         && selectedDevice !== ""
 
-    // Apply 可用条件：设备 + 控件 + 动作 + runtime 就绪 + 非 capture 模式
-    readonly property bool _canApply: _runtimeAllowsApply
-        && selectedDevice !== ""
-        && selectedControl !== ""
-        && _selectedActionKind !== ""
-        && !captureMode
+    // Choose 可用条件：已选控件
+    readonly property bool _canChoose: selectedControl !== ""
 
     // 当前最优先的禁用原因提示（空字符串表示无禁用）
     readonly property string _disableHint: {
@@ -136,92 +142,26 @@ Panel {
                 text: "Action output"
             }
 
-            // action 选择下拉
-            ComboBox {
-                id: actionComboBox
-
+            // 只读选择框：显示当前 pending action
+            Rectangle {
                 width: parent.width
                 height: 44
+                radius: 4
+                color: "#1f1f1f"
+                border.color: bindingEditor.theme.border
 
-                model: bindingEditor.appController
-                    ? bindingEditor.appController.actionCatalogModel : null
-
-                textRole: "displayText"
-                currentIndex: bindingEditor._selectedActionIndex
-
-                onActivated: function(index) {
-                    bindingEditor._selectedActionIndex = index
-                }
-
-                contentItem: Text {
-                    leftPadding: 10
-                    rightPadding: actionComboBox.indicator.width + 10
-                    text: actionComboBox.displayText
-                    color: bindingEditor.theme.text
-                    font.pixelSize: 13
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
-
-                background: Rectangle {
-                    radius: 4
-                    color: "#1f1f1f"
-                    border.color: actionComboBox.pressed
-                        ? bindingEditor.theme.accent : bindingEditor.theme.border
-                }
-
-                indicator: Text {
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
                     anchors.right: parent.right
                     anchors.rightMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "▼"
-                    color: bindingEditor.theme.muted
-                    font.pixelSize: 10
-                }
-
-                popup: Popup {
-                    y: actionComboBox.height
-                    width: actionComboBox.width
-                    implicitHeight: Math.min(contentItem.implicitHeight + 2, 300)
-                    padding: 1
-
-                    background: Rectangle {
-                        color: "#1f1f1f"
-                        border.color: bindingEditor.theme.border
-                        radius: 4
-                    }
-
-                    contentItem: ListView {
-                        clip: true
-                        implicitHeight: contentHeight
-                        model: actionComboBox.popup.visible
-                            ? actionComboBox.delegateModel : null
-                        currentIndex: actionComboBox.highlightedIndex
-                        ScrollBar.vertical: ScrollBar {}
-                    }
-                }
-
-                delegate: ItemDelegate {
-                    required property int index
-                    required property string displayText
-
-                    width: actionComboBox.width
-                    height: 36
-
-                    contentItem: Text {
-                        text: displayText
-                        color: highlighted
-                            ? bindingEditor.theme.accent : bindingEditor.theme.text
-                        font.pixelSize: 13
-                        verticalAlignment: Text.AlignVCenter
-                        leftPadding: 10
-                    }
-
-                    highlighted: actionComboBox.highlightedIndex === index
-
-                    background: Rectangle {
-                        color: highlighted ? "#2a2a2a" : "transparent"
-                    }
+                    text: bindingEditor._selectedActionDisplayText !== ""
+                        ? bindingEditor._selectedActionDisplayText : "未选择"
+                    color: bindingEditor._selectedActionDisplayText !== ""
+                        ? bindingEditor.theme.text : bindingEditor.theme.muted
+                    font.pixelSize: 13
+                    elide: Text.ElideRight
                 }
             }
 
@@ -230,33 +170,13 @@ Panel {
 
                 ActionButton {
                     theme: bindingEditor.theme
-                    label: "Apply"
-                    primary: true
-                    enabled: bindingEditor._canApply
+                    label: "Choose..."
+                    enabled: bindingEditor._canChoose
                     onClicked: {
-                        if (!bindingEditor.appController) return
-                        var success = bindingEditor.appController.applySelectedBinding(
+                        mappingPickerDialog.openFor(
                             bindingEditor.selectedControl,
                             bindingEditor._selectedActionKind,
                             bindingEditor._selectedActionValue)
-                        if (success) {
-                            var saved = bindingEditor.appController.profileSaveSeverity === "normal"
-                            var state = bindingEditor.appController.runtimeState
-                            if (state === "running") {
-                                applyFeedback.show(
-                                    saved ? "Applied and saved" : "Applied, save failed",
-                                    saved ? bindingEditor.theme.success : bindingEditor.theme.warning)
-                            } else {
-                                applyFeedback.show(
-                                    saved ? "Applied and saved — will dispatch after runtime starts"
-                                          : "Applied, save failed",
-                                    saved ? bindingEditor.theme.accent : bindingEditor.theme.warning)
-                            }
-                        } else {
-                            applyFeedback.show(
-                                "Apply failed",
-                                bindingEditor.theme.warning)
-                        }
                     }
                 }
             }
@@ -322,13 +242,7 @@ Panel {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (!bindingEditor.appController) return
-                            var catalog = bindingEditor.appController.actionCatalogModel
-                            var idx = catalog.findIndex(actionKind, actionValue)
-                            if (idx >= 0) {
-                                bindingEditor._selectedActionIndex = idx
-                                actionComboBox.currentIndex = idx
-                            }
+                            bindingEditor.setPendingAction(actionKind, actionValue)
                             bindingEditor.mappingSelected(input)
                         }
                     }

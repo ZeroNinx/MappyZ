@@ -243,6 +243,12 @@ set_source_files_properties(ui/GamepadView.qml PROPERTIES QT_RESOURCE_ALIAS Game
 set_source_files_properties(ui/BindingEditor.qml PROPERTIES QT_RESOURCE_ALIAS BindingEditor.qml)
 set_source_files_properties(ui/EventLogPanel.qml PROPERTIES QT_RESOURCE_ALIAS EventLogPanel.qml)
 set_source_files_properties(ui/StatusBar.qml PROPERTIES QT_RESOURCE_ALIAS StatusBar.qml)
+set_source_files_properties(ui/PickerKey.qml PROPERTIES QT_RESOURCE_ALIAS PickerKey.qml)
+set_source_files_properties(ui/PickerTabs.qml PROPERTIES QT_RESOURCE_ALIAS PickerTabs.qml)
+set_source_files_properties(ui/KeyboardPicker.qml PROPERTIES QT_RESOURCE_ALIAS KeyboardPicker.qml)
+set_source_files_properties(ui/MousePicker.qml PROPERTIES QT_RESOURCE_ALIAS MousePicker.qml)
+set_source_files_properties(ui/DInputPicker.qml PROPERTIES QT_RESOURCE_ALIAS DInputPicker.qml)
+set_source_files_properties(ui/MappingPickerDialog.qml PROPERTIES QT_RESOURCE_ALIAS MappingPickerDialog.qml)
 
 qt_add_qml_module(MappyZQml
     URI MappyZUI
@@ -264,6 +270,12 @@ qt_add_qml_module(MappyZQml
         ui/BindingEditor.qml
         ui/EventLogPanel.qml
         ui/StatusBar.qml
+        ui/PickerKey.qml
+        ui/PickerTabs.qml
+        ui/KeyboardPicker.qml
+        ui/MousePicker.qml
+        ui/DInputPicker.qml
+        ui/MappingPickerDialog.qml
 )
 
 # ── 主应用 ──
