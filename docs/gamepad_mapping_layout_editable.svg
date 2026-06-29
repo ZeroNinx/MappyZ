@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1672" height="941" viewBox="0 0 1672 941">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#111820"/>
+    <stop offset="1" stop-color="#0b1117"/>
+  </linearGradient>
+  <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#111922"/>
+    <stop offset="1" stop-color="#0c1219"/>
+  </linearGradient>
+  <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#111821"/>
+    <stop offset="1" stop-color="#0a0f15"/>
+  </linearGradient>
+  <filter id="softGlow" x="-80%" y="-80%" width="260%" height="260%">
+    <feGaussianBlur stdDeviation="5" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="greenGlow" x="-120%" y="-120%" width="340%" height="340%">
+    <feGaussianBlur stdDeviation="7" result="blur"/>
+    <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.3  0 0 0 0 1  0 0 0 0 0.35  0 0 0 .9 0" result="glow"/>
+    <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <style>
+    .muted { fill:#a9b2bd; }
+    .accent { fill:#7fc9ff; }
+    .small { font-size:14px; }
+  </style>
+</defs>
+<rect width="1672" height="941" fill="url(#bg)"/>
+
+<rect x="16" y="14" width="1160" height="914" rx="10" fill="url(#panel)" stroke="#31404d" stroke-width="1"/>
+<rect x="1192" y="14" width="464" height="914" rx="10" fill="url(#panel)" stroke="#31404d" stroke-width="1"/>
+<text x="40" y="63" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" fill="#e3e7ec" text-anchor="start">Gamepad Mapping View</text>
+<line x1="16" y1="80" x2="1176" y2="80" stroke="#29333f" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<text x="1216" y="63" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" fill="#e3e7ec" text-anchor="start">Inspector</text>
+<line x1="1192" y1="80" x2="1656" y2="80" stroke="#29333f" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<rect x="78" y="129" width="240" height="144" rx="10" fill="#101821" stroke="#34404b" stroke-width="1.1"/>
+<text x="198.0" y="157" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="#e7ecf2" text-anchor="middle">LB / LT</text>
+<rect x="92" y="171" width="212" height="86" rx="5" fill="#111923" stroke="#2c3844" stroke-width="1"/>
+<text x="106" y="199" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">LB</text>
+<text x="290" y="199" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">Q</text>
+<line x1="92" y1="214" x2="304" y2="214" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="106" y="242" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">LT</text>
+<text x="290" y="242" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#94a0ad" text-anchor="end" style="font-style:italic">Unassigned</text>
+<rect x="456" y="100" width="260" height="187" rx="10" fill="#101821" stroke="#34404b" stroke-width="1.1"/>
+<text x="586.0" y="128" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="#e7ecf2" text-anchor="middle">Back / Guide / Start</text>
+<rect x="470" y="142" width="232" height="129" rx="5" fill="#111923" stroke="#2c3844" stroke-width="1"/>
+<text x="484" y="170" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Back</text>
+<text x="688" y="170" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">Esc</text>
+<line x1="470" y1="185" x2="702" y2="185" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="484" y="213" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Guide</text>
+<text x="688" y="213" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#94a0ad" text-anchor="end" style="font-style:italic">Unassigned</text>
+<line x1="470" y1="228" x2="702" y2="228" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="484" y="256" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Start</text>
+<text x="688" y="256" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">Enter</text>
+<rect x="846" y="129" width="240" height="144" rx="10" fill="#101821" stroke="#34404b" stroke-width="1.1"/>
+<text x="966.0" y="157" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="#e7ecf2" text-anchor="middle">RB / RT</text>
+<rect x="860" y="171" width="212" height="86" rx="5" fill="#111923" stroke="#2c3844" stroke-width="1"/>
+<text x="874" y="199" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">RB</text>
+<text x="1058" y="199" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">E</text>
+<line x1="860" y1="214" x2="1072" y2="214" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="874" y="242" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">RT</text>
+<text x="1058" y="242" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">Mouse L</text>
+<rect x="36" y="392" width="200" height="230" rx="10" fill="#101821" stroke="#34404b" stroke-width="1.1"/>
+<text x="136.0" y="420" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="#e7ecf2" text-anchor="middle">Left Stick</text>
+<rect x="50" y="434" width="172" height="172" rx="5" fill="#111923" stroke="#2c3844" stroke-width="1"/>
+<text x="64" y="462" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Up</text>
+<text x="208" y="462" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">W</text>
+<line x1="50" y1="477" x2="222" y2="477" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="64" y="505" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Left</text>
+<text x="208" y="505" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">A</text>
+<line x1="50" y1="520" x2="222" y2="520" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="64" y="548" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Down</text>
+<text x="208" y="548" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">S</text>
+<line x1="50" y1="563" x2="222" y2="563" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="64" y="591" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Right</text>
+<text x="208" y="591" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">D</text>
+<rect x="378" y="656" width="260" height="230" rx="10" fill="#101821" stroke="#34404b" stroke-width="1.1"/>
+<text x="508.0" y="684" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="#e7ecf2" text-anchor="middle">D-Pad</text>
+<rect x="392" y="698" width="232" height="172" rx="5" fill="#111923" stroke="#2c3844" stroke-width="1"/>
+<text x="406" y="726" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Up</text>
+<text x="610" y="726" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">ArrowUp</text>
+<line x1="392" y1="741" x2="624" y2="741" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="406" y="769" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Down</text>
+<text x="610" y="769" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">ArrowDown</text>
+<line x1="392" y1="784" x2="624" y2="784" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="406" y="812" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Left</text>
+<text x="610" y="812" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">ArrowLeft</text>
+<line x1="392" y1="827" x2="624" y2="827" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="406" y="855" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Right</text>
+<text x="610" y="855" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">ArrowRight</text>
+<rect x="718" y="665" width="242" height="230" rx="10" fill="#101821" stroke="#34404b" stroke-width="1.1"/>
+<text x="839.0" y="693" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="#e7ecf2" text-anchor="middle">Right Stick</text>
+<rect x="732" y="707" width="214" height="172" rx="5" fill="#111923" stroke="#2c3844" stroke-width="1"/>
+<text x="746" y="735" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Up</text>
+<text x="932" y="735" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">Mouse Up</text>
+<line x1="732" y1="750" x2="946" y2="750" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="746" y="778" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Down</text>
+<text x="932" y="778" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">Mouse Down</text>
+<line x1="732" y1="793" x2="946" y2="793" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="746" y="821" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Left</text>
+<text x="932" y="821" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">Mouse Left</text>
+<line x1="732" y1="836" x2="946" y2="836" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="746" y="864" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Right</text>
+<text x="932" y="864" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">Mouse Right</text>
+<rect x="944" y="392" width="200" height="230" rx="10" fill="#101821" stroke="#34404b" stroke-width="1.1"/>
+<text x="1044.0" y="420" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="700" fill="#e7ecf2" text-anchor="middle">ABXY</text>
+<rect x="958" y="434" width="172" height="172" rx="5" fill="#111923" stroke="#2c3844" stroke-width="1"/>
+<rect x="958" y="434" width="172" height="43" rx="3" fill="#132333" stroke="#1595ff" stroke-width="1.6"/>
+<text x="972" y="462" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">A</text>
+<text x="1116" y="462" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">Space</text>
+<line x1="958" y1="477" x2="1130" y2="477" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="972" y="505" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">B</text>
+<text x="1116" y="505" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">K</text>
+<line x1="958" y1="520" x2="1130" y2="520" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="972" y="548" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">X</text>
+<text x="1116" y="548" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">J</text>
+<line x1="958" y1="563" x2="1130" y2="563" stroke="#2a343e" stroke-width="1" opacity="0.9" stroke-linecap="round"/>
+<text x="972" y="591" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#e9edf3" text-anchor="start">Y</text>
+<text x="1116" y="591" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#7fc9ff" text-anchor="end">I</text>
+<polyline points="318,210 380,210 380,307" fill="none" stroke="#248bd7" stroke-width="2" opacity="1" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="586,287 586,365" fill="none" stroke="#248bd7" stroke-width="2" opacity="1" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="846,210 792,210 792,307" fill="none" stroke="#248bd7" stroke-width="2" opacity="1" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="236,502 340,502 372,453" fill="none" stroke="#248bd7" stroke-width="2" opacity="1" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="508,656 508,589" fill="none" stroke="#248bd7" stroke-width="2" opacity="1" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="760,665 700,557" fill="none" stroke="#248bd7" stroke-width="2" opacity="1" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="944,459 805,459" fill="none" stroke="#248bd7" stroke-width="2" opacity="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="318" cy="210" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="380" cy="307" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="586" cy="287" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="586" cy="365" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="846" cy="210" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="792" cy="307" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="236" cy="502" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="372" cy="453" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="508" cy="656" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="508" cy="589" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="760" cy="665" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="700" cy="557" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="944" cy="459" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<circle cx="805" cy="459" r="4" fill="#248bd7" stroke="#248bd7" stroke-width="1" opacity="1"/>
+<path d="M352 315 C321 315 299 355 292 429 C284 520 289 628 328 657 C356 678 388 651 420 622 C453 592 500 594 559 596 C622 598 668 592 716 625 C751 650 784 679 834 655 C872 636 881 539 872 444 C865 367 842 316 789 315 C743 314 727 340 681 341 L475 341 C426 340 405 314 352 315 Z" fill="#0c141b" stroke="#7b8795" stroke-width="1.7" opacity="0.9" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M356 315 C362 301 404 301 444 315" fill="none" stroke="#8995a3" stroke-width="1.6" opacity="0.9" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M730 315 C756 301 806 301 820 315" fill="none" stroke="#8995a3" stroke-width="1.6" opacity="0.9" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M348 305 C374 294 422 298 445 309" fill="none" stroke="#596676" stroke-width="1.2" opacity="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M724 309 C752 296 800 295 828 306" fill="none" stroke="#596676" stroke-width="1.2" opacity="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="404" cy="414" r="48" fill="#0e151d" stroke="#7d8998" stroke-width="1.4" opacity="1"/>
+<circle cx="404" cy="414" r="34" fill="#0b1016" stroke="#9aa5b2" stroke-width="1.2" opacity="1"/>
+<circle cx="490" cy="524" r="62" fill="none" stroke="#3e4a56" stroke-width="1" opacity="0.55"/>
+<path d="M474 477 L506 477 L506 508 L538 508 L538 540 L506 540 L506 572 L474 572 L474 540 L442 540 L442 508 L474 508 Z" fill="#111a23" stroke="#8995a3" stroke-width="1.4" opacity="1" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="490" y="498" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#c4cbd3" text-anchor="middle">△</text>
+<text x="457" y="529" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#c4cbd3" text-anchor="middle">◁</text>
+<text x="522" y="529" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#c4cbd3" text-anchor="middle">▷</text>
+<text x="490" y="560" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500" fill="#c4cbd3" text-anchor="middle">▽</text>
+<circle cx="672" cy="520" r="49" fill="#0e151d" stroke="#7d8998" stroke-width="1.4" opacity="1"/>
+<circle cx="672" cy="520" r="34" fill="#0b1016" stroke="#9aa5b2" stroke-width="1.2" opacity="1"/>
+<circle cx="525" cy="410" r="18" fill="#101821" stroke="#7e8997" stroke-width="1.2" opacity="1"/>
+<text x="525" y="416" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="20" font-weight="500" fill="#bfc8d1" text-anchor="middle">□</text>
+<circle cx="586" cy="407" r="32" fill="#111a22" stroke="#82909e" stroke-width="1.4" opacity="1"/>
+<text x="586" y="418" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="36" font-weight="700" fill="#8c98a5" text-anchor="middle" opacity="0.75">X</text>
+<circle cx="650" cy="410" r="18" fill="#101821" stroke="#7e8997" stroke-width="1.2" opacity="1"/>
+<text x="650" y="416" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="20" font-weight="500" fill="#bfc8d1" text-anchor="middle">☰</text>
+<circle cx="765" cy="378" r="24" fill="#111821" stroke="#7e8997" stroke-width="1.2" opacity="1"/>
+<text x="765" y="385" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="20" font-weight="600" fill="#e7edf4" text-anchor="middle">Y</text>
+<circle cx="723" cy="423" r="24" fill="#111821" stroke="#7e8997" stroke-width="1.2" opacity="1"/>
+<text x="723" y="430" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="20" font-weight="600" fill="#e7edf4" text-anchor="middle">X</text>
+<circle cx="810" cy="423" r="24" fill="#111821" stroke="#7e8997" stroke-width="1.2" opacity="1"/>
+<text x="810" y="430" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="20" font-weight="600" fill="#e7edf4" text-anchor="middle">B</text>
+<circle cx="765" cy="466" r="27" fill="#1a2d20" stroke="#76ff7c" stroke-width="2" opacity="1" filter="url(#greenGlow)"/>
+<text x="765" y="474" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" font-weight="700" fill="#e9fff0" text-anchor="middle">A</text>
+<text x="38" y="884" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#8f9aaa" text-anchor="start">Pressing a controller input lights the wireframe button; clicking any mapping row starts capture.</text>
+<text x="1216" y="128" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="400" fill="#aeb7c2" text-anchor="start">Selected control</text>
+<rect x="1216" y="148" width="420" height="62" rx="6" fill="url(#field)" stroke="#32404d" stroke-width="1"/>
+<text x="1238" y="188" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" fill="#f0f3f6" text-anchor="start">button_south (A Button)</text>
+<text x="1216" y="261" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="400" fill="#aeb7c2" text-anchor="start">Action output</text>
+<rect x="1216" y="284" width="420" height="64" rx="6" fill="url(#field)" stroke="#32404d" stroke-width="1"/>
+<text x="1238" y="326" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="26" font-weight="700" fill="#f2f4f7" text-anchor="start">Keyboard: Space</text>
+<rect x="1216" y="376" width="234" height="54" rx="6" fill="#064f8a" stroke="#0e98ff" stroke-width="1.1"/>
+<text x="1333" y="411" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" fill="#f3fbff" text-anchor="middle">Capture Input</text>
+<rect x="1472" y="376" width="164" height="54" rx="6" fill="#151c24" stroke="#3a4550" stroke-width="1.1"/>
+<text x="1554" y="411" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="21" font-weight="500" fill="#e7ebef" text-anchor="middle">Clear</text>
+<line x1="1216" y1="466" x2="1636" y2="466" stroke="#2f3945" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<text x="1216" y="523" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" fill="#e3e8ee" text-anchor="start">Advanced</text>
+<text x="1620" y="520" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" fill="#e3e8ee" text-anchor="middle">⌃</text>
+<text x="1216" y="585" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="400" fill="#b5bec9" text-anchor="start">Mode</text>
+<text x="1580" y="585" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="21" font-weight="400" fill="#e4e8ed" text-anchor="end">Press</text>
+<text x="1216" y="643" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="400" fill="#b5bec9" text-anchor="start">Turbo</text>
+<text x="1580" y="643" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="21" font-weight="400" fill="#e4e8ed" text-anchor="end">Off</text>
+<text x="1216" y="701" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="400" fill="#b5bec9" text-anchor="start">Hold action</text>
+<text x="1580" y="701" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="21" font-weight="400" fill="#e4e8ed" text-anchor="end">None</text>
+<text x="1216" y="759" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="400" fill="#b5bec9" text-anchor="start">Conflict</text>
+<text x="1580" y="759" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="21" font-weight="400" fill="#e4e8ed" text-anchor="end">None</text>
+<line x1="1216" y1="806" x2="1636" y2="806" stroke="#2f3945" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<circle cx="1228" cy="850" r="11" fill="none" stroke="#0e98ff" stroke-width="1.5" opacity="1"/>
+<text x="1228" y="855" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#7fc9ff" text-anchor="middle">i</text>
+<text x="1258" y="855" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="400" fill="#bbc4cf" text-anchor="start">Click a mapping row to capture a new input.</text>
+</svg>

@@ -41,7 +41,6 @@ struct SRuntimeHostStartOptions
 {
     bool bAttachEventQueue = true;
     bool bStartInputBackend = true;
-    bool bEnableMapping = true;
 };
 
 class ZRuntimeHost final
@@ -56,7 +55,7 @@ public:
     ZRuntimeHost(ZRuntimeHost&&) = delete;
     ZRuntimeHost& operator=(ZRuntimeHost&&) = delete;
 
-    // 启动运行时：按选项 attach event queue、启动 input backend、设置 mapping enabled
+    // 启动运行时：按选项 attach event queue、启动 input backend
     NODISCARD TResult<void> Start(SRuntimeHostStartOptions Options = {});
 
     // 停止运行时：停止 input backend、detach event queue。幂等操作。
@@ -76,12 +75,6 @@ public:
 
     // 返回当前 profile 快照拷贝
     NODISCARD SMappingProfile GetProfileSnapshot() const;
-
-    // 设置是否启用映射
-    void SetMappingEnabled(bool bEnabled);
-
-    // 查询是否启用映射
-    NODISCARD bool IsMappingEnabled() const noexcept;
 
     // ── 内部组件访问器（测试和 UI bridge 使用，不转移所有权） ──
 

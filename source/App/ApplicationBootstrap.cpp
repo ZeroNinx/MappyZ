@@ -180,7 +180,6 @@ TResult<void> ZApplicationBootstrap::StartRuntime()
     auto Result = RuntimeHost->Start({
         .bAttachEventQueue = true,
         .bStartInputBackend = CachedOptions.bStartInputBackend,
-        .bEnableMapping = CachedOptions.bEnableMapping,
     });
 
     if (!Result)

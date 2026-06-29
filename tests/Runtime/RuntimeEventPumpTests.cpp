@@ -347,29 +347,6 @@ TEST_CASE("RuntimeEventPump invalid event does not block subsequent valid events
     REQUIRE(Context.OutputBackend.GetActionCount() == 1);
 }
 
-// ── session disabled ──
-
-TEST_CASE("RuntimeEventPump session disabled counts input but not mapped",
-    "[Runtime][RuntimeEventPump]")
-{
-    SPumpTestContext Context;
-    Context.Session.ReplaceProfile(MakeTestProfile({
-        MakeButtonToKeyRule("r1", ControlId::ButtonSouth, "Space"),
-    }));
-    Context.Session.SetEnabled(false);
-
-    Context.InputBackend.EmitInput(
-        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
-
-    auto Summary = Context.Pump.PumpOnce();
-
-    REQUIRE(Summary.InputEventCount == 1);
-    REQUIRE(Summary.MappedInputCount == 0);
-    REQUIRE(Summary.DispatchedInputCount == 0);
-    REQUIRE(Summary.FailedDispatchInputCount == 0);
-    REQUIRE(Context.OutputBackend.GetActionCount() == 0);
-}
-
 // ── dispatch 失败 ──
 
 TEST_CASE("RuntimeEventPump dispatch failure increments FailedDispatchInputCount",

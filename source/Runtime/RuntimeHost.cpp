@@ -62,8 +62,6 @@ TResult<void> ZRuntimeHost::Start(SRuntimeHostStartOptions Options)
         bDidStartInputBackend = true;
     }
 
-    Session.SetEnabled(Options.bEnableMapping);
-
     HostState = ERuntimeHostState::Running;
     HostMessage = "running";
     return TResult<void>::Ok();
@@ -122,16 +120,6 @@ void ZRuntimeHost::ReplaceProfile(SMappingProfile Profile)
 SMappingProfile ZRuntimeHost::GetProfileSnapshot() const
 {
     return Session.GetProfileSnapshot();
-}
-
-void ZRuntimeHost::SetMappingEnabled(bool bEnabled)
-{
-    Session.SetEnabled(bEnabled);
-}
-
-bool ZRuntimeHost::IsMappingEnabled() const noexcept
-{
-    return Session.IsEnabled();
 }
 
 ZBackendEventQueue& ZRuntimeHost::GetEventQueue()

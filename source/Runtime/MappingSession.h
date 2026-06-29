@@ -54,19 +54,13 @@ public:
     // 返回当前 profile 快照拷贝
     NODISCARD SMappingProfile GetProfileSnapshot() const;
 
-    // 查询是否启用映射
-    NODISCARD bool IsEnabled() const noexcept;
-
-    // 设置是否启用映射
-    void SetEnabled(bool bEnabled) noexcept;
-
     // 返回最近处理记录的快照拷贝
     NODISCARD TVector<SMappingSessionRecord> ListRecentRecords() const;
 
     // 返回当前记录数量
     NODISCARD uint32 GetRecentRecordCount() const noexcept;
 
-    // 清空处理记录，不改变 enabled 状态或 profile
+    // 清空处理记录，不改变 profile
     void ClearRecentRecords();
 
 private:
@@ -75,7 +69,6 @@ private:
     ZActionDispatcher& ActionDispatcher;
     ZMappingEngine Engine;
     SMappingProfile ActiveProfile;
-    bool bSessionEnabled = true;
     TVector<SMappingSessionRecord> RecentRecords;
 };
 

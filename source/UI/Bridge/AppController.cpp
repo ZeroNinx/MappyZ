@@ -83,35 +83,6 @@ QString ZAppController::OutputState() const
     return OutputStateToString(Bootstrap.GetStatus().RuntimeStatus.OutputStatus.State);
 }
 
-bool ZAppController::IsMappingEnabled() const
-{
-    return bCachedMappingEnabled;
-}
-
-void ZAppController::SetMappingEnabled(bool bEnabled)
-{
-    if (bCachedMappingEnabled == bEnabled)
-    {
-        return;
-    }
-
-    bCachedMappingEnabled = bEnabled;
-
-    // 已 initialize 时透传到 host
-    auto Status = Bootstrap.GetStatus();
-    if (Status.State == EApplicationBootstrapState::Ready
-        || Status.State == EApplicationBootstrapState::Running)
-    {
-        Bootstrap.GetRuntimeHost().SetMappingEnabled(bEnabled);
-    }
-
-    AppendLog(QStringLiteral("Info"),
-        bEnabled ? QStringLiteral("Mapping enabled")
-                 : QStringLiteral("Mapping disabled"));
-
-    emit mappingEnabledChanged();
-}
-
 bool ZAppController::IsPumpTimerRunning() const
 {
     return PumpTimer.isActive();
@@ -277,12 +248,6 @@ QString ZAppController::RuntimeDisplayText() const
     }
 }
 
-QString ZAppController::RemapDisplayText() const
-{
-    return bCachedMappingEnabled
-        ? QStringLiteral("Active") : QStringLiteral("Paused");
-}
-
 // ── invokable ──
 
 bool ZAppController::initializeRuntime()
@@ -293,9 +258,7 @@ bool ZAppController::initializeRuntime()
         InputStateModelInstance.clear();
     }
 
-    auto Result = Bootstrap.Initialize({
-        .bEnableMapping = bCachedMappingEnabled,
-    });
+    auto Result = Bootstrap.Initialize();
 
     if (!Result)
     {
@@ -304,9 +267,6 @@ bool ZAppController::initializeRuntime()
         EmitRuntimeError(QStringLiteral("Initialize failed: %1").arg(Message));
         return false;
     }
-
-    // 应用缓存的 mapping enabled 到 host，保证 stopped host 与 UI 状态一致
-    Bootstrap.GetRuntimeHost().SetMappingEnabled(bCachedMappingEnabled);
 
     RegisterEventHandlers();
 
@@ -340,10 +300,6 @@ bool ZAppController::startRuntime()
         EmitRuntimeError(QStringLiteral("Start failed: %1").arg(Message));
         return false;
     }
-
-    // 覆盖 Host.Start() 中 Session.SetEnabled() 的默认值，
-    // 确保 initialize 与 start 之间用户切换 mapping enabled 不丢失
-    Bootstrap.GetRuntimeHost().SetMappingEnabled(bCachedMappingEnabled);
 
     // start 后重新刷新设备快照，覆盖真实后端 Start() 后才完成枚举的场景
     RefreshDeviceModelFromBootstrap();

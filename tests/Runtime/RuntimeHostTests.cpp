@@ -292,33 +292,6 @@ TEST_CASE("RuntimeHost ReplaceProfile updates active profile snapshot",
     REQUIRE(Snapshot.Rules.size() == 1);
 }
 
-// ── SetMappingEnabled(false) ──
-
-TEST_CASE("RuntimeHost SetMappingEnabled false prevents action dispatch",
-    "[Runtime][RuntimeHost]")
-{
-    ZFakeInputBackend InputBackend;
-    ZNullOutputBackend OutputBackend;
-    ZRuntimeHost Host(InputBackend, OutputBackend);
-
-    Host.ReplaceProfile(MakeTestProfile({
-        MakeButtonToKeyRule("r1", ControlId::ButtonSouth, "Space"),
-    }));
-    (void)Host.Start();
-    Host.SetMappingEnabled(false);
-
-    REQUIRE_FALSE(Host.IsMappingEnabled());
-
-    InputBackend.EmitInput(
-        MakeButtonEvent("dev_1", ControlId::ButtonSouth, EInputEventType::Pressed));
-
-    auto Summary = Host.PumpOnce();
-
-    REQUIRE(Summary.InputEventCount == 1);
-    REQUIRE(Summary.MappedInputCount == 0);
-    REQUIRE(OutputBackend.GetActionCount() == 0);
-}
-
 // ── output backend Error 时 host 仍 Running ──
 
 TEST_CASE("RuntimeHost stays Running when output backend has error",

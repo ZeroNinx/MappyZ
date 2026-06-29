@@ -1,6 +1,6 @@
 import QtQuick
 
-// 底部状态栏：显示设备数、运行时状态、映射状态、输出状态和保存状态
+// 底部状态栏：显示设备数、运行时状态、输出状态和保存状态
 Rectangle {
     id: statusBar
 
@@ -18,7 +18,6 @@ Rectangle {
         text: statusBar.appController
             ? ("Devices: " + statusBar.deviceCount
                 + " | Runtime: " + statusBar.appController.runtimeDisplayText
-                + " | Remap: " + statusBar.appController.remapDisplayText
                 + " | Output: " + statusBar.appController.outputDisplayText
                 + " | Profile: " + statusBar.appController.profileSaveDisplayText)
             : "Devices: 0 | Runtime: Unknown"

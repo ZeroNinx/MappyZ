@@ -1,6 +1,6 @@
 import QtQuick
 
-// 顶部工具栏：产品名、运行时副标题、Remap 开关、Profile 标签和保存入口
+// 顶部工具栏：产品名、运行时副标题、Profile 标签
 Rectangle {
     id: topBar
 
@@ -47,23 +47,6 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 10
 
-        ActionButton {
-            theme: topBar.theme
-            label: topBar.appController && topBar.appController.mappingEnabled
-                ? "Remap Active" : "Remap Paused"
-            primary: topBar.appController ? topBar.appController.mappingEnabled : false
-            onClicked: {
-                if (!topBar.appController) return
-                topBar.appController.mappingEnabled = !topBar.appController.mappingEnabled
-                remapFeedback.show(
-                    topBar.appController.mappingEnabled
-                        ? "Mapped output dispatch enabled"
-                        : "Mapped output dispatch paused",
-                    topBar.appController.mappingEnabled
-                        ? topBar.theme.success : topBar.theme.muted)
-            }
-        }
-
         Tag {
             theme: topBar.theme
             label: "Profile: " + (topBar.appController
@@ -76,26 +59,5 @@ Rectangle {
                 return "#3c3c3c"
             }
         }
-
-        ActionButton {
-            theme: topBar.theme
-            label: "Save Profile"
-            onClicked: {
-                if (topBar.appController)
-                    topBar.appController.saveActiveProfile()
-            }
-        }
-    }
-
-    // Remap 切换操作反馈
-    InlineMessage {
-        id: remapFeedback
-
-        theme: topBar.theme
-        width: topBarActions.width
-        anchors.right: parent.right
-        anchors.rightMargin: 16
-        anchors.top: topBarActions.bottom
-        anchors.topMargin: 4
     }
 }

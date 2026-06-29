@@ -32,8 +32,6 @@ struct SApplicationBootstrapOptions
     // 是否在 StartRuntime 时启动输入后端
     bool bStartInputBackend = true;
 
-    // 是否在 StartRuntime 时启用映射
-    bool bEnableMapping = true;
 };
 
 // 应用层 bootstrap 状态
@@ -74,7 +72,7 @@ public:
     // Created/Error 状态下执行完整 setup；Ready/Running 状态下幂等返回 Ok。
     NODISCARD TResult<void> Initialize(SApplicationBootstrapOptions Options = {});
 
-    // 启动运行时：调用 RuntimeHost::Start()，透传 options。
+    // 启动运行时：调用 RuntimeHost::Start()。
     // 要求已 Initialize()，否则返回错误。
     NODISCARD TResult<void> StartRuntime();
 

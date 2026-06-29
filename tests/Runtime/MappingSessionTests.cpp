@@ -1,6 +1,6 @@
 // ZMappingSession 单元测试。
 // 验证映射会话的完整链路：输入事件 → MappingEngine → ActionDispatcher → NullOutputBackend，
-// 以及 enabled/disabled、profile 快照隔离、记录管理和容量上限。
+// 以及 profile 快照隔离、记录管理和容量上限。
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -51,13 +51,12 @@ static SMappingProfile MakeTestProfile(TVector<SMappingRule> Rules)
 
 // ── 默认状态 ──
 
-TEST_CASE("MappingSession default is enabled", "[Runtime][MappingSession]")
+TEST_CASE("MappingSession default has no recent records", "[Runtime][MappingSession]")
 {
     ZNullOutputBackend Backend;
     ZActionDispatcher Dispatcher(Backend);
     ZMappingSession Session(Dispatcher);
 
-    REQUIRE(Session.IsEnabled() == true);
     REQUIRE(Session.GetRecentRecordCount() == 0);
 }
 
@@ -151,55 +150,6 @@ TEST_CASE("MappingSession GetProfileSnapshot returns copy", "[Runtime][MappingSe
     REQUIRE(Result.ActionCount == 1);
 }
 
-// ── disabled 状态 ──
-
-TEST_CASE("MappingSession disabled does not map or dispatch", "[Runtime][MappingSession]")
-{
-    ZNullOutputBackend Backend;
-    ZActionDispatcher Dispatcher(Backend);
-    ZMappingSession Session(Dispatcher);
-
-    Session.ReplaceProfile(MakeTestProfile({
-        MakeButtonToKeyRule("r1", ControlId::ButtonSouth, "Space"),
-    }));
-    Session.SetEnabled(false);
-
-    REQUIRE(Session.IsEnabled() == false);
-
-    auto Result = Session.HandleInputEvent(
-        MakeButtonEvent(ControlId::ButtonSouth, EInputEventType::Pressed));
-
-    REQUIRE(Result.ActionCount == 0);
-    REQUIRE(Result.bMapped == false);
-    REQUIRE(Result.bDispatched == false);
-    REQUIRE(Result.Message.find("disabled") != StdString::npos);
-    REQUIRE(Backend.GetActionCount() == 0);
-}
-
-TEST_CASE("MappingSession re-enable restores mapping", "[Runtime][MappingSession]")
-{
-    ZNullOutputBackend Backend;
-    ZActionDispatcher Dispatcher(Backend);
-    ZMappingSession Session(Dispatcher);
-
-    Session.ReplaceProfile(MakeTestProfile({
-        MakeButtonToKeyRule("r1", ControlId::ButtonSouth, "Space"),
-    }));
-
-    Session.SetEnabled(false);
-    (void)Session.HandleInputEvent(
-        MakeButtonEvent(ControlId::ButtonSouth, EInputEventType::Pressed));
-    REQUIRE(Backend.GetActionCount() == 0);
-
-    Session.SetEnabled(true);
-    auto Result = Session.HandleInputEvent(
-        MakeButtonEvent(ControlId::ButtonSouth, EInputEventType::Pressed));
-
-    REQUIRE(Result.bMapped == true);
-    REQUIRE(Result.bDispatched == true);
-    REQUIRE(Backend.GetActionCount() == 1);
-}
-
 // ── profile disabled ──
 
 TEST_CASE("MappingSession profile disabled produces no actions", "[Runtime][MappingSession]")
@@ -282,22 +232,7 @@ TEST_CASE("MappingSession no match still appends record", "[Runtime][MappingSess
     REQUIRE(Records[0].Result.bMapped == false);
 }
 
-TEST_CASE("MappingSession disabled input still appends record", "[Runtime][MappingSession]")
-{
-    ZNullOutputBackend Backend;
-    ZActionDispatcher Dispatcher(Backend);
-    ZMappingSession Session(Dispatcher);
-    Session.SetEnabled(false);
-
-    (void)Session.HandleInputEvent(
-        MakeButtonEvent(ControlId::ButtonSouth, EInputEventType::Pressed));
-
-    REQUIRE(Session.GetRecentRecordCount() == 1);
-    auto Records = Session.ListRecentRecords();
-    REQUIRE(Records[0].Result.Message.find("disabled") != StdString::npos);
-}
-
-TEST_CASE("MappingSession ClearRecentRecords preserves enabled and profile", "[Runtime][MappingSession]")
+TEST_CASE("MappingSession ClearRecentRecords preserves profile", "[Runtime][MappingSession]")
 {
     ZNullOutputBackend Backend;
     ZActionDispatcher Dispatcher(Backend);
@@ -313,7 +248,6 @@ TEST_CASE("MappingSession ClearRecentRecords preserves enabled and profile", "[R
     Session.ClearRecentRecords();
 
     REQUIRE(Session.GetRecentRecordCount() == 0);
-    REQUIRE(Session.IsEnabled() == true);
     REQUIRE(Session.GetProfileSnapshot().Rules.size() == 1);
 }
 
@@ -340,5 +274,5 @@ TEST_CASE("MappingSession has no platform dependencies", "[Runtime][MappingSessi
     ZActionDispatcher Dispatcher(Backend);
     ZMappingSession Session(Dispatcher);
 
-    REQUIRE(Session.IsEnabled() == true);
+    REQUIRE(Session.GetRecentRecordCount() == 0);
 }

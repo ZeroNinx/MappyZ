@@ -1,6 +1,6 @@
 // ZAppController 单元测试。
 // 使用 fake/null 工厂验证 UI Bridge 控制器的完整生命周期：
-// initializeRuntime/startRuntime/stopRuntime/pumpOnce、mapping enabled 缓存与透传、
+// initializeRuntime/startRuntime/stopRuntime/pumpOnce、
 // QTimer pump 控制、QSignalSpy 信号验证、factory 失败、析构安全。
 
 #include <catch2/catch_test_macros.hpp>
@@ -93,7 +93,6 @@ TEST_CASE("AppController default state is created with timer stopped",
 
     REQUIRE(Controller.RuntimeState() == "created");
     REQUIRE_FALSE(Controller.IsPumpTimerRunning());
-    REQUIRE(Controller.IsMappingEnabled() == true);
     REQUIRE(Controller.LastDrainedEventCount() == 0);
 }
 
@@ -253,86 +252,6 @@ TEST_CASE("AppController destructor stops timer and runtime safely",
     REQUIRE(true);
 }
 
-// ── mappingEnabled 在 initialize 前缓存 ──
-
-TEST_CASE("AppController SetMappingEnabled before initialize caches value",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-
-    QSignalSpy MappingSpy(&Controller, &ZAppController::mappingEnabledChanged);
-
-    Controller.SetMappingEnabled(false);
-
-    REQUIRE_FALSE(Controller.IsMappingEnabled());
-    REQUIRE(MappingSpy.count() == 1);
-
-    (void)Controller.initializeRuntime();
-}
-
-// ── mappingEnabled 在 initialize 后更新缓存并发信号 ──
-
-TEST_CASE("AppController SetMappingEnabled after initialize updates cache and emits signal",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-    (void)Controller.startRuntime();
-
-    QSignalSpy MappingSpy(&Controller, &ZAppController::mappingEnabledChanged);
-
-    // 禁用 mapping
-    Controller.SetMappingEnabled(false);
-
-    REQUIRE_FALSE(Controller.IsMappingEnabled());
-    REQUIRE(MappingSpy.count() == 1);
-
-    // 重复设置相同值不发信号
-    Controller.SetMappingEnabled(false);
-    REQUIRE(MappingSpy.count() == 1);
-
-    // 恢复 enabled
-    Controller.SetMappingEnabled(true);
-    REQUIRE(Controller.IsMappingEnabled());
-    REQUIRE(MappingSpy.count() == 2);
-}
-
-// ── mappingEnabled 在 initialize 前设为 false，startRuntime 后缓存值不丢失 ──
-
-TEST_CASE("AppController SetMappingEnabled false before initialize survives startRuntime",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-
-    // initialize 前设为 false
-    Controller.SetMappingEnabled(false);
-
-    (void)Controller.initializeRuntime();
-    (void)Controller.startRuntime();
-
-    // 缓存值在整个生命周期中保持 false
-    REQUIRE_FALSE(Controller.IsMappingEnabled());
-}
-
-// ── initialize 后、start 前切换 mappingEnabled，缓存保持最新值 ──
-
-TEST_CASE("AppController mappingEnabled toggled between initialize and start uses latest value",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-
-    // initialize 时 mapping enabled（默认）
-    (void)Controller.initializeRuntime();
-
-    // initialize 后、start 前切换为 false
-    Controller.SetMappingEnabled(false);
-
-    (void)Controller.startRuntime();
-
-    // startRuntime 后缓存值应为最新设置的 false
-    REQUIRE_FALSE(Controller.IsMappingEnabled());
-}
-
 // ── QSignalSpy 验证关键信号 ──
 
 TEST_CASE("AppController emits RuntimeStatusChanged on lifecycle transitions",
@@ -410,7 +329,6 @@ TEST_CASE("AppController signals use lowerCamelCase for QML Connections compatib
     const QMetaObject* Meta = &ZAppController::staticMetaObject;
 
     REQUIRE(Meta->indexOfSignal("runtimeStatusChanged()") >= 0);
-    REQUIRE(Meta->indexOfSignal("mappingEnabledChanged()") >= 0);
     REQUIRE(Meta->indexOfSignal("pumpTimerRunningChanged()") >= 0);
     REQUIRE(Meta->indexOfSignal("lastPumpSummaryChanged()") >= 0);
     REQUIRE(Meta->indexOfSignal("runtimeError(QString)") >= 0);
@@ -1422,25 +1340,6 @@ TEST_CASE("AppController outputState strings are stable",
     REQUIRE(Controller.OutputState() == "ready");
 }
 
-TEST_CASE("AppController mappingEnabled change emits signal and property syncs",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    QSignalSpy MappingSpy(&Controller, &ZAppController::mappingEnabledChanged);
-
-    // 默认 enabled=true，改为 false
-    Controller.SetMappingEnabled(false);
-    REQUIRE(MappingSpy.count() == 1);
-    REQUIRE_FALSE(Controller.IsMappingEnabled());
-
-    // 改回 true
-    Controller.SetMappingEnabled(true);
-    REQUIRE(MappingSpy.count() == 2);
-    REQUIRE(Controller.IsMappingEnabled());
-}
-
 // ══════════════════════════════════════════════════════════════
 // P3: saveActiveProfile
 // ══════════════════════════════════════════════════════════════
@@ -1560,26 +1459,6 @@ TEST_CASE("AppController saveActiveProfile while Running succeeds",
     bool bResult = Controller.saveActiveProfile(PathStr);
 
     REQUIRE(bResult);
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController saveActiveProfile preserves mappingEnabled value",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    Controller.SetMappingEnabled(false);
-    REQUIRE_FALSE(Controller.IsMappingEnabled());
-
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_save_test_mapping" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    Controller.saveActiveProfile(PathStr);
-
-    REQUIRE_FALSE(Controller.IsMappingEnabled());
 
     std::filesystem::remove_all(TempPath.parent_path());
 }
@@ -1772,31 +1651,6 @@ TEST_CASE("AppController loadProfile updates activeProfileName from profile Name
     Loader.loadProfile(PathStr);
 
     REQUIRE(Loader.ActiveProfileName() == "My Custom Profile");
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController loadProfile preserves mappingEnabled value",
-    "[UI][AppController]")
-{
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_load_test_mapping" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    {
-        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime();
-        Saver.saveActiveProfile(PathStr);
-    }
-
-    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime();
-    Loader.SetMappingEnabled(false);
-    REQUIRE_FALSE(Loader.IsMappingEnabled());
-
-    Loader.loadProfile(PathStr);
-
-    REQUIRE_FALSE(Loader.IsMappingEnabled());
 
     std::filesystem::remove_all(TempPath.parent_path());
 }
@@ -2494,24 +2348,6 @@ TEST_CASE("AppController runtimeDisplayText shows Error on failed init",
     REQUIRE(Controller.RuntimeDisplayText() == "Error");
 }
 
-TEST_CASE("AppController remapDisplayText default is Active",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.RemapDisplayText() == "Active");
-}
-
-TEST_CASE("AppController remapDisplayText changes to Paused when disabled",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    Controller.SetMappingEnabled(false);
-    REQUIRE(Controller.RemapDisplayText() == "Paused");
-
-    Controller.SetMappingEnabled(true);
-    REQUIRE(Controller.RemapDisplayText() == "Active");
-}
-
 // ── setBindingEnabled ──
 
 TEST_CASE("AppController setBindingEnabled returns false for empty ruleId",
@@ -2935,7 +2771,7 @@ TEST_CASE("AppController MouseMove disabled rule does not dispatch",
     REQUIRE(Controller.LastDispatchedInputCount() == 0);
 }
 
-TEST_CASE("AppController MouseMove mapping paused does not dispatch",
+TEST_CASE("AppController MouseMove mapping dispatches while runtime is running",
     "[UI][AppController]")
 {
     STestModeGuard TestMode;
@@ -2951,13 +2787,10 @@ TEST_CASE("AppController MouseMove mapping paused does not dispatch",
     REQUIRE(Controller.startRuntime());
     REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
 
-    // 全局暂停 remap
-    Controller.SetMappingEnabled(false);
-
     // 注入超出 deadzone 的事件
     RawInputBackend->EmitInput(
         MakeAxis2DEvent("dev_1", ControlId::LeftStick, 0.5f, 0.5f));
     Controller.pumpOnce();
 
-    REQUIRE(Controller.LastDispatchedInputCount() == 0);
+    REQUIRE(Controller.LastDispatchedInputCount() == 1);
 }

@@ -31,7 +31,6 @@ class ZAppController final : public QObject
     Q_PROPERTY(QString runtimeState READ RuntimeState NOTIFY runtimeStatusChanged)
     Q_PROPERTY(QString runtimeMessage READ RuntimeMessage NOTIFY runtimeStatusChanged)
     Q_PROPERTY(QString outputState READ OutputState NOTIFY runtimeStatusChanged)
-    Q_PROPERTY(bool mappingEnabled READ IsMappingEnabled WRITE SetMappingEnabled NOTIFY mappingEnabledChanged)
     Q_PROPERTY(bool pumpTimerRunning READ IsPumpTimerRunning NOTIFY pumpTimerRunningChanged)
     Q_PROPERTY(int lastDrainedEventCount READ LastDrainedEventCount NOTIFY lastPumpSummaryChanged)
     Q_PROPERTY(int lastInputEventCount READ LastInputEventCount NOTIFY lastPumpSummaryChanged)
@@ -53,7 +52,6 @@ class ZAppController final : public QObject
     Q_PROPERTY(QString profileSaveDisplayText READ ProfileSaveDisplayText NOTIFY profileStatusChanged)
     Q_PROPERTY(QString profileSaveSeverity READ ProfileSaveSeverity NOTIFY profileStatusChanged)
     Q_PROPERTY(QString runtimeDisplayText READ RuntimeDisplayText NOTIFY runtimeStatusChanged)
-    Q_PROPERTY(QString remapDisplayText READ RemapDisplayText NOTIFY mappingEnabledChanged)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -72,8 +70,6 @@ public:
     NODISCARD QString RuntimeState() const;
     NODISCARD QString RuntimeMessage() const;
     NODISCARD QString OutputState() const;
-    NODISCARD bool IsMappingEnabled() const;
-    void SetMappingEnabled(bool bEnabled);
     NODISCARD bool IsPumpTimerRunning() const;
     NODISCARD int LastDrainedEventCount() const;
     NODISCARD int LastInputEventCount() const;
@@ -95,7 +91,6 @@ public:
     NODISCARD QString ProfileSaveDisplayText() const;
     NODISCARD QString ProfileSaveSeverity() const;
     NODISCARD QString RuntimeDisplayText() const;
-    NODISCARD QString RemapDisplayText() const;
 
     // ── QML invokable ──
 
@@ -118,7 +113,6 @@ public:
 
 signals:
     void runtimeStatusChanged();
-    void mappingEnabledChanged();
     void pumpTimerRunningChanged();
     void lastPumpSummaryChanged();
     void runtimeError(QString message);
@@ -166,9 +160,6 @@ private:
 
     ZApplicationBootstrap Bootstrap;
     QTimer PumpTimer;
-
-    // mapping enabled 缓存，在 initialize 前保存用户期望值
-    bool bCachedMappingEnabled = true;
 
     // 上一次 PumpOnce 的 summary 缓存
     SRuntimeEventPumpSummary LastSummary;
