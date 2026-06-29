@@ -210,13 +210,143 @@ UI 侧验收：
 - [x] 删除 mapping 成功/失败都有 inline feedback。
 - [x] QML smoke 无 binding/import/property warning。
 
+## Priority 8: Editable Gamepad Mapping View
+
+目标：参考 `docs/gamepad_mapping_layout_editable.png` / `docs/gamepad_mapping_layout_editable.svg`，把当前中间 `GamepadView` 重构成可直接查看和编辑映射的手柄布局。右侧 `BindingEditor` 不再承担完整 Current mappings 列表，只保留当前选中控件的 Inspector / 编辑操作。
+
+本轮只做 UI 结构和现有键盘/鼠标按钮映射展示，不新增 DInput 功能，不新增宏、turbo、hold、复杂参数页。
+
+### Design Source
+
+- [ ] 参考图的整体结构保持不变：
+  - [ ] 左侧主区域标题为 `Gamepad Mapping View`，承载手柄图、连线、控制分组卡片和每个控件的当前绑定。
+  - [ ] 右侧为 `Inspector`，只展示 selected control、pending action、Capture / Clear / Choose 等操作和后续高级信息。
+  - [ ] 主区域中的 mapping row 可点击，点击后选中对应 control，并同步右侧 Inspector。
+- [ ] 参考图尺寸是视觉设计稿，不直接硬编码到 QML：
+  - [ ] SVG viewBox 为 `1672x941`，其中主区域约 `1160x914`，Inspector 约 `464x914`。
+  - [ ] 当前应用窗口、左侧 DevicesPanel、右侧 BindingEditor 宽度与设计稿不同，实现时必须按当前 `GamepadView` 可用尺寸做比例换算。
+  - [ ] 坐标使用归一化 anchor / ratio / scale，而不是直接复制 SVG 像素坐标。
+  - [ ] 以主区域参考尺寸 `1160x914` 作为内部设计坐标系，计算 `scale = min(actualWidth / 1160, actualHeight / 914)`，再把分组卡片、手柄、连线按统一 scale 投影到当前面板。
+  - [ ] 最小窗口下如果无法完整展示，优先启用主区域内部缩放或滚动，不允许卡片和 Footer 裁切。
+
+### Layout Plan
+
+- [ ] 新增或重构中间主组件，例如 `ui/gamepad/EditableGamepadMappingView.qml`，替代当前纯手柄状态展示式 `GamepadView`。
+- [ ] 保留当前 `InputControlState` 的实时高亮能力：
+  - [ ] 手柄实体按钮按输入状态发亮。
+  - [ ] mapping row 也能根据对应 control 的输入状态轻微高亮。
+  - [ ] selected control 使用 accent 边框或 glow 标识。
+- [ ] 主区域按参考图拆成固定控制组：
+  - [ ] `LB / LT`：`left_shoulder`、`left_trigger`。
+  - [ ] `Back / Guide / Start`：`button_back`、`button_guide`、`button_start`。
+  - [ ] `RB / RT`：`right_shoulder`、`right_trigger`。
+  - [ ] `Left Stick`：`left_stick_up`、`left_stick_left`、`left_stick_down`、`left_stick_right`。
+  - [ ] `D-Pad`：`dpad_up`、`dpad_down`、`dpad_left`、`dpad_right`。
+  - [ ] `Right Stick`：`right_stick_up`、`right_stick_down`、`right_stick_left`、`right_stick_right`。
+  - [ ] `ABXY`：`button_south`、`button_east`、`button_west`、`button_north`。
+- [ ] 每个控制组使用统一 `MappingGroupCard` 组件：
+  - [ ] 标题。
+  - [ ] 多行 `MappingRow`。
+  - [ ] 左侧显示用户友好输入名，例如 `A`、`B`、`Up`、`LT`。
+  - [ ] 右侧显示当前输出，例如 `Space`、`Mouse L`、`Unassigned`。
+  - [ ] 未绑定状态显示 `Unassigned`，使用 muted/italic，不显示空白。
+- [ ] 每个 `MappingRow` 行为：
+  - [ ] 点击 row 选中对应 control。
+  - [ ] 双击或点击行内 action 区域打开现有 `MappingPickerDialog`。
+  - [ ] 已选中 row 高亮，且右侧 Inspector 同步显示该 control。
+  - [ ] row 不直接做删除按钮，删除/清空先由右侧 Inspector 的 Clear 处理。
+- [ ] 保留手柄轮廓图，但降低它对布局的支配：
+  - [ ] 手柄轮廓居中，作为空间和连线参照。
+  - [ ] 分组卡片围绕手柄放置。
+  - [ ] 蓝色连接线连接分组卡片与对应手柄区域。
+  - [ ] 连接线可以先用 `Shape` / `Canvas` / 简单 `Rectangle` 段实现，不要求完全复刻 SVG 曲线。
+- [ ] `ABXY` 的当前选中和实时按下状态要同时可见：
+  - [ ] 当前选中 control 用 accent 边框。
+  - [ ] 正在按下输入用 success / glow。
+  - [ ] 两者同时存在时不互相覆盖。
+
+### Right Inspector Refactor
+
+- [ ] `BindingEditor` 改成 Inspector 语义：
+  - [ ] 标题从 `Binding Editor` 改为 `Inspector` 或 `Binding Inspector`。
+  - [ ] 保留 selected control 显示。
+  - [ ] 保留 action output/pending action 显示。
+  - [ ] 保留 `Capture Input`、`Choose...`、`Clear`。
+  - [ ] 保留 Apply 或改为 picker Confirm 后直接 apply，二选一需实现前明确；本轮建议先保留 Apply，降低行为变更。
+- [ ] 从右侧 Inspector 移除完整 `Current mappings` Repeater。
+- [ ] 删除/清空能力不丢失：
+  - [ ] 当前 selected control 已有绑定时，`Clear` 删除对应 mapping rule。
+  - [ ] 当前 selected control 无绑定时，`Clear` 只清空 selectedControl 或保持 no-op，需要明确文案。
+  - [ ] 清空成功/失败继续使用 inline feedback。
+- [ ] Inspector 中的 Advanced 区先不做真实功能：
+  - [ ] 可以显示占位字段 `Mode: Press`、`Conflict: None`，但不能暗示已实现 turbo/hold。
+  - [ ] 或者本轮完全不显示 Advanced，避免虚假功能。
+  - [ ] 选择其中一种并在实现前固定。
+
+### Data / Model Requirements
+
+- [ ] `GamepadView` 需要能按 `controlId` 查询当前绑定显示，不应在 QML 里遍历整表拼复杂逻辑。
+- [ ] 优先在 `ZMappingRuleModel` 增加只读 invokable helper：
+  - [ ] `displayOutputForInput(QString controlId) -> QString`，未绑定返回空字符串。
+  - [ ] `displayKindForInput(QString controlId) -> QString`，未绑定返回空字符串。
+  - [ ] `ruleIdForInput(QString controlId) -> QString`，用于 Clear 当前 control。
+  - [ ] 如已有同等 helper，则复用，不新增重复 API。
+- [ ] QML 展示层只负责 control group 配置和绑定展示，不直接构造 profile/rule。
+- [ ] 当前 `applySelectedBinding`、`removeBinding`、`setBindingEnabled` 等 AppController API 不在本轮扩大语义。
+- [ ] 右侧 Inspector 和中间 MappingRow 使用同一个 selected control 状态，避免出现“中间选中 A、右侧显示 B”的分叉状态。
+
+### Responsive Behavior
+
+- [ ] 默认窗口尺寸下，中间区域完整显示所有分组卡片、手柄、连线和右侧 Inspector。
+- [ ] 最小窗口尺寸下：
+  - [ ] 中间主区域不裁切 ABXY、Right Stick、D-Pad、底部卡片。
+  - [ ] 连接线可以缩短或隐藏，但 mapping row 必须可读。
+  - [ ] 如空间不足，主区域可用 Flickable 横向/纵向滚动，优先保证可操作。
+- [ ] 不使用负 margin 把卡片推出父区域。
+- [ ] 文本必须 elide 或缩放到卡片内，不允许盖住右侧输出值。
+- [ ] 参考图中的 group 位置按比例保留：
+  - [ ] LB/LT 在手柄左上方。
+  - [ ] Back/Guide/Start 在上方居中。
+  - [ ] RB/RT 在手柄右上方。
+  - [ ] Left Stick 在左侧。
+  - [ ] ABXY 在右侧。
+  - [ ] D-Pad 在下方偏左。
+  - [ ] Right Stick 在下方偏右。
+
+### Visual Requirements
+
+- [ ] 回退上一轮失败的低对比度方案，保持文字和按钮肉眼可辨。
+- [ ] 正常文本、muted 文本、disabled 文本、selected 文本必须有明确层级。
+- [ ] `Unassigned` 不应暗到不可读。
+- [ ] Selected row 的高亮不能只靠文字颜色，必须有边框或背景变化。
+- [ ] 按下状态的发光应克制，不影响 row 文本阅读。
+- [ ] 当前主题仍以现有 MappyZ 暗色风格为准，不照搬参考图的所有颜色。
+
+### Tests / Verification
+
+- [ ] `ZMappingRuleModel` 新 helper 测试：
+  - [ ] 已绑定 control 返回正确 output/display kind/rule id。
+  - [ ] 未绑定 control 返回空字符串。
+  - [ ] 替换 rules 后 helper 结果更新。
+- [ ] AppController / QML smoke：
+  - [ ] QML module loads without warnings。
+  - [ ] `EditableGamepadMappingView` 在默认窗口尺寸加载无 binding loop。
+  - [ ] 无 required property 未赋值 warning。
+- [ ] 手动验证：
+  - [ ] 点击 ABXY row 可选中对应 control。
+  - [ ] 点击 Left Stick 方向 row 可选中 `left_stick_*`。
+  - [ ] 点击 row 后右侧 Inspector 显示同一个 control。
+  - [ ] Choose + Apply 后中间 row 立即显示新绑定。
+  - [ ] Clear 当前 control 后中间 row 变为 `Unassigned`。
+  - [ ] 实际按下手柄按钮时，中间手柄按钮和 row 都有实时反馈。
+
 ## Out Of Scope For This Catch-Up
 
 - [ ] 不做复杂宏、组合键、长按、双击。
 - [ ] 不做 per-app 自动 profile 切换。
 - [ ] 不做云同步或导入导出 UI。
 - [ ] 不做完整设置页。
-- [ ] 不重做视觉设计。
+- [ ] 不做完整视觉体系重做；本轮只重构中间映射区域和右侧 Inspector 信息架构。
 
 ## Suggested Execution Order
 
@@ -229,9 +359,11 @@ UI 侧验收：
 - [x] 7. Remove Output Toggle / API Cleanup。
 - [x] 8. Action Picker。
 - [x] 9. Functional Runtime Pass。
+- [ ] 10. Editable Gamepad Mapping View。
 
 建议拆成两步实施：
 
 - [x] Step A 先做删除/清理：output toggle、TopBar 按钮、Runtime 卡、设备 tag 文案、无参 initialize API 和相关死测试。
 - [x] Step B 再做新增交互：removeBinding、mapping row 删除、row 点击回填 action picker、`actionValue` / `displayKind` role。
+- [ ] Step C 重构中间区域：按参考图比例换算布局，迁移 Current mappings 到手柄周围分组卡片，右侧只保留 Inspector。
 

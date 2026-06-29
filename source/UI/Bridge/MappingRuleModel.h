@@ -60,6 +60,21 @@ public:
     // 返回指定行的 ruleId 字符串，越界返回空串
     Q_INVOKABLE QString ruleIdAt(int Row) const;
 
+    // 按 controlId 查询当前绑定的输出显示文本，未绑定返回空串
+    Q_INVOKABLE QString displayOutputForInput(QString controlId) const;
+
+    // 按 controlId 查询当前绑定的 UI 类别标签（Keyboard / Mouse），未绑定返回空串
+    Q_INVOKABLE QString displayKindForInput(QString controlId) const;
+
+    // 按 controlId 查询当前绑定的 ruleId，未绑定返回空串
+    Q_INVOKABLE QString ruleIdForInput(QString controlId) const;
+
+    // 按 controlId 查询当前绑定的 actionKind（与 ActionCatalog Kind 对齐），未绑定返回空串
+    Q_INVOKABLE QString actionKindForInput(QString controlId) const;
+
+    // 按 controlId 查询当前绑定的 actionValue（与 ActionCatalog Value 对齐），未绑定返回空串
+    Q_INVOKABLE QString actionValueForInput(QString controlId) const;
+
     // ── C++ 辅助 ──
 
     // 返回当前规则列表的拷贝，调用方修改不影响 model

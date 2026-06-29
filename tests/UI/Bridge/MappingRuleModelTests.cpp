@@ -434,3 +434,155 @@ TEST_CASE("MappingRuleModel MouseMove actionKind role returns MouseMove",
     REQUIRE(Model.data(Model.index(0), ZMappingRuleModel::ActionKindRole).toString()
         == "MouseMove");
 }
+
+// ── displayOutputForInput ──
+
+TEST_CASE("MappingRuleModel displayOutputForInput returns output for bound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeKeyboardRule("button_south", "Space"));
+    Rules.push_back(MakeMouseButtonRule("right_trigger", 0));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.displayOutputForInput("button_south") == "Space");
+    REQUIRE(Model.displayOutputForInput("right_trigger") == "Left Click");
+}
+
+TEST_CASE("MappingRuleModel displayOutputForInput returns empty for unbound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeKeyboardRule("button_south", "Space"));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.displayOutputForInput("button_north") == "");
+    REQUIRE(Model.displayOutputForInput("") == "");
+}
+
+// ── displayKindForInput ──
+
+TEST_CASE("MappingRuleModel displayKindForInput returns kind for bound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeKeyboardRule("button_south", "Space"));
+    Rules.push_back(MakeMouseButtonRule("right_trigger", 0));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.displayKindForInput("button_south") == "Keyboard");
+    REQUIRE(Model.displayKindForInput("right_trigger") == "Mouse");
+}
+
+TEST_CASE("MappingRuleModel displayKindForInput returns empty for unbound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+    REQUIRE(Model.displayKindForInput("button_south") == "");
+}
+
+// ── ruleIdForInput ──
+
+TEST_CASE("MappingRuleModel ruleIdForInput returns id for bound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeKeyboardRule("button_south", "Space"));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.ruleIdForInput("button_south") == "button_south");
+}
+
+TEST_CASE("MappingRuleModel ruleIdForInput returns empty for unbound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeKeyboardRule("button_south", "Space"));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.ruleIdForInput("button_north") == "");
+    REQUIRE(Model.ruleIdForInput("") == "");
+}
+
+// ── ReplaceRules 后 helper 结果更新 ──
+
+TEST_CASE("MappingRuleModel helpers update after ReplaceRules",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules1;
+    Rules1.push_back(MakeKeyboardRule("button_south", "Space"));
+    Model.ReplaceRules(std::move(Rules1));
+
+    REQUIRE(Model.displayOutputForInput("button_south") == "Space");
+    REQUIRE(Model.ruleIdForInput("button_south") == "button_south");
+
+    TVector<SMappingRule> Rules2;
+    Rules2.push_back(MakeKeyboardRule("button_south", "Enter"));
+    Model.ReplaceRules(std::move(Rules2));
+
+    REQUIRE(Model.displayOutputForInput("button_south") == "Enter");
+    REQUIRE(Model.ruleIdForInput("button_south") == "button_south");
+
+    // 清空后返回空
+    Model.clear();
+    REQUIRE(Model.displayOutputForInput("button_south") == "");
+    REQUIRE(Model.ruleIdForInput("button_south") == "");
+}
+
+// ── actionKindForInput ──
+
+TEST_CASE("MappingRuleModel actionKindForInput returns kind for bound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeKeyboardRule("button_south", "Space"));
+    Rules.push_back(MakeMouseButtonRule("right_trigger", 0));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.actionKindForInput("button_south") == "Keyboard");
+    REQUIRE(Model.actionKindForInput("right_trigger") == "MouseButton");
+}
+
+TEST_CASE("MappingRuleModel actionKindForInput returns empty for unbound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+    REQUIRE(Model.actionKindForInput("button_south") == "");
+}
+
+// ── actionValueForInput ──
+
+TEST_CASE("MappingRuleModel actionValueForInput returns value for bound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+
+    TVector<SMappingRule> Rules;
+    Rules.push_back(MakeKeyboardRule("button_south", "Space"));
+    Rules.push_back(MakeMouseButtonRule("right_trigger", 0));
+    Model.ReplaceRules(std::move(Rules));
+
+    REQUIRE(Model.actionValueForInput("button_south") == "Space");
+    REQUIRE(Model.actionValueForInput("right_trigger") == "Left");
+}
+
+TEST_CASE("MappingRuleModel actionValueForInput returns empty for unbound control",
+    "[UI][MappingRuleModel]")
+{
+    ZMappingRuleModel Model;
+    REQUIRE(Model.actionValueForInput("button_south") == "");
+}

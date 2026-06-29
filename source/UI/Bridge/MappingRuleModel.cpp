@@ -104,6 +104,71 @@ QString ZMappingRuleModel::ruleIdAt(int Row) const
     return QString::fromStdString(Rules[static_cast<size_t>(Row)].Id);
 }
 
+QString ZMappingRuleModel::displayOutputForInput(QString controlId) const
+{
+    StdString ControlIdStd = controlId.toStdString();
+    for (const auto& Rule : Rules)
+    {
+        if (Rule.Input.ControlId == ControlIdStd)
+        {
+            return ExtractOutputText(Rule.Output.Action);
+        }
+    }
+    return {};
+}
+
+QString ZMappingRuleModel::displayKindForInput(QString controlId) const
+{
+    StdString ControlIdStd = controlId.toStdString();
+    for (const auto& Rule : Rules)
+    {
+        if (Rule.Input.ControlId == ControlIdStd)
+        {
+            return ExtractDisplayKindText(Rule.Output.Action);
+        }
+    }
+    return {};
+}
+
+QString ZMappingRuleModel::ruleIdForInput(QString controlId) const
+{
+    StdString ControlIdStd = controlId.toStdString();
+    for (const auto& Rule : Rules)
+    {
+        if (Rule.Input.ControlId == ControlIdStd)
+        {
+            return QString::fromStdString(Rule.Id);
+        }
+    }
+    return {};
+}
+
+QString ZMappingRuleModel::actionKindForInput(QString controlId) const
+{
+    StdString ControlIdStd = controlId.toStdString();
+    for (const auto& Rule : Rules)
+    {
+        if (Rule.Input.ControlId == ControlIdStd)
+        {
+            return ExtractActionKindText(Rule.Output.Action);
+        }
+    }
+    return {};
+}
+
+QString ZMappingRuleModel::actionValueForInput(QString controlId) const
+{
+    StdString ControlIdStd = controlId.toStdString();
+    for (const auto& Rule : Rules)
+    {
+        if (Rule.Input.ControlId == ControlIdStd)
+        {
+            return ExtractActionValueText(Rule.Output.Action);
+        }
+    }
+    return {};
+}
+
 // ── C++ 辅助 ──
 
 TVector<SMappingRule> ZMappingRuleModel::ListRulesSnapshot() const

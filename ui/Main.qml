@@ -4,10 +4,10 @@ import QtQuick.Window
 Window {
     id: root
 
-    width: 1120
-    height: 720
-    minimumWidth: 1040
-    minimumHeight: 700
+    width: 1280
+    height: 780
+    minimumWidth: 1120
+    minimumHeight: 720
     visible: true
     title: "MappyZ"
     color: theme.window
@@ -173,15 +173,13 @@ Window {
         }
     }
 
-    GamepadView {
+    EditableGamepadMappingView {
         id: gamepadPanel
 
         theme: theme
         appController: root._appController
         selectedDevice: root.selectedDevice
-        selectedDeviceDisplayName: root.selectedDeviceDisplayName
         selectedControl: root.selectedControl
-        latestControlForSelectedDevice: root.latestControlForSelectedDevice
         anchors.left: devicePanel.right
         anchors.leftMargin: 12
         anchors.right: bindingPanel.left
@@ -194,8 +192,13 @@ Window {
             appController.inputCapture.cancel()
         }
 
-        onActionButtonControlSelected: function(controlId) {
+        onControlDoubleClicked: function(controlId) {
             root.selectedControl = controlId
+            appController.inputCapture.cancel()
+            mappingPicker.openFor(
+                controlId,
+                bindingPanel._selectedActionKind,
+                bindingPanel._selectedActionValue)
         }
     }
 
@@ -211,13 +214,7 @@ Window {
         anchors.rightMargin: 12
         anchors.top: devicePanel.top
         anchors.bottom: devicePanel.bottom
-        width: 300
-
-        onClearControlRequested: root.selectedControl = ""
-
-        onMappingSelected: function(controlId) {
-            root.selectedControl = controlId
-        }
+        width: 280
     }
 
     // ── 映射选择器弹窗（全窗口 overlay）──
@@ -270,7 +267,7 @@ Window {
         anchors.rightMargin: 12
         anchors.bottom: statusBar.top
         anchors.bottomMargin: 12
-        height: 158
+        height: 110
     }
 
     StatusBar {

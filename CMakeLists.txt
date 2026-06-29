@@ -238,6 +238,8 @@ set_source_files_properties(ui/common/FieldLabel.qml PROPERTIES QT_RESOURCE_ALIA
 set_source_files_properties(ui/common/ValueText.qml PROPERTIES QT_RESOURCE_ALIAS ValueText.qml)
 set_source_files_properties(ui/gamepad/InputControlState.qml PROPERTIES QT_RESOURCE_ALIAS InputControlState.qml)
 set_source_files_properties(ui/gamepad/ControlDot.qml PROPERTIES QT_RESOURCE_ALIAS ControlDot.qml)
+set_source_files_properties(ui/gamepad/MappingGroupCard.qml PROPERTIES QT_RESOURCE_ALIAS MappingGroupCard.qml)
+set_source_files_properties(ui/gamepad/EditableGamepadMappingView.qml PROPERTIES QT_RESOURCE_ALIAS EditableGamepadMappingView.qml)
 set_source_files_properties(ui/panels/TopBar.qml PROPERTIES QT_RESOURCE_ALIAS TopBar.qml)
 set_source_files_properties(ui/panels/DevicesPanel.qml PROPERTIES QT_RESOURCE_ALIAS DevicesPanel.qml)
 set_source_files_properties(ui/gamepad/GamepadView.qml PROPERTIES QT_RESOURCE_ALIAS GamepadView.qml)
@@ -266,6 +268,8 @@ qt_add_qml_module(MappyZQml
         ui/gamepad/InputControlState.qml
         ui/common/InlineMessage.qml
         ui/gamepad/ControlDot.qml
+        ui/gamepad/MappingGroupCard.qml
+        ui/gamepad/EditableGamepadMappingView.qml
         ui/panels/TopBar.qml
         ui/panels/DevicesPanel.qml
         ui/gamepad/GamepadView.qml
