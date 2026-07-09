@@ -12,6 +12,8 @@ Rectangle {
 
     property string controlId: ""
     property string label: ""
+    // 如果需要从不同 controlId 获取输入状态（如摇杆帽需要 axis 数据），设置此属性
+    property string stateControlId: ""
 
     // 暴露内部状态供父组件读取（如摇杆偏移）
     readonly property alias inputState: controlState
@@ -23,7 +25,8 @@ Rectangle {
 
         inputStateModel: controlDot.inputStateModel || null
         deviceId: controlDot.selectedDevice
-        controlId: controlDot.controlId
+        controlId: controlDot.stateControlId !== ""
+            ? controlDot.stateControlId : controlDot.controlId
     }
 
     property bool active: controlState.pressed
