@@ -20,11 +20,16 @@ Rectangle {
     readonly property real bh: height
     // 控件尺寸按手柄宽度缩放
     readonly property real dotSize: Math.max(bw * 0.07, 26)
-    readonly property real dpadDotSize: Math.max(bw * 0.055, 20)
-    readonly property real stickDotSize: Math.max(bw * 0.085, 30)
-    // ABXY cluster 参数
-    readonly property real abxyRadius: Math.max(bw * 0.07, 26)
+    readonly property real dpadDotSize: Math.max(bw * 0.06, 22)
+    readonly property real stickDotSize: Math.max(bw * 0.095, 34)
+    readonly property real stickIndicatorSize: Math.max(
+        Math.min(bw * 0.025, 14), 10)
+    readonly property real stickIndicatorOffset: stickDotSize / 2
+        + stickIndicatorSize / 2 + 8
+    // D-Pad and ABXY use the same total span and mirrored center points.
+    readonly property real abxyRadius: Math.max(bw * 0.06, 22)
     readonly property real abxyBtnSize: Math.max(bw * 0.06, 22)
+    readonly property real shoulderHeight: Math.max(Math.min(bh * 0.10, 27), 22)
 
     // ── 摇杆方向 InputControlState ──
 
@@ -100,8 +105,8 @@ Rectangle {
             controlId: "left_trigger"
         }
         x: glyph.bw * 0.12
-        y: -10
-        width: glyph.bw * 0.18; height: 18; radius: 3
+        y: -glyph.shoulderHeight * 0.45
+        width: glyph.bw * 0.18; height: glyph.shoulderHeight; radius: 4
         color: ltState.pressed ? glyph.theme.accentSoft
             : Qt.rgba(0.2, 0.2, 0.2, 1.0 - ltState.value * 0.5 + 0.5)
         border.color: ltState.value > 0.5 ? glyph.theme.accent
@@ -109,7 +114,7 @@ Rectangle {
         Text {
             anchors.centerIn: parent
             text: "LT " + (ltState.displayValue || "0.00")
-            color: glyph.theme.text; font.pixelSize: 9
+            color: glyph.theme.text; font.pixelSize: 11
         }
         MouseArea {
             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -125,8 +130,8 @@ Rectangle {
             controlId: "right_trigger"
         }
         x: glyph.bw * 0.70
-        y: -10
-        width: glyph.bw * 0.18; height: 18; radius: 3
+        y: -glyph.shoulderHeight * 0.45
+        width: glyph.bw * 0.18; height: glyph.shoulderHeight; radius: 4
         color: rtState.pressed ? glyph.theme.accentSoft
             : Qt.rgba(0.2, 0.2, 0.2, 1.0 - rtState.value * 0.5 + 0.5)
         border.color: rtState.value > 0.5 ? glyph.theme.accent
@@ -134,7 +139,7 @@ Rectangle {
         Text {
             anchors.centerIn: parent
             text: "RT " + (rtState.displayValue || "0.00")
-            color: glyph.theme.text; font.pixelSize: 9
+            color: glyph.theme.text; font.pixelSize: 11
         }
         MouseArea {
             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -153,7 +158,7 @@ Rectangle {
         }
         x: glyph.bw * 0.13
         y: glyph.bh * 0.06
-        width: glyph.bw * 0.18; height: 18; radius: 4
+        width: glyph.bw * 0.18; height: glyph.shoulderHeight; radius: 4
         color: lbState.pressed ? glyph.theme.accentSoft
             : (glyph.selectedControl === "left_shoulder"
                 ? glyph.theme.accentHover : "#333333")
@@ -161,7 +166,7 @@ Rectangle {
             : glyph.theme.border
         Text {
             anchors.centerIn: parent; text: "LB"
-            color: glyph.theme.text; font.pixelSize: 10; font.bold: true
+            color: glyph.theme.text; font.pixelSize: 12; font.bold: true
         }
         MouseArea {
             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -178,7 +183,7 @@ Rectangle {
         }
         x: glyph.bw * 0.69
         y: glyph.bh * 0.06
-        width: glyph.bw * 0.18; height: 18; radius: 4
+        width: glyph.bw * 0.18; height: glyph.shoulderHeight; radius: 4
         color: rbState.pressed ? glyph.theme.accentSoft
             : (glyph.selectedControl === "right_shoulder"
                 ? glyph.theme.accentHover : "#333333")
@@ -186,7 +191,7 @@ Rectangle {
             : glyph.theme.border
         Text {
             anchors.centerIn: parent; text: "RB"
-            color: glyph.theme.text; font.pixelSize: 10; font.bold: true
+            color: glyph.theme.text; font.pixelSize: 12; font.bold: true
         }
         MouseArea {
             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -277,8 +282,8 @@ Rectangle {
     Item {
         id: abxyCluster
         // cluster 中心点
-        readonly property real cx: glyph.bw * 0.77
-        readonly property real cy: glyph.bh * 0.38
+        readonly property real cx: glyph.bw * 0.79
+        readonly property real cy: glyph.bh * 0.35
         readonly property real r: glyph.abxyRadius
         readonly property real btnSize: glyph.abxyBtnSize
 
@@ -337,8 +342,8 @@ Rectangle {
     // ── D-Pad 十字键 ──
 
     Grid {
-        x: glyph.bw * 0.28 - (glyph.dpadDotSize * 3 + 4) / 2
-        y: glyph.bh * 0.68 - (glyph.dpadDotSize * 3 + 4) / 2
+        x: glyph.bw * 0.34 - (glyph.dpadDotSize * 3 + 4) / 2
+        y: glyph.bh * 0.70 - (glyph.dpadDotSize * 3 + 4) / 2
         columns: 3; rows: 3; spacing: 2
 
         Item { width: glyph.dpadDotSize; height: glyph.dpadDotSize }
@@ -400,12 +405,15 @@ Rectangle {
 
         Rectangle {
             required property var modelData
-            readonly property real cx: glyph.bw * 0.24
-            readonly property real cy: glyph.bh * 0.34
-            readonly property real offset: glyph.stickDotSize * 0.65
-            x: cx - 6 + modelData.dx * offset
-            y: cy - 6 + modelData.dy * offset
-            width: 12; height: 12; radius: 6
+            readonly property real cx: glyph.bw * 0.21
+            readonly property real cy: glyph.bh * 0.35
+            x: cx - glyph.stickIndicatorSize / 2
+                + modelData.dx * glyph.stickIndicatorOffset
+            y: cy - glyph.stickIndicatorSize / 2
+                + modelData.dy * glyph.stickIndicatorOffset
+            width: glyph.stickIndicatorSize
+            height: glyph.stickIndicatorSize
+            radius: glyph.stickIndicatorSize / 2
             color: modelData.dirState.pressed
                 ? glyph.theme.accent : "transparent"
             border.color: modelData.dirState.pressed
@@ -423,10 +431,10 @@ Rectangle {
         inputStateModel: glyph.inputStateModel
         selectedDevice: glyph.selectedDevice
         selectedControl: glyph.selectedControl
-        x: glyph.bw * 0.24 - glyph.stickDotSize / 2
-            + inputState.axisX * glyph.stickDotSize * 0.4
-        y: glyph.bh * 0.34 - glyph.stickDotSize / 2
-            + inputState.axisY * glyph.stickDotSize * 0.4
+        x: glyph.bw * 0.21 - glyph.stickDotSize / 2
+            + inputState.axisX * glyph.stickDotSize * 0.28
+        y: glyph.bh * 0.35 - glyph.stickDotSize / 2
+            + inputState.axisY * glyph.stickDotSize * 0.28
         width: glyph.stickDotSize; height: glyph.stickDotSize
         radius: glyph.stickDotSize / 2
         label: "LS"
@@ -450,12 +458,15 @@ Rectangle {
 
         Rectangle {
             required property var modelData
-            readonly property real cx: glyph.bw * 0.60
-            readonly property real cy: glyph.bh * 0.68
-            readonly property real offset: glyph.stickDotSize * 0.65
-            x: cx - 6 + modelData.dx * offset
-            y: cy - 6 + modelData.dy * offset
-            width: 12; height: 12; radius: 6
+            readonly property real cx: glyph.bw * 0.66
+            readonly property real cy: glyph.bh * 0.70
+            x: cx - glyph.stickIndicatorSize / 2
+                + modelData.dx * glyph.stickIndicatorOffset
+            y: cy - glyph.stickIndicatorSize / 2
+                + modelData.dy * glyph.stickIndicatorOffset
+            width: glyph.stickIndicatorSize
+            height: glyph.stickIndicatorSize
+            radius: glyph.stickIndicatorSize / 2
             color: modelData.dirState.pressed
                 ? glyph.theme.accent : "transparent"
             border.color: modelData.dirState.pressed
@@ -473,10 +484,10 @@ Rectangle {
         inputStateModel: glyph.inputStateModel
         selectedDevice: glyph.selectedDevice
         selectedControl: glyph.selectedControl
-        x: glyph.bw * 0.60 - glyph.stickDotSize / 2
-            + inputState.axisX * glyph.stickDotSize * 0.4
-        y: glyph.bh * 0.68 - glyph.stickDotSize / 2
-            + inputState.axisY * glyph.stickDotSize * 0.4
+        x: glyph.bw * 0.66 - glyph.stickDotSize / 2
+            + inputState.axisX * glyph.stickDotSize * 0.28
+        y: glyph.bh * 0.70 - glyph.stickDotSize / 2
+            + inputState.axisY * glyph.stickDotSize * 0.28
         width: glyph.stickDotSize; height: glyph.stickDotSize
         radius: glyph.stickDotSize / 2
         label: "RS"

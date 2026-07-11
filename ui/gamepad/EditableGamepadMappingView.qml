@@ -106,19 +106,25 @@ Panel {
         id: layout
         anchors.fill: parent
 
-        // 卡片列宽度：占可用宽度 24%，限制在 155~200 之间
+        readonly property real gap: 8
         readonly property real cardColumnWidth: Math.max(
-            Math.min(width * 0.24, 200), 155)
+            Math.min(width * 0.235, 210), 148)
+        readonly property real horizontalGlyphSpace: Math.max(
+            width - 2 * cardColumnWidth - 2 * gap, 0)
+        readonly property real glyphTop: topCard.y + topCard.height + gap
+        readonly property real glyphBottom: bottomRow.y - gap
+        readonly property real verticalGlyphSpace: Math.max(
+            glyphBottom - glyphTop, 0)
+        readonly property real bodyWidth: Math.max(0, Math.min(
+            horizontalGlyphSpace,
+            verticalGlyphSpace * gamepadMappingView.defaultGamepadLayout.glyph.aspectRatio,
+            gamepadMappingView.defaultGamepadLayout.glyph.maxWidth))
+        readonly property real bodyHeight: bodyWidth
+            / gamepadMappingView.defaultGamepadLayout.glyph.aspectRatio
 
-        // 手柄图示可用宽高（左右留出卡片 + 间隙）
-        readonly property real bodyAvailWidth: width - 2 * cardColumnWidth - 16
-        // 手柄保持横向比例，上限 600
-        readonly property real bodyWidth: Math.min(
-            bodyAvailWidth,
-            gamepadMappingView.defaultGamepadLayout.glyph.maxWidth)
-        readonly property real bodyHeight: bodyWidth / 1.8
-
-        // ── 中间：手柄图示（上移，作为中心视觉锚点）──
+        // The cards own the panel's outer bands. The glyph only occupies the
+        // remaining center safe area, so resizing it cannot push cards into
+        // the title bar or beyond the content bounds.
 
         GamepadGlyph {
             id: gamepadGlyph
@@ -132,15 +138,15 @@ Panel {
             width: layout.bodyWidth
             height: layout.bodyHeight
             anchors.horizontalCenter: parent.horizontalCenter
-            // 手柄整体上移：中心位于面板 38% 高度处
-            y: parent.height * 0.38 - height / 2
+            y: layout.glyphTop
+                + Math.max((layout.verticalGlyphSpace - height) / 2 - 3, 0)
 
             onControlSelected: function(cid) {
                 gamepadMappingView.controlSelected(cid)
             }
         }
 
-        // ── 顶部：Back / Guide / Start（紧贴手柄上方）──
+        // ── 顶部：功能键，固定在内容区顶部 ──
 
         MappingGroupCard {
             id: topCard
@@ -151,24 +157,22 @@ Panel {
             mappingRevision: gamepadMappingView._mappingRevision
             title: gamepadMappingView.defaultGamepadLayout.topCard.title
             controls: gamepadMappingView.defaultGamepadLayout.topCard.controls
-            width: layout.cardColumnWidth
+            width: Math.max(Math.min(layout.width * 0.34, 250), 190)
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: gamepadGlyph.top
-            anchors.bottomMargin: 6
+            anchors.top: parent.top
             onControlClicked: function(cid) { gamepadMappingView.controlSelected(cid) }
             onControlDoubleClicked: function(cid) { gamepadMappingView.controlDoubleClicked(cid) }
         }
 
-        // ── 左列：LB/LT + Left Stick（紧贴手柄左侧）──
+        // ── 左右列共享同一条水平中心线 ──
 
         Column {
             id: leftColumn
             z: 1
             width: layout.cardColumnWidth
-            anchors.right: gamepadGlyph.left
-            anchors.rightMargin: 6
+            anchors.left: parent.left
             anchors.verticalCenter: gamepadGlyph.verticalCenter
-            spacing: 6
+            spacing: layout.gap
 
             Repeater {
                 model: gamepadMappingView.defaultGamepadLayout.leftCards
@@ -194,10 +198,9 @@ Panel {
             id: rightColumn
             z: 1
             width: layout.cardColumnWidth
-            anchors.left: gamepadGlyph.right
-            anchors.leftMargin: 6
+            anchors.right: parent.right
             anchors.verticalCenter: gamepadGlyph.verticalCenter
-            spacing: 6
+            spacing: layout.gap
 
             Repeater {
                 model: gamepadMappingView.defaultGamepadLayout.rightCards
@@ -217,14 +220,13 @@ Panel {
             }
         }
 
-        // ── 底部行：D-Pad + Right Stick（紧贴手柄下方，以中心线对称）──
+        // ── 底部行固定在内容区底边，两张卡片关于中心轴对称 ──
 
         Row {
             id: bottomRow
             z: 1
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: gamepadGlyph.bottom
-            anchors.topMargin: 6
+            anchors.bottom: parent.bottom
             spacing: 12
 
             Repeater {

@@ -32,6 +32,7 @@ Panel {
 
     // 切换选中控件时同步 Action output
     onSelectedControlChanged: _syncActionFromCurrentBinding()
+    Component.onCompleted: _syncActionFromCurrentBinding()
 
     function _syncActionFromCurrentBinding() {
         if (!appController || !appController.mappingRuleModel

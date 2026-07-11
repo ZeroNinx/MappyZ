@@ -16,7 +16,7 @@ Rectangle {
     signal controlDoubleClicked(string controlId)
 
     implicitWidth: 170
-    implicitHeight: cardColumn.implicitHeight + 14
+    implicitHeight: cardColumn.implicitHeight + 16
     radius: 6
     color: Qt.rgba(0.12, 0.13, 0.14, 0.92)
     border.color: card.theme.border
@@ -28,15 +28,15 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: 8
-        anchors.rightMargin: 8
-        spacing: 1
+        anchors.leftMargin: 9
+        anchors.rightMargin: 9
+        spacing: 2
 
         // 标题
         Text {
             text: card.title
             color: card.theme.text
-            font.pixelSize: 12
+            font.pixelSize: 13
             font.bold: true
             leftPadding: 4
             bottomPadding: 3
@@ -53,7 +53,7 @@ Rectangle {
                 required property int index
 
                 width: cardColumn.width
-                height: 24
+                height: 28
                 radius: 3
                 color: {
                     if (card.selectedControl === modelData.controlId)
@@ -74,7 +74,7 @@ Rectangle {
                     text: modelData.label
                     color: card.selectedControl === modelData.controlId
                         ? "#ffffff" : card.theme.text
-                    font.pixelSize: 12
+                    font.pixelSize: 13
                     font.bold: card.selectedControl === modelData.controlId
                 }
 
@@ -98,7 +98,7 @@ Rectangle {
                         var output = card.mappingRuleModel.displayOutputForInput(modelData.controlId)
                         return output !== "" ? card.theme.accent : card.theme.muted
                     }
-                    font.pixelSize: 12
+                    font.pixelSize: 13
                     font.italic: {
                         void(card.mappingRevision)
                         if (!card.mappingRuleModel) return true

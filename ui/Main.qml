@@ -4,8 +4,8 @@ import QtQuick.Window
 Window {
     id: root
 
-    width: 1280
-    height: 780
+    width: 1440
+    height: 900
     minimumWidth: 1120
     minimumHeight: 720
     visible: true
@@ -165,7 +165,7 @@ Window {
         anchors.topMargin: 12
         anchors.bottom: eventPanel.top
         anchors.bottomMargin: 12
-        width: 260
+        width: root.width < 1280 ? 210 : 260
 
         onDeviceSelected: function(deviceId, displayName) {
             root.selectedDevice = deviceId
@@ -214,7 +214,7 @@ Window {
         anchors.rightMargin: 12
         anchors.top: devicePanel.top
         anchors.bottom: devicePanel.bottom
-        width: 280
+        width: root.width < 1280 ? 230 : 280
     }
 
     // ── 映射选择器弹窗（全窗口 overlay）──
