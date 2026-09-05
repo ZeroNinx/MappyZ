@@ -15,6 +15,11 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
+# Windows 可执行文件图标通过 .rc 资源编译，需启用 RC 语言。
+if(WIN32)
+    enable_language(RC)
+endif()
+
 # ── 第三方依赖 ──
 
 add_subdirectory(third_party/ZeroStyle)
@@ -22,7 +27,7 @@ add_subdirectory(third_party/ZeroStyle)
 # 启用 ZeroStyle 短宏（NODISCARD 等），项目代码统一使用短名。
 add_compile_definitions(ZERO_ENABLE_SHORT_MACROS)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick)
+find_package(Qt6 REQUIRED COMPONENTS Quick Widgets)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -290,6 +295,19 @@ qt_add_qml_module(MappyZQml
 
 qt_add_executable(MappyZ
     source/App/Main.cpp
+    source/App/WindowLifecycleController.cpp
+    source/App/SystemTrayController.cpp
+)
+
+# Windows 可执行文件图标资源，仅 WIN32 构建引用 resource compiler。
+if(WIN32)
+    target_sources(MappyZ PRIVATE MappyZ.rc)
+endif()
+
+# 将根目录 icon.ico 嵌入为 :/assets/icon.ico，供托盘图标和窗口图标共用。
+qt_add_resources(MappyZ "app_icon"
+    PREFIX "/assets"
+    FILES icon.ico
 )
 
 set_target_properties(MappyZ
@@ -307,6 +325,7 @@ target_link_libraries(MappyZ
         MappyZQml
         MappyZQmlplugin
         Qt6::Quick
+        Qt6::Widgets
 )
 
 if(WIN32)
@@ -550,4 +569,33 @@ if(BUILD_TESTING)
     endif()
 
     catch_discover_tests(MappyZQmlSmokeTests)
+
+    # ── Desktop 生命周期测试 ──
+    # 使用 QGuiApplication + offscreen 和真实 QWindow 验证窗口事件策略，
+    # 不构造 Widgets 托盘对象；显式共享 WindowLifecycleController 源文件。
+
+    add_executable(MappyZDesktopTests
+        tests/App/DesktopTestsMain.cpp
+        tests/App/WindowLifecycleControllerTests.cpp
+        source/App/WindowLifecycleController.cpp
+    )
+
+    target_include_directories(MappyZDesktopTests
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/source
+    )
+
+    target_link_libraries(MappyZDesktopTests
+        PRIVATE
+            Qt6::Gui
+            Catch2::Catch2
+    )
+
+    if(MSVC)
+        target_compile_options(MappyZDesktopTests PRIVATE /W4)
+    else()
+        target_compile_options(MappyZDesktopTests PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+    endif()
+
+    catch_discover_tests(MappyZDesktopTests)
 endif()

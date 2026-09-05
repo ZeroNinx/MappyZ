@@ -1,0 +1,3 @@
+// Windows 可执行文件图标资源。
+// 数字 ID 最小者被 Explorer / 任务栏用作应用图标。图标文件与本 .rc 同处仓库根目录。
+1 ICON "icon.ico"

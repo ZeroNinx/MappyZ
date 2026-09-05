@@ -8,7 +8,8 @@ Window {
     height: 900
     minimumWidth: 1120
     minimumHeight: 720
-    visible: true
+    // 默认隐藏启动，避免先闪现窗口再隐藏到托盘。窗口显隐由 C++ 生命周期控制器负责。
+    visible: false
     title: "MappyZ"
     color: theme.window
 
@@ -135,10 +136,7 @@ Window {
         }
     }
 
-    onClosing: {
-        appController.stopPumpTimer()
-        appController.stopRuntime()
-    }
+    // 关闭 / 最小化拦截与退出清理统一由 C++ 生命周期控制器负责，QML 不再处理 onClosing。
 
     // ── 布局编排 ──
 
