@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QSharedMemory>
 #include <QWindow>
 #include <Qt>
 #include <QtQml/qqmlextensionplugin.h>
@@ -22,6 +23,16 @@ int main(int ArgCount, char* Arguments[])
 {
     // QSystemTrayIcon / QMenu 需要 QApplication（Widgets）。
     QApplication App(ArgCount, Arguments);
+
+    // 单实例守卫：尝试创建命名共享内存段，创建失败即说明已有实例在运行，
+    // 本次启动直接退出，不再加载 QML / 初始化 runtime，避免重复抢占托盘、SDL 等资源。
+    // 段随本进程存活，进程结束（含崩溃）时由系统回收（Windows 内核对象，无残留）。
+    QSharedMemory SingleInstanceGuard(QStringLiteral("MappyZ_SingleInstanceGuard"));
+    if (!SingleInstanceGuard.create(1))
+    {
+        std::fprintf(stderr, "[MappyZ] 检测到已有实例在运行，退出本次启动\n");
+        return 0;
+    }
 
     const QIcon AppIcon(QStringLiteral(":/assets/icon.ico"));
     QApplication::setWindowIcon(AppIcon);
