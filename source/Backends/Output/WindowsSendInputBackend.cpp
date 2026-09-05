@@ -67,6 +67,12 @@ static_assert(VirtualKey::VkEnd      == VK_END,    "VkEnd mismatch");
 static_assert(VirtualKey::VkPageUp   == VK_PRIOR,  "VkPageUp mismatch");
 static_assert(VirtualKey::VkPageDown == VK_NEXT,   "VkPageDown mismatch");
 
+// DIK 特判键的 VK 镜像常量
+static_assert(VirtualKey::VkNumLock     == VK_NUMLOCK,  "VkNumLock mismatch");
+static_assert(VirtualKey::VkPrintScreen == VK_SNAPSHOT, "VkPrintScreen mismatch");
+static_assert(VirtualKey::VkRightWin    == VK_RWIN,     "VkRightWin mismatch");
+static_assert(VirtualKey::VkApps        == VK_APPS,     "VkApps mismatch");
+
 // 左右修饰键
 static_assert(VirtualKey::VkLeftShift    == VK_LSHIFT,   "VkLeftShift mismatch");
 static_assert(VirtualKey::VkRightShift   == VK_RSHIFT,   "VkRightShift mismatch");
@@ -113,93 +119,65 @@ static_assert(MouseFlag::Wheel      == MOUSEEVENTF_WHEEL,      "MouseFlag::Wheel
 // WHEEL_DELTA
 static_assert(WheelDeltaUnit == WHEEL_DELTA, "WheelDeltaUnit mismatch");
 
+// 键盘事件标志
+static_assert(KeyEventFlag::Extended == KEYEVENTF_EXTENDEDKEY, "KeyEventFlag::Extended mismatch");
+static_assert(KeyEventFlag::KeyUp    == KEYEVENTF_KEYUP,        "KeyEventFlag::KeyUp mismatch");
+
 // XButton 数据
 static_assert(XButton::XButton1 == XBUTTON1, "XButton1 mismatch");
 static_assert(XButton::XButton2 == XBUTTON2, "XButton2 mismatch");
 
 }  // namespace SendInputHelpers
 
-// ── 扩展键判定 ──
-// 扩展键需要在 SendInput 中设置 KEYEVENTF_EXTENDEDKEY 标志，
-// 否则 Windows 会将其误解为小键盘等价键（如方向键变成 Numpad 4/6/8/2）
-static bool IsExtendedKey(WORD VirtualKeyCode)
+// ── 基础扫描码解析器：注入给 BuildResolvedInput 的 Win32 seam ──
+// 扩展键由 DIK 表解析，其余键回退到此函数取基础扫描码。
+static uint32 BaseScanCodeViaMapVirtualKey(uint32 VirtualKeyCode)
 {
-    switch (VirtualKeyCode)
-    {
-    case VK_UP:
-    case VK_DOWN:
-    case VK_LEFT:
-    case VK_RIGHT:
-    case VK_HOME:
-    case VK_END:
-    case VK_PRIOR:
-    case VK_NEXT:
-    case VK_INSERT:
-    case VK_DELETE:
-    case VK_NUMLOCK:
-    case VK_SNAPSHOT:
-    case VK_DIVIDE:
-    case VK_RCONTROL:
-    case VK_RMENU:
-    case VK_LWIN:
-    case VK_RWIN:
-        return true;
-    default:
-        return false;
-    }
+    return static_cast<uint32>(::MapVirtualKey(VirtualKeyCode, MAPVK_VK_TO_VSC));
 }
 
 // ── 默认 NativeSender 实现：调用真实 Win32 SendInput ──
+// 命令 -> 最终字段的解析（扫描码 / 扩展标志 / 字段直通）全部在纯函数
+// SendInputHelpers::BuildResolvedInput 中完成并被单测覆盖；这里只做
+// SResolvedInput -> Win32 INPUT 的机械拷贝和 SendInput 调用。
 
 static bool DefaultNativeSender(const SendInputHelpers::SSendInputCommand& Command)
 {
-    INPUT Input = {};
-
-    switch (Command.Type)
-    {
-    case SendInputHelpers::ESendInputCommandType::Keyboard:
-    {
-        Input.type = INPUT_KEYBOARD;
-        Input.ki.wVk = static_cast<WORD>(Command.VirtualKeyCode);
-        Input.ki.wScan = static_cast<WORD>(
-            ::MapVirtualKey(Input.ki.wVk, MAPVK_VK_TO_VSC));
-
-        DWORD Flags = Command.bKeyUp ? KEYEVENTF_KEYUP : 0;
-        if (IsExtendedKey(Input.ki.wVk))
-        {
-            Flags |= KEYEVENTF_EXTENDEDKEY;
-        }
-        Input.ki.dwFlags = Flags;
-        break;
-    }
-    case SendInputHelpers::ESendInputCommandType::MouseButton:
-    {
-        Input.type = INPUT_MOUSE;
-        Input.mi.dwFlags = static_cast<DWORD>(Command.MouseFlags);
-        Input.mi.mouseData = static_cast<DWORD>(Command.MouseData);
-        break;
-    }
-    case SendInputHelpers::ESendInputCommandType::MouseMove:
-    {
-        Input.type = INPUT_MOUSE;
-        Input.mi.dwFlags = static_cast<DWORD>(Command.MouseFlags);
-        Input.mi.dx = static_cast<LONG>(Command.DeltaX);
-        Input.mi.dy = static_cast<LONG>(Command.DeltaY);
-        break;
-    }
-    case SendInputHelpers::ESendInputCommandType::MouseWheel:
-    {
-        Input.type = INPUT_MOUSE;
-        Input.mi.dwFlags = static_cast<DWORD>(Command.MouseFlags);
-        Input.mi.mouseData = static_cast<DWORD>(Command.WheelDelta);
-        break;
-    }
-    default:
+    const auto ResolvedOpt = SendInputHelpers::BuildResolvedInput(Command, &BaseScanCodeViaMapVirtualKey);
+    if (!ResolvedOpt.has_value())
     {
         std::fprintf(stderr, "[WindowsSendInputBackend] 错误: 未知的命令类型 %d\n",
             static_cast<int>(Command.Type));
         return false;
     }
+    const auto& Resolved = ResolvedOpt.value();
+
+    INPUT Input = {};
+
+    switch (Resolved.Kind)
+    {
+    case SendInputHelpers::EResolvedInputKind::Keyboard:
+        Input.type = INPUT_KEYBOARD;
+        Input.ki.wVk = static_cast<WORD>(Resolved.VirtualKeyCode);
+        Input.ki.wScan = static_cast<WORD>(Resolved.ScanCode);
+        Input.ki.dwFlags = static_cast<DWORD>(Resolved.KeyFlags);
+        break;
+    case SendInputHelpers::EResolvedInputKind::MouseButton:
+        Input.type = INPUT_MOUSE;
+        Input.mi.dwFlags = static_cast<DWORD>(Resolved.MouseFlags);
+        Input.mi.mouseData = static_cast<DWORD>(Resolved.MouseData);
+        break;
+    case SendInputHelpers::EResolvedInputKind::MouseMove:
+        Input.type = INPUT_MOUSE;
+        Input.mi.dwFlags = static_cast<DWORD>(Resolved.MouseFlags);
+        Input.mi.dx = static_cast<LONG>(Resolved.DeltaX);
+        Input.mi.dy = static_cast<LONG>(Resolved.DeltaY);
+        break;
+    case SendInputHelpers::EResolvedInputKind::MouseWheel:
+        Input.type = INPUT_MOUSE;
+        Input.mi.dwFlags = static_cast<DWORD>(Resolved.MouseFlags);
+        Input.mi.mouseData = static_cast<DWORD>(Resolved.WheelDelta);
+        break;
     }
 
     UINT Sent = ::SendInput(1, &Input, sizeof(INPUT));

@@ -374,3 +374,236 @@ TEST_CASE("MapKeyNameToVirtualKey maps numpad keys",
     REQUIRE(MapKeyNameToVirtualKey("NumAdd").value()      == VirtualKey::VkAdd);
     REQUIRE(MapKeyNameToVirtualKey("NumDecimal").value()  == VirtualKey::VkDecimal);
 }
+
+// ── DirectInputScanCode: DIK 扫描码策略 ──
+
+TEST_CASE("DirectInputScanCode maps arrow keys to DIK codes",
+    "[Backends][SendInputHelpers]")
+{
+    REQUIRE(DirectInputScanCode(VirtualKey::VkArrowUp).value()    == 0xC8);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkArrowDown).value()  == 0xD0);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkArrowLeft).value()  == 0xCB);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkArrowRight).value() == 0xCD);
+}
+
+TEST_CASE("DirectInputScanCode maps navigation and modifier keys to DIK codes",
+    "[Backends][SendInputHelpers]")
+{
+    REQUIRE(DirectInputScanCode(VirtualKey::VkHome).value()         == 0xC7);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkEnd).value()          == 0xCF);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkPageUp).value()       == 0xC9);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkPageDown).value()     == 0xD1);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkInsert).value()       == 0xD2);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkDelete).value()       == 0xD3);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkDivide).value()       == 0xB5);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkRightControl).value() == 0x9D);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkRightAlt).value()     == 0xB8);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkLeftWin).value()      == 0xDB);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkRightWin).value()     == 0xDC);
+    REQUIRE(DirectInputScanCode(VirtualKey::VkApps).value()         == 0xDD);
+}
+
+// 回归: NumLock / PrintScreen 不能一律 OR 0x80, 必须走显式特判
+TEST_CASE("DirectInputScanCode handles NumLock and PrintScreen exceptions",
+    "[Backends][SendInputHelpers]")
+{
+    // 若错误地对基础扫描码 OR 0x80, 会得到 0xC5 / 0xD4 —— 这里必须是显式 DIK 值
+    REQUIRE(DirectInputScanCode(VirtualKey::VkNumLock).value()     == 0x45);  // DIK_NUMLOCK, 非 0xC5
+    REQUIRE(DirectInputScanCode(VirtualKey::VkPrintScreen).value() == 0xB7);  // DIK_SYSRQ,   非 0xD4
+}
+
+// 非特判键返回 nullopt, 调用方回退到 MapVirtualKey 基础扫描码
+TEST_CASE("DirectInputScanCode returns nullopt for non-special keys",
+    "[Backends][SendInputHelpers]")
+{
+    REQUIRE_FALSE(DirectInputScanCode(VirtualKey::VkA).has_value());
+    REQUIRE_FALSE(DirectInputScanCode(VirtualKey::VkSpace).has_value());
+    REQUIRE_FALSE(DirectInputScanCode(VirtualKey::VkNumpad8).has_value());  // 小键盘 8, 非扩展
+    REQUIRE_FALSE(DirectInputScanCode(VirtualKey::VkF1).has_value());
+}
+
+// ── ComposeKeyboardInput: 键盘 INPUT 字段组合 ──
+
+TEST_CASE("ComposeKeyboardInput passes through vk and scan code",
+    "[Backends][SendInputHelpers]")
+{
+    auto Fields = ComposeKeyboardInput(VirtualKey::VkA, 0x1E, false, false);
+    REQUIRE(Fields.VirtualKeyCode == VirtualKey::VkA);
+    REQUIRE(Fields.ScanCode == 0x1E);
+}
+
+TEST_CASE("ComposeKeyboardInput sets KeyUp flag only on key up",
+    "[Backends][SendInputHelpers]")
+{
+    auto Down = ComposeKeyboardInput(VirtualKey::VkA, 0x1E, false, false);
+    REQUIRE((Down.Flags & KeyEventFlag::KeyUp) == 0);
+
+    auto Up = ComposeKeyboardInput(VirtualKey::VkA, 0x1E, false, true);
+    REQUIRE((Up.Flags & KeyEventFlag::KeyUp) != 0);
+}
+
+// 回归: 扩展键必须带 KEYEVENTF_EXTENDEDKEY —— 防止有人误删扩展标志逻辑
+TEST_CASE("ComposeKeyboardInput sets Extended flag only for extended keys",
+    "[Backends][SendInputHelpers]")
+{
+    auto Extended = ComposeKeyboardInput(VirtualKey::VkArrowUp, 0xC8, true, false);
+    REQUIRE((Extended.Flags & KeyEventFlag::Extended) != 0);
+
+    auto NonExtended = ComposeKeyboardInput(VirtualKey::VkA, 0x1E, false, false);
+    REQUIRE((NonExtended.Flags & KeyEventFlag::Extended) == 0);
+}
+
+TEST_CASE("ComposeKeyboardInput combines Extended and KeyUp flags",
+    "[Backends][SendInputHelpers]")
+{
+    auto Fields = ComposeKeyboardInput(VirtualKey::VkArrowUp, 0xC8, true, true);
+    REQUIRE((Fields.Flags & KeyEventFlag::Extended) != 0);
+    REQUIRE((Fields.Flags & KeyEventFlag::KeyUp) != 0);
+    // 只应包含这两个标志
+    REQUIRE(Fields.Flags == (KeyEventFlag::Extended | KeyEventFlag::KeyUp));
+}
+
+// ── IsExtendedKey ──
+
+TEST_CASE("IsExtendedKey is true for extended keys", "[Backends][SendInputHelpers]")
+{
+    REQUIRE(IsExtendedKey(VirtualKey::VkArrowUp));
+    REQUIRE(IsExtendedKey(VirtualKey::VkArrowDown));
+    REQUIRE(IsExtendedKey(VirtualKey::VkHome));
+    REQUIRE(IsExtendedKey(VirtualKey::VkDelete));
+    REQUIRE(IsExtendedKey(VirtualKey::VkDivide));
+    REQUIRE(IsExtendedKey(VirtualKey::VkRightControl));
+    REQUIRE(IsExtendedKey(VirtualKey::VkRightAlt));
+    REQUIRE(IsExtendedKey(VirtualKey::VkLeftWin));
+    REQUIRE(IsExtendedKey(VirtualKey::VkRightWin));
+    REQUIRE(IsExtendedKey(VirtualKey::VkApps));
+    REQUIRE(IsExtendedKey(VirtualKey::VkNumLock));
+    REQUIRE(IsExtendedKey(VirtualKey::VkPrintScreen));
+}
+
+TEST_CASE("IsExtendedKey is false for non-extended keys", "[Backends][SendInputHelpers]")
+{
+    REQUIRE_FALSE(IsExtendedKey(VirtualKey::VkA));
+    REQUIRE_FALSE(IsExtendedKey(VirtualKey::VkSpace));
+    REQUIRE_FALSE(IsExtendedKey(VirtualKey::VkNumpad8));  // 小键盘 8, 非扩展
+    REQUIRE_FALSE(IsExtendedKey(VirtualKey::VkF1));
+    REQUIRE_FALSE(IsExtendedKey(VirtualKey::VkLeftControl));
+}
+
+// ── ResolveScanCode: DIK 表 + 基础码回退 seam ──
+
+// fake 基础扫描码解析器：返回一个可辨识的常量，用于验证是否走了回退分支
+static uint32 FakeBaseScanCode(uint32 /*VirtualKeyCode*/) { return 0xAB; }
+
+TEST_CASE("ResolveScanCode uses DIK table for extended keys and ignores base resolver",
+    "[Backends][SendInputHelpers]")
+{
+    REQUIRE(ResolveScanCode(VirtualKey::VkArrowUp, &FakeBaseScanCode)   == 0xC8);
+    REQUIRE(ResolveScanCode(VirtualKey::VkNumLock, &FakeBaseScanCode)   == 0x45);
+    REQUIRE(ResolveScanCode(VirtualKey::VkPrintScreen, &FakeBaseScanCode) == 0xB7);
+}
+
+TEST_CASE("ResolveScanCode falls back to base resolver for non-special keys",
+    "[Backends][SendInputHelpers]")
+{
+    REQUIRE(ResolveScanCode(VirtualKey::VkA, &FakeBaseScanCode)      == 0xAB);
+    REQUIRE(ResolveScanCode(VirtualKey::VkNumpad8, &FakeBaseScanCode) == 0xAB);
+}
+
+// ── BuildResolvedInput: 命令 -> 平台无关字段 ──
+
+static SSendInputCommand MakeKeyboardCommand(uint32 Vk, bool bKeyUp)
+{
+    SSendInputCommand Command;
+    Command.Type = ESendInputCommandType::Keyboard;
+    Command.VirtualKeyCode = Vk;
+    Command.bKeyUp = bKeyUp;
+    return Command;
+}
+
+TEST_CASE("BuildResolvedInput resolves extended key down with DIK scan and Extended flag",
+    "[Backends][SendInputHelpers]")
+{
+    auto ResolvedOpt = BuildResolvedInput(MakeKeyboardCommand(VirtualKey::VkArrowUp, false), &FakeBaseScanCode);
+    REQUIRE(ResolvedOpt.has_value());
+    const auto& Resolved = ResolvedOpt.value();
+    REQUIRE(Resolved.Kind == EResolvedInputKind::Keyboard);
+    REQUIRE(Resolved.VirtualKeyCode == VirtualKey::VkArrowUp);
+    REQUIRE(Resolved.ScanCode == 0xC8);  // DIK_UP
+    REQUIRE((Resolved.KeyFlags & KeyEventFlag::Extended) != 0);
+    REQUIRE((Resolved.KeyFlags & KeyEventFlag::KeyUp) == 0);
+}
+
+TEST_CASE("BuildResolvedInput resolves non-special key up with base scan and KeyUp flag",
+    "[Backends][SendInputHelpers]")
+{
+    auto ResolvedOpt = BuildResolvedInput(MakeKeyboardCommand(VirtualKey::VkA, true), &FakeBaseScanCode);
+    REQUIRE(ResolvedOpt.has_value());
+    const auto& Resolved = ResolvedOpt.value();
+    REQUIRE(Resolved.Kind == EResolvedInputKind::Keyboard);
+    REQUIRE(Resolved.VirtualKeyCode == VirtualKey::VkA);
+    REQUIRE(Resolved.ScanCode == 0xAB);  // 回退到 base resolver
+    REQUIRE((Resolved.KeyFlags & KeyEventFlag::Extended) == 0);
+    REQUIRE((Resolved.KeyFlags & KeyEventFlag::KeyUp) != 0);
+}
+
+TEST_CASE("BuildResolvedInput passes through mouse button fields",
+    "[Backends][SendInputHelpers]")
+{
+    SSendInputCommand Command;
+    Command.Type = ESendInputCommandType::MouseButton;
+    Command.MouseFlags = MouseFlag::XDown;
+    Command.MouseData = XButton::XButton1;
+
+    auto ResolvedOpt = BuildResolvedInput(Command, &FakeBaseScanCode);
+    REQUIRE(ResolvedOpt.has_value());
+    const auto& Resolved = ResolvedOpt.value();
+    REQUIRE(Resolved.Kind == EResolvedInputKind::MouseButton);
+    REQUIRE(Resolved.MouseFlags == MouseFlag::XDown);
+    REQUIRE(Resolved.MouseData == XButton::XButton1);
+}
+
+TEST_CASE("BuildResolvedInput passes through mouse move fields",
+    "[Backends][SendInputHelpers]")
+{
+    SSendInputCommand Command;
+    Command.Type = ESendInputCommandType::MouseMove;
+    Command.MouseFlags = MouseFlag::Move;
+    Command.DeltaX = 12;
+    Command.DeltaY = -7;
+
+    auto ResolvedOpt = BuildResolvedInput(Command, &FakeBaseScanCode);
+    REQUIRE(ResolvedOpt.has_value());
+    const auto& Resolved = ResolvedOpt.value();
+    REQUIRE(Resolved.Kind == EResolvedInputKind::MouseMove);
+    REQUIRE(Resolved.MouseFlags == MouseFlag::Move);
+    REQUIRE(Resolved.DeltaX == 12);
+    REQUIRE(Resolved.DeltaY == -7);
+}
+
+TEST_CASE("BuildResolvedInput passes through mouse wheel fields",
+    "[Backends][SendInputHelpers]")
+{
+    SSendInputCommand Command;
+    Command.Type = ESendInputCommandType::MouseWheel;
+    Command.MouseFlags = MouseFlag::Wheel;
+    Command.WheelDelta = WheelDeltaUnit;
+
+    auto ResolvedOpt = BuildResolvedInput(Command, &FakeBaseScanCode);
+    REQUIRE(ResolvedOpt.has_value());
+    const auto& Resolved = ResolvedOpt.value();
+    REQUIRE(Resolved.Kind == EResolvedInputKind::MouseWheel);
+    REQUIRE(Resolved.MouseFlags == MouseFlag::Wheel);
+    REQUIRE(Resolved.WheelDelta == WheelDeltaUnit);
+}
+
+// 防御性: 非法命令类型返回 nullopt（正常路径经 BuildCommandFromAction 不会触发）
+TEST_CASE("BuildResolvedInput returns nullopt for invalid command type",
+    "[Backends][SendInputHelpers]")
+{
+    SSendInputCommand Command;
+    Command.Type = static_cast<ESendInputCommandType>(999);
+
+    auto ResolvedOpt = BuildResolvedInput(Command, &FakeBaseScanCode);
+    REQUIRE_FALSE(ResolvedOpt.has_value());
+}

@@ -103,6 +103,12 @@ inline constexpr uint32 VkEnd      = 0x23;
 inline constexpr uint32 VkPageUp   = 0x21;
 inline constexpr uint32 VkPageDown = 0x22;
 
+// 扩展键中 DIK 编码需特判的按键（当前未进入 key name 映射，仅供扫描码表使用）
+inline constexpr uint32 VkNumLock     = 0x90;
+inline constexpr uint32 VkPrintScreen = 0x2C;  // VK_SNAPSHOT
+inline constexpr uint32 VkRightWin    = 0x5C;
+inline constexpr uint32 VkApps        = 0x5D;
+
 // 左右修饰键
 inline constexpr uint32 VkLeftShift    = 0xA0;
 inline constexpr uint32 VkRightShift   = 0xA1;
@@ -162,6 +168,16 @@ inline constexpr uint32 XUp        = 0x0100;
 inline constexpr uint32 Wheel      = 0x0800;
 
 }  // namespace MouseFlag
+
+// ── Windows 键盘事件标志镜像常量 ──
+// 与 Windows.h 中 KEYEVENTF_* 宏定义保持一致
+namespace KeyEventFlag
+{
+
+inline constexpr uint32 Extended = 0x0001;  // KEYEVENTF_EXTENDEDKEY
+inline constexpr uint32 KeyUp    = 0x0002;  // KEYEVENTF_KEYUP
+
+}  // namespace KeyEventFlag
 
 // ── Windows XButton 数据常量 ──
 // MOUSEEVENTF_XDOWN / XBUTTONUP 的 mouseData 值
@@ -353,6 +369,197 @@ NODISCARD inline uint32 MapMouseButtonToXButtonData(int32 Button)
 
 // WHEEL_DELTA 镜像常量（Windows 标准滚轮步进量为 120）
 inline constexpr int32 WheelDeltaUnit = 120;
+
+// ── DirectInput (DIK) 扫描码策略 ──
+// 这是 DirectInput 兼容输出所需的扫描码编码, 不是"唯一正确"的键盘输出格式:
+// 规范化 Windows 事件通常是 scanCode=基础码 + KEYEVENTF_EXTENDEDKEY,
+// 而大量老游戏/模拟器经 DirectInput 按 DIK 编码读键, 只认这里的值。
+// 详见 WindowsSendInputBackend.cpp 中键盘注入分支的说明。
+//
+// 返回给定 VK 的 DIK 扫描码; 仅覆盖需要特殊编码的扩展键。
+// 返回 nullopt 表示该键无需特判, 调用方应回退到 MapVirtualKey(MAPVK_VK_TO_VSC) 的基础扫描码。
+//
+// 注意: 绝大多数扩展键的 DIK 码 = 基础扫描码 | 0x80 (对应硬件 0xE0 前缀),
+// 但不能一律 OR 0x80 —— NumLock、PrintScreen 是例外, 必须显式列出:
+//   NumLock:     基础码 0x45, 一律 OR 会得到错误的 0xC5, 实际 DIK_NUMLOCK = 0x45
+//   PrintScreen: MapVirtualKey 返回 0x54, 一律 OR 会得到 0xD4, 实际 DIK_SYSRQ = 0xB7
+NODISCARD inline TOptional<uint32> DirectInputScanCode(uint32 VirtualKeyCode)
+{
+    switch (VirtualKeyCode)
+    {
+    // 与硬件 0xE0 前缀对应, DIK 码 = 基础扫描码 | 0x80
+    case VirtualKey::VkArrowUp:      return 0xC8;  // DIK_UP
+    case VirtualKey::VkArrowDown:    return 0xD0;  // DIK_DOWN
+    case VirtualKey::VkArrowLeft:    return 0xCB;  // DIK_LEFT
+    case VirtualKey::VkArrowRight:   return 0xCD;  // DIK_RIGHT
+    case VirtualKey::VkHome:         return 0xC7;  // DIK_HOME
+    case VirtualKey::VkEnd:          return 0xCF;  // DIK_END
+    case VirtualKey::VkPageUp:       return 0xC9;  // DIK_PRIOR
+    case VirtualKey::VkPageDown:     return 0xD1;  // DIK_NEXT
+    case VirtualKey::VkInsert:       return 0xD2;  // DIK_INSERT
+    case VirtualKey::VkDelete:       return 0xD3;  // DIK_DELETE
+    case VirtualKey::VkDivide:       return 0xB5;  // DIK_DIVIDE (小键盘 /)
+    case VirtualKey::VkRightControl: return 0x9D;  // DIK_RCONTROL
+    case VirtualKey::VkRightAlt:     return 0xB8;  // DIK_RMENU
+    case VirtualKey::VkLeftWin:      return 0xDB;  // DIK_LWIN
+    case VirtualKey::VkRightWin:     return 0xDC;  // DIK_RWIN
+    case VirtualKey::VkApps:         return 0xDD;  // DIK_APPS
+
+    // 例外: 不能用 |0x80
+    case VirtualKey::VkNumLock:      return 0x45;  // DIK_NUMLOCK (非 0xC5)
+    case VirtualKey::VkPrintScreen:  return 0xB7;  // DIK_SYSRQ   (非 0xD4)
+
+    default:                         return std::nullopt;
+    }
+}
+
+// 判定是否为扩展键（硬件带 0xE0 前缀）。
+// 扩展键需要在 SendInput 中设置 KEYEVENTF_EXTENDEDKEY 标志，
+// 否则 Windows 会将其误解为小键盘等价键（如方向键变成 Numpad 4/6/8/2）。
+NODISCARD inline bool IsExtendedKey(uint32 VirtualKeyCode)
+{
+    switch (VirtualKeyCode)
+    {
+    case VirtualKey::VkArrowUp:
+    case VirtualKey::VkArrowDown:
+    case VirtualKey::VkArrowLeft:
+    case VirtualKey::VkArrowRight:
+    case VirtualKey::VkHome:
+    case VirtualKey::VkEnd:
+    case VirtualKey::VkPageUp:
+    case VirtualKey::VkPageDown:
+    case VirtualKey::VkInsert:
+    case VirtualKey::VkDelete:
+    case VirtualKey::VkNumLock:
+    case VirtualKey::VkPrintScreen:
+    case VirtualKey::VkDivide:
+    case VirtualKey::VkRightControl:
+    case VirtualKey::VkRightAlt:
+    case VirtualKey::VkLeftWin:
+    case VirtualKey::VkRightWin:
+    case VirtualKey::VkApps:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// 键盘 INPUT 的字段组合（对应 Win32 KEYBDINPUT 的 wVk/wScan/dwFlags）。
+// 抽成纯数据便于单测覆盖标志组合，不依赖 Win32 运行时。
+struct SKeyboardInputFields
+{
+    uint32 VirtualKeyCode = 0;
+    uint32 ScanCode = 0;
+    uint32 Flags = 0;
+};
+
+// 组装键盘 INPUT 字段（纯函数）。
+// ResolvedScanCode 由调用方在 Win32 层解析（DirectInputScanCode 或 MapVirtualKey 回退）后传入。
+// bExtended 决定是否置 KEYEVENTF_EXTENDEDKEY，bKeyUp 决定是否置 KEYEVENTF_KEYUP。
+NODISCARD inline SKeyboardInputFields ComposeKeyboardInput(
+    uint32 VirtualKeyCode, uint32 ResolvedScanCode, bool bExtended, bool bKeyUp)
+{
+    SKeyboardInputFields Fields;
+    Fields.VirtualKeyCode = VirtualKeyCode;
+    Fields.ScanCode = ResolvedScanCode;
+    Fields.Flags = 0;
+    if (bKeyUp)
+    {
+        Fields.Flags |= KeyEventFlag::KeyUp;
+    }
+    if (bExtended)
+    {
+        Fields.Flags |= KeyEventFlag::Extended;
+    }
+    return Fields;
+}
+
+// 基础扫描码解析器（seam）：返回给定 VK 的基础扫描码。
+// 生产环境由 MapVirtualKey(MAPVK_VK_TO_VSC) 提供，测试可注入 fake。
+// 用裸函数指针而非 std::function，保持本头文件无额外依赖。
+using TBaseScanCodeResolver = uint32 (*)(uint32 VirtualKeyCode);
+
+// 解析最终扫描码：扩展键优先用 DIK 显式表，其余回退到基础扫描码解析器。
+NODISCARD inline uint32 ResolveScanCode(uint32 VirtualKeyCode, TBaseScanCodeResolver BaseResolver)
+{
+    if (auto Dik = DirectInputScanCode(VirtualKeyCode); Dik.has_value())
+    {
+        return Dik.value();
+    }
+    return BaseResolver(VirtualKeyCode);
+}
+
+// 平台无关的“已解析输入”：SSendInputCommand 经扫描码/标志解析后的最终字段，
+// 与 Win32 INPUT 一一对应但不含任何 Win32 类型，便于完整单测覆盖字段组合。
+enum class EResolvedInputKind
+{
+    Keyboard,
+    MouseButton,
+    MouseMove,
+    MouseWheel,
+};
+
+struct SResolvedInput
+{
+    EResolvedInputKind Kind = EResolvedInputKind::Keyboard;
+
+    // 键盘（对应 KEYBDINPUT.wVk / wScan / dwFlags）
+    uint32 VirtualKeyCode = 0;
+    uint32 ScanCode = 0;
+    uint32 KeyFlags = 0;
+
+    // 鼠标（对应 MOUSEINPUT.dwFlags / mouseData / dx / dy）
+    uint32 MouseFlags = 0;
+    uint32 MouseData = 0;
+    int32 DeltaX = 0;
+    int32 DeltaY = 0;
+    int32 WheelDelta = 0;
+};
+
+// 将 SSendInputCommand 解析为平台无关的 SResolvedInput（纯函数）。
+// 键盘命令在此完成扫描码解析（DIK 表 / 基础码回退）与标志组合；
+// 鼠标命令为字段直通。调用方只需把结果机械拷入 Win32 INPUT。
+// 非法命令类型返回 nullopt，调用方应据此拒绝并报错。
+NODISCARD inline TOptional<SResolvedInput> BuildResolvedInput(
+    const SSendInputCommand& Command, TBaseScanCodeResolver BaseResolver)
+{
+    SResolvedInput Resolved;
+
+    switch (Command.Type)
+    {
+    case ESendInputCommandType::Keyboard:
+    {
+        Resolved.Kind = EResolvedInputKind::Keyboard;
+        const bool bExtended = IsExtendedKey(Command.VirtualKeyCode);
+        const uint32 Scan = ResolveScanCode(Command.VirtualKeyCode, BaseResolver);
+        const auto Fields = ComposeKeyboardInput(Command.VirtualKeyCode, Scan, bExtended, Command.bKeyUp);
+        Resolved.VirtualKeyCode = Fields.VirtualKeyCode;
+        Resolved.ScanCode = Fields.ScanCode;
+        Resolved.KeyFlags = Fields.Flags;
+        break;
+    }
+    case ESendInputCommandType::MouseButton:
+        Resolved.Kind = EResolvedInputKind::MouseButton;
+        Resolved.MouseFlags = Command.MouseFlags;
+        Resolved.MouseData = Command.MouseData;
+        break;
+    case ESendInputCommandType::MouseMove:
+        Resolved.Kind = EResolvedInputKind::MouseMove;
+        Resolved.MouseFlags = Command.MouseFlags;
+        Resolved.DeltaX = Command.DeltaX;
+        Resolved.DeltaY = Command.DeltaY;
+        break;
+    case ESendInputCommandType::MouseWheel:
+        Resolved.Kind = EResolvedInputKind::MouseWheel;
+        Resolved.MouseFlags = Command.MouseFlags;
+        Resolved.WheelDelta = Command.WheelDelta;
+        break;
+    default:
+        return std::nullopt;
+    }
+
+    return Resolved;
+}
 
 // 将 SAction 转换为 SendInput 内部命令。
 // 执行全部验证：None 类型、type/payload 不匹配、未知 key、未知 button。
