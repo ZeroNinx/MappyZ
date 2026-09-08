@@ -17,6 +17,7 @@ Window {
 
     // context property 别名：避免子组件 required property 同名遮蔽
     readonly property var _appController: appController
+    readonly property var _settingsManager: settingsManager
 
     // ── 应用级状态 ──
 
@@ -148,6 +149,12 @@ Window {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
+
+        onSettingsRequested: {
+            // 打开设置前先关闭映射选择器，避免两个 overlay 叠加。
+            mappingPicker.close()
+            settingsDialog.open()
+        }
     }
 
     DevicesPanel {
@@ -277,5 +284,15 @@ Window {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
+    }
+
+    // ── 应用设置对话框（全窗口 modal overlay，z 高于映射选择器）──
+
+    SettingsDialog {
+        id: settingsDialog
+
+        objectName: "settingsDialog"
+        theme: theme
+        settingsManager: root._settingsManager
     }
 }

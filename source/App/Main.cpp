@@ -12,6 +12,8 @@
 #include <Qt>
 #include <QtQml/qqmlextensionplugin.h>
 
+#include "App/SettingsManager.h"
+#include "App/StartupPolicy.h"
 #include "App/SystemTrayController.h"
 #include "App/WindowLifecycleController.h"
 #include "UI/Bridge/AppController.h"
@@ -39,6 +41,10 @@ int main(int ArgCount, char* Arguments[])
 
     MappyZ::ZAppController AppController;
 
+    // 应用级设置：唯一权威来源，同时用于启动决策与 QML 展示。
+    // 构造早于 Engine，确保生命周期长于 QML 根窗口。
+    MappyZ::ZSettingsManager Settings;
+
     // 托盘适配器：查询可用性并驱动恢复 / 退出命令。
     MappyZ::ZSystemTrayController Tray(AppIcon);
     const bool bTrayAvailable = Tray.IsAvailable();
@@ -53,6 +59,7 @@ int main(int ArgCount, char* Arguments[])
 
     QQmlApplicationEngine Engine;
     Engine.rootContext()->setContextProperty("appController", &AppController);
+    Engine.rootContext()->setContextProperty("settingsManager", &Settings);
 
     QObject::connect(
         &Engine,
@@ -129,13 +136,19 @@ int main(int ArgCount, char* Arguments[])
 
     if (bTrayAvailable)
     {
-        // 托盘可用：显示托盘图标，主窗口保持隐藏（QML 中 visible: false）。
+        // 托盘可用：始终显示托盘图标，作为最小化启动时的可见入口。
         Tray.Show();
     }
     else
     {
-        // 托盘不可用：直接显示主窗口，避免应用不可访问。
+        // 托盘不可用：记录回退，主窗口稍后由启动策略无条件显示。
         std::fprintf(stderr, "[MappyZ] 警告: 系统托盘不可用，回退为显示主窗口\n");
+    }
+
+    // 启动窗口可见性由设置与托盘可用性共同决定，仅在此处执行一次；
+    // 运行期修改 startMinimized 不影响当前窗口，也不重算可见性绑定。
+    if (MappyZ::ShouldShowMainWindow(bTrayAvailable, Settings.IsStartMinimized()))
+    {
         MainWindow->show();
     }
 

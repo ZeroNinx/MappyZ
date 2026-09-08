@@ -17,6 +17,9 @@ Item {
     // 用它判断草稿是否仍对应正在编辑的配置，避免把旧草稿改到新配置上。
     property string renameProfileId: ""
 
+    // 应用级设置入口信号：由 TopBar 转发到 Main.qml 打开设置对话框。
+    signal settingsRequested()
+
     // 防止 Enter 触发 editingFinished 后再次提交的组件内提交 guard。
     property bool _committing: false
 
@@ -313,6 +316,21 @@ Item {
             onClicked: {
                 profileDropdown.close()
                 selector.appController.deleteActiveProfile()
+            }
+        }
+
+        // Settings 是应用级入口：不依赖 profile 数量、当前 profile 或 rename 状态，
+        // 即使只有一个 profile、Delete 被禁用仍保持可用。
+        ActionButton {
+            objectName: "profileSettingsButton"
+            theme: selector.theme
+            label: "Settings"
+            width: 70
+            onClicked: {
+                // 打开设置前关闭下拉层并取消未提交的 rename，防止浮层重叠。
+                profileDropdown.close()
+                if (selector.renaming) selector.cancelRename()
+                selector.settingsRequested()
             }
         }
     }

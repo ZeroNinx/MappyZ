@@ -7,6 +7,9 @@ Rectangle {
     required property var theme
     required property var appController
 
+    // 转发 ProfileSelector 的设置入口信号，自身不创建设置页或持有设置状态。
+    signal settingsRequested()
+
     height: 54
     color: theme.panelHeader
 
@@ -48,5 +51,7 @@ Rectangle {
         anchors.right: parent.right
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
+
+        onSettingsRequested: topBar.settingsRequested()
     }
 }

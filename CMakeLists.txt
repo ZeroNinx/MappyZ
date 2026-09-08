@@ -260,6 +260,8 @@ set_source_files_properties(ui/picker/MousePicker.qml PROPERTIES QT_RESOURCE_ALI
 set_source_files_properties(ui/picker/DInputPicker.qml PROPERTIES QT_RESOURCE_ALIAS DInputPicker.qml)
 set_source_files_properties(ui/picker/MappingPickerDialog.qml PROPERTIES QT_RESOURCE_ALIAS MappingPickerDialog.qml)
 set_source_files_properties(ui/common/InlineMessage.qml PROPERTIES QT_RESOURCE_ALIAS InlineMessage.qml)
+set_source_files_properties(ui/settings/SettingsDialog.qml PROPERTIES QT_RESOURCE_ALIAS SettingsDialog.qml)
+set_source_files_properties(ui/settings/GeneralSettingsPage.qml PROPERTIES QT_RESOURCE_ALIAS GeneralSettingsPage.qml)
 
 qt_add_qml_module(MappyZQml
     URI MappyZUI
@@ -291,6 +293,8 @@ qt_add_qml_module(MappyZQml
         ui/picker/MousePicker.qml
         ui/picker/DInputPicker.qml
         ui/picker/MappingPickerDialog.qml
+        ui/settings/SettingsDialog.qml
+        ui/settings/GeneralSettingsPage.qml
 )
 
 # ProfileSelector.qml 使用 QtQuick.Controls（Popup），链接 QuickControls2
@@ -300,12 +304,59 @@ target_link_libraries(MappyZQml
         Qt6::QuickControls2
 )
 
+# ── Desktop 桌面层模块 ──
+# 设置管理、启动策略、窗口生命周期只依赖 Qt Core/Gui，可在无 Widgets 的目标中独立
+# 编译与离屏测试；托盘适配器需要 Qt Widgets，单独成库，避免把 Widgets 依赖扩散到
+# 核心桌面逻辑。主程序与 DesktopTests 链接这两个库，不再各自重复编译源文件。
+
+add_library(MappyZDesktopCore STATIC
+    source/App/SettingsManager.cpp
+    source/App/WindowLifecycleController.cpp
+)
+
+target_include_directories(MappyZDesktopCore
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/source
+)
+
+target_link_libraries(MappyZDesktopCore
+    PUBLIC
+        Qt6::Core
+        Qt6::Gui
+)
+
+if(MSVC)
+    target_compile_options(MappyZDesktopCore PRIVATE /W4)
+else()
+    target_compile_options(MappyZDesktopCore PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+endif()
+
+add_library(MappyZDesktopTray STATIC
+    source/App/SystemTrayController.cpp
+)
+
+target_include_directories(MappyZDesktopTray
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/source
+)
+
+target_link_libraries(MappyZDesktopTray
+    PUBLIC
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+)
+
+if(MSVC)
+    target_compile_options(MappyZDesktopTray PRIVATE /W4)
+else()
+    target_compile_options(MappyZDesktopTray PRIVATE -Wall -Wextra -Wconversion -Wshadow)
+endif()
+
 # ── 主应用 ──
 
 qt_add_executable(MappyZ
     source/App/Main.cpp
-    source/App/WindowLifecycleController.cpp
-    source/App/SystemTrayController.cpp
 )
 
 # Windows 可执行文件图标资源，仅 WIN32 构建引用 resource compiler。
@@ -331,6 +382,8 @@ target_link_libraries(MappyZ
         MappyZUIBridge
         MappyZApp
         MappyZCore
+        MappyZDesktopCore
+        MappyZDesktopTray
         MappyZQml
         MappyZQmlplugin
         Qt6::Quick
@@ -565,6 +618,7 @@ if(BUILD_TESTING)
             MappyZQml
             MappyZQmlplugin
             MappyZUIBridge
+            MappyZDesktopCore
             MappyZInputBackends
             MappyZOutputBackends
             Qt6::Quick
@@ -580,25 +634,22 @@ if(BUILD_TESTING)
 
     catch_discover_tests(MappyZQmlSmokeTests)
 
-    # ── Desktop 生命周期 / 托盘测试 ──
-    # 使用 QApplication + offscreen 验证窗口事件策略与托盘菜单对象树，
-    # 显式共享 WindowLifecycleController 与 SystemTrayController 源文件。
+    # ── Desktop 生命周期 / 托盘 / 设置测试 ──
+    # 使用 QApplication + offscreen 验证窗口事件策略与托盘菜单对象树；
+    # 设置管理与启动策略通过 MappyZDesktopCore 链接，无需重复编译源文件。
 
     add_executable(MappyZDesktopTests
         tests/App/DesktopTestsMain.cpp
         tests/App/WindowLifecycleControllerTests.cpp
         tests/App/SystemTrayControllerTests.cpp
-        source/App/WindowLifecycleController.cpp
-        source/App/SystemTrayController.cpp
-    )
-
-    target_include_directories(MappyZDesktopTests
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/source
+        tests/App/SettingsManagerTests.cpp
+        tests/App/StartupPolicyTests.cpp
     )
 
     target_link_libraries(MappyZDesktopTests
         PRIVATE
+            MappyZDesktopCore
+            MappyZDesktopTray
             Qt6::Gui
             Qt6::Widgets
             Catch2::Catch2
