@@ -22,9 +22,11 @@
 
 #include "Backends/Input/FakeInputBackend.h"
 #include "Backends/Output/NullOutputBackend.h"
+#include "App/AutoProfileRuleStore.h"
 #include "Core/ControlId.h"
 #include "Runtime/ProfileManager.h"
 #include "UI/Bridge/AppController.h"
+#include "UI/Bridge/AutoProfileRuleModel.h"
 #include "UI/Bridge/DeviceModel.h"
 #include "UI/Bridge/InputCaptureModel.h"
 #include "UI/Bridge/InputStateModel.h"
@@ -2370,6 +2372,75 @@ TEST_CASE("AppController createProfile makes an empty profile and enables delete
     REQUIRE(Controller->CanDeleteProfile());
 }
 
+TEST_CASE("AppController canDeleteProfile tracks active profile via activeProfileChanged",
+    "[UI][AppController]")
+{
+    // 回归：canDeleteProfile 取决于“当前是否为 Default”，其 NOTIFY 必须是
+    // activeProfileChanged——Default 与普通配置互切时列表不变，只有该信号会发出，
+    // 若绑定 profileListChanged 则按钮状态不会刷新。
+    STempProfileDir Temp("can_delete_tracks_active");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 初始位于 Default：不可删除。
+    REQUIRE(Controller->ActiveProfileId() == "default");
+    REQUIRE_FALSE(Controller->CanDeleteProfile());
+
+    QSignalSpy ActiveSpy(Controller.get(), &ZAppController::activeProfileChanged);
+
+    // Default → 普通配置：Delete 启用，且发出 activeProfileChanged。
+    REQUIRE(Controller->createProfile());
+    const QString NormalId = Controller->ActiveProfileId();
+    REQUIRE(NormalId != "default");
+    REQUIRE(Controller->CanDeleteProfile());
+    REQUIRE(ActiveSpy.count() >= 1);
+
+    // 普通配置 → Default：Delete 禁用，切换发出 activeProfileChanged。
+    ActiveSpy.clear();
+    REQUIRE(Controller->switchProfile("default"));
+    REQUIRE(Controller->ActiveProfileId() == "default");
+    REQUIRE_FALSE(Controller->CanDeleteProfile());
+    REQUIRE(ActiveSpy.count() == 1);
+
+    // 新建第二个配置后再切回 Default：仍禁用。
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->CanDeleteProfile());
+    ActiveSpy.clear();
+    REQUIRE(Controller->switchProfile("default"));
+    REQUIRE(Controller->ActiveProfileId() == "default");
+    REQUIRE_FALSE(Controller->CanDeleteProfile());
+    REQUIRE(ActiveSpy.count() == 1);
+}
+
+TEST_CASE("AppController canRenameProfile tracks active profile and rejects renaming default",
+    "[UI][AppController]")
+{
+    // Default 显示名固定：canRenameProfile 为 false 且 renameActiveProfile 被拒绝；
+    // 切到普通配置后可重命名。该属性同样由 activeProfileChanged 驱动通知。
+    STempProfileDir Temp("can_rename_tracks_active");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 初始位于 Default：不可重命名，且尝试重命名失败、显示名不变。
+    REQUIRE(Controller->ActiveProfileId() == "default");
+    REQUIRE_FALSE(Controller->CanRenameProfile());
+    REQUIRE_FALSE(Controller->renameActiveProfile(QStringLiteral("My Default")));
+    REQUIRE(Controller->ActiveProfileName() == "Default");
+
+    QSignalSpy ActiveSpy(Controller.get(), &ZAppController::activeProfileChanged);
+
+    // Default → 普通配置：可重命名，且发出 activeProfileChanged。
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->CanRenameProfile());
+    REQUIRE(ActiveSpy.count() >= 1);
+    REQUIRE(Controller->renameActiveProfile(QStringLiteral("Gaming")));
+    REQUIRE(Controller->ActiveProfileName() == "Gaming");
+
+    // 普通配置 → Default：再次不可重命名。
+    ActiveSpy.clear();
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+    REQUIRE_FALSE(Controller->CanRenameProfile());
+    REQUIRE(ActiveSpy.count() == 1);
+}
+
 TEST_CASE("AppController createProfile numbers Untitled sequentially",
     "[UI][AppController]")
 {
@@ -2573,6 +2644,10 @@ TEST_CASE("AppController renameActiveProfile updates name keeps id and rewrites 
     STempProfileDir Temp("rename_ok");
     auto Controller = MakeInitializedController(Temp.Path);
 
+    // Default 不可重命名，先新建普通配置作为当前项。
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->ActiveProfileId() == "untitled_1");
+
     // 先加规则，确认重命名保留映射
     REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
 
@@ -2592,11 +2667,11 @@ TEST_CASE("AppController renameActiveProfile updates name keeps id and rewrites 
     REQUIRE(LoadedSpy.count() == 0);
 
     REQUIRE(Controller->ActiveProfileName() == "My Profile");
-    REQUIRE(Controller->ActiveProfileId() == "default");
+    REQUIRE(Controller->ActiveProfileId() == "untitled_1");
 
-    // 文件仍是 default.json，新名称和规则均已落盘
+    // 文件仍是 untitled_1.json，新名称和规则均已落盘
     ZProfileManager Manager;
-    auto LoadResult = Manager.LoadProfile(Temp.Path / "default.json");
+    auto LoadResult = Manager.LoadProfile(Temp.Path / "untitled_1.json");
     REQUIRE(LoadResult.IsOk());
     REQUIRE(LoadResult.Value().Name == "My Profile");
     REQUIRE(LoadResult.Value().Rules.size() == 1);
@@ -2696,4 +2771,289 @@ TEST_CASE("AppController autosave targets only the new active profile file after
     auto DefaultLoad = Manager.LoadProfile(Temp.Path / "default.json");
     REQUIRE(DefaultLoad.IsOk());
     REQUIRE(DefaultLoad.Value().Rules.empty());
+}
+
+// ── 自动切换规则 CRUD 与前台联动 ──
+
+namespace
+{
+
+// 读取模型中某行指定 role 名的值，找不到返回无效 QVariant。
+QVariant ReadRuleRole(ZAutoProfileRuleModel* Model, int Row, const QByteArray& RoleName)
+{
+    const auto Roles = Model->roleNames();
+    for (auto It = Roles.cbegin(); It != Roles.cend(); ++It)
+    {
+        if (It.value() == RoleName)
+        {
+            return Model->data(Model->index(Row, 0), It.key());
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
+TEST_CASE("AppController addAutomaticProfileRule normalizes and persists",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_add");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    QSignalSpy StatusSpy(&*Controller, &ZAppController::automaticProfileStatusChanged);
+
+    REQUIRE(Controller->addAutomaticProfileRule(
+        QStringLiteral("C:\\Games\\EldenRing.EXE"), QStringLiteral("default")));
+    REQUIRE(StatusSpy.count() >= 1);
+
+    auto* Model = Controller->AutoProfileRuleModel();
+    REQUIRE(Model->rowCount() == 1);
+    REQUIRE(ReadRuleRole(Model, 0, "processName").toString() == "eldenring.exe");
+    REQUIRE(ReadRuleRole(Model, 0, "profileId").toString() == "default");
+    REQUIRE(ReadRuleRole(Model, 0, "valid").toBool());
+
+    // 规则文件已落盘并可被独立 store 复读（测试模式下位于 override 的 config 子目录）。
+    const StdPath RulePath = Temp.Path / "config" / "automatic_profile_rules.json";
+    REQUIRE(std::filesystem::exists(RulePath));
+    ZAutoProfileRuleStore Store(RulePath);
+    auto Loaded = std::move(Store.Load()).TakeValue();
+    REQUIRE(Loaded.Rules.size() == 1);
+    REQUIRE(Loaded.Rules[0].ProcessName == "eldenring.exe");
+}
+
+TEST_CASE("AppController addAutomaticProfileRule rejects duplicate process name",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_dup");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE(Controller->addAutomaticProfileRule(
+        QStringLiteral("game.exe"), QStringLiteral("default")));
+    REQUIRE_FALSE(Controller->addAutomaticProfileRule(
+        QStringLiteral("GAME.EXE"), QStringLiteral("default")));
+    REQUIRE(Controller->AutoProfileRuleModel()->rowCount() == 1);
+}
+
+TEST_CASE("AppController addAutomaticProfileRule rejects invalid process name",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_invalid");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE_FALSE(Controller->addAutomaticProfileRule(
+        QStringLiteral("   "), QStringLiteral("default")));
+    REQUIRE(Controller->AutoProfileRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController removeAutomaticProfileRule deletes by id",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_remove");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE(Controller->addAutomaticProfileRule(
+        QStringLiteral("game.exe"), QStringLiteral("default")));
+    auto* Model = Controller->AutoProfileRuleModel();
+    const QString RuleId = Model->ruleIdAt(0);
+    REQUIRE_FALSE(RuleId.isEmpty());
+
+    REQUIRE(Controller->removeAutomaticProfileRule(RuleId));
+    REQUIRE(Model->rowCount() == 0);
+
+    // 删除不存在的 ID 返回 false。
+    REQUIRE_FALSE(Controller->removeAutomaticProfileRule(QStringLiteral("nope")));
+}
+
+TEST_CASE("AppController setAutomaticProfileRuleEnabled toggles enabled flag",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_toggle");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE(Controller->addAutomaticProfileRule(
+        QStringLiteral("game.exe"), QStringLiteral("default")));
+    auto* Model = Controller->AutoProfileRuleModel();
+    const QString RuleId = Model->ruleIdAt(0);
+
+    REQUIRE(Controller->setAutomaticProfileRuleEnabled(RuleId, false));
+    REQUIRE_FALSE(ReadRuleRole(Model, 0, "enabled").toBool());
+
+    REQUIRE(Controller->setAutomaticProfileRuleEnabled(RuleId, true));
+    REQUIRE(ReadRuleRole(Model, 0, "enabled").toBool());
+}
+
+TEST_CASE("AppController handleForegroundApplicationChanged auto-switches on match",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_switch");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 新建一个非 Default profile 作为目标。
+    REQUIRE(Controller->createProfile());
+    const QString TargetId = Controller->ActiveProfileId();
+    REQUIRE(TargetId != "default");
+
+    // 回到 Default，再添加匹配 game.exe -> TargetId 的规则。
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+    REQUIRE(Controller->addAutomaticProfileRule(QStringLiteral("game.exe"), TargetId));
+    REQUIRE(Controller->ActiveProfileId() == "default");
+
+    QSignalSpy ForegroundSpy(&*Controller, &ZAppController::foregroundProcessChanged);
+
+    Controller->handleForegroundApplicationChanged(QStringLiteral("game.exe"));
+    REQUIRE(ForegroundSpy.count() == 1);
+    REQUIRE(Controller->ActiveProfileId() == TargetId);
+    REQUIRE(Controller->ForegroundProcessName() == "game.exe");
+}
+
+TEST_CASE("AppController reportForegroundListenerUnavailable sets message and keeps manual switching",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_listener_unavailable");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 建一个非 Default profile，稍后验证手动切换仍可用。
+    REQUIRE(Controller->createProfile());
+    const QString TargetId = Controller->ActiveProfileId();
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+
+    QSignalSpy StatusSpy(
+        &*Controller, &ZAppController::automaticProfileStatusChanged);
+
+    Controller->reportForegroundListenerUnavailable();
+
+    // 状态消息被设置且发出信号一次。
+    REQUIRE(StatusSpy.count() == 1);
+    REQUIRE(Controller->AutomaticProfileMessage().contains(
+        QStringLiteral("unavailable")));
+
+    // 手动切换不受影响。
+    REQUIRE(Controller->switchProfile(TargetId));
+    REQUIRE(Controller->ActiveProfileId() == TargetId);
+}
+
+TEST_CASE("AppController handleForegroundApplicationChanged falls back to default",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_fallback");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE(Controller->createProfile());
+    const QString TargetId = Controller->ActiveProfileId();
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+    REQUIRE(Controller->addAutomaticProfileRule(QStringLiteral("game.exe"), TargetId));
+
+    // 匹配后切到目标。
+    Controller->handleForegroundApplicationChanged(QStringLiteral("game.exe"));
+    REQUIRE(Controller->ActiveProfileId() == TargetId);
+
+    // 前台变为无规则的应用：回退到 Default。
+    Controller->handleForegroundApplicationChanged(QStringLiteral("other.exe"));
+    REQUIRE(Controller->ActiveProfileId() == "default");
+}
+
+TEST_CASE("AppController unknown foreground falls back to default",
+    "[UI][AppController][AutoProfile]")
+{
+    // 前台不可解析（空进程名，如安全桌面/无标题窗口）时按需求回退 Default，
+    // 而非保留当前配置。
+    STempProfileDir Temp("auto_unknown_fallback");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE(Controller->createProfile());
+    const QString TargetId = Controller->ActiveProfileId();
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+    REQUIRE(Controller->addAutomaticProfileRule(QStringLiteral("game.exe"), TargetId));
+
+    // 先匹配切到目标。
+    Controller->handleForegroundApplicationChanged(QStringLiteral("game.exe"));
+    REQUIRE(Controller->ActiveProfileId() == TargetId);
+
+    // 前台变为未知（空进程名）：回退 Default。
+    Controller->handleForegroundApplicationChanged(QString());
+    REQUIRE(Controller->ActiveProfileId() == "default");
+}
+
+TEST_CASE("AppController disabled rule does not auto-switch",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_disabled");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE(Controller->createProfile());
+    const QString TargetId = Controller->ActiveProfileId();
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+    REQUIRE(Controller->addAutomaticProfileRule(QStringLiteral("game.exe"), TargetId));
+
+    auto* Model = Controller->AutoProfileRuleModel();
+    REQUIRE(Controller->setAutomaticProfileRuleEnabled(Model->ruleIdAt(0), false));
+
+    Controller->handleForegroundApplicationChanged(QStringLiteral("game.exe"));
+    REQUIRE(Controller->ActiveProfileId() == "default");
+}
+
+TEST_CASE("AppController deleting referenced profile removes its rules",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_delref");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE(Controller->createProfile());
+    const QString TargetId = Controller->ActiveProfileId();
+    REQUIRE(Controller->addAutomaticProfileRule(QStringLiteral("game.exe"), TargetId));
+    REQUIRE(Controller->AutoProfileRuleModel()->rowCount() == 1);
+
+    // TargetId 仍是当前活动项，删除它并回退。
+    REQUIRE(Controller->deleteActiveProfile());
+    REQUIRE(Controller->ActiveProfileId() == "default");
+
+    // 引用被删 profile 的规则应被清理。
+    REQUIRE(Controller->AutoProfileRuleModel()->rowCount() == 0);
+}
+
+TEST_CASE("AppController loads persisted rules on initializeProfiles",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_reload");
+
+    // 第一个控制器写入一条规则。
+    {
+        auto Controller = MakeInitializedController(Temp.Path);
+        REQUIRE(Controller->addAutomaticProfileRule(
+            QStringLiteral("game.exe"), QStringLiteral("default")));
+    }
+
+    // 第二个控制器在同目录重新初始化，应加载到该规则。
+    {
+        auto Controller = MakeInitializedController(Temp.Path);
+        auto* Model = Controller->AutoProfileRuleModel();
+        REQUIRE(Model->rowCount() == 1);
+        REQUIRE(ReadRuleRole(Model, 0, "processName").toString() == "game.exe");
+    }
+}
+
+TEST_CASE("AppController rule referencing missing profile shows invalid",
+    "[UI][AppController][AutoProfile]")
+{
+    STempProfileDir Temp("auto_missing");
+
+    // 预写一条引用不存在 profile 的规则文件（测试模式下位于 override 的 config 子目录）。
+    std::filesystem::create_directories(Temp.Path / "config");
+    {
+        std::ofstream Out(Temp.Path / "config" / "automatic_profile_rules.json",
+            std::ios::out | std::ios::trunc | std::ios::binary);
+        const StdString Content = R"({
+            "schema_version": 1,
+            "rules": [
+                { "id": "id-a", "enabled": true, "process_name": "game.exe", "profile_id": "gone" }
+            ]
+        })";
+        Out.write(Content.data(), static_cast<std::streamsize>(Content.size()));
+    }
+
+    auto Controller = MakeInitializedController(Temp.Path);
+    auto* Model = Controller->AutoProfileRuleModel();
+    REQUIRE(Model->rowCount() == 1);
+    REQUIRE_FALSE(ReadRuleRole(Model, 0, "valid").toBool());
+    REQUIRE(ReadRuleRole(Model, 0, "profileName").toString() == "Missing profile");
 }

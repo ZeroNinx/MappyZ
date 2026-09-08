@@ -13,11 +13,14 @@
 #include <QVariantList>
 
 #include "App/ApplicationBootstrap.h"
+#include "App/AutoProfileRule.h"
+#include "App/AutoProfileRuleStore.h"
 #include "Runtime/ProfileManager.h"
 #include "UI/Bridge/DeviceModel.h"
 #include "UI/Bridge/InputCaptureModel.h"
 #include "UI/Bridge/InputStateModel.h"
 #include "UI/Bridge/ActionCatalogModel.h"
+#include "UI/Bridge/AutoProfileRuleModel.h"
 #include "UI/Bridge/LogModel.h"
 #include "UI/Bridge/MappingRuleModel.h"
 
@@ -58,7 +61,17 @@ class ZAppController final : public QObject
     // ── 多配置列表 / 当前项 / 删除能力 ──
     Q_PROPERTY(QVariantList profileEntries READ ProfileEntries NOTIFY profileListChanged)
     Q_PROPERTY(QString activeProfileId READ ActiveProfileId NOTIFY activeProfileChanged)
-    Q_PROPERTY(bool canDeleteProfile READ CanDeleteProfile NOTIFY profileListChanged)
+    // canDeleteProfile 取决于“当前配置是否为 Default”，因此由 activeProfileChanged
+    // 驱动通知：Default 与普通配置之间切换也必须刷新按钮状态（列表未变也要通知）。
+    Q_PROPERTY(bool canDeleteProfile READ CanDeleteProfile NOTIFY activeProfileChanged)
+    // canRenameProfile 同样取决于“当前是否为 Default”（Default 显示名固定不可重命名），
+    // 因此也由 activeProfileChanged 驱动通知。
+    Q_PROPERTY(bool canRenameProfile READ CanRenameProfile NOTIFY activeProfileChanged)
+
+    // ── 自动切换：规则模型、当前前台进程、最近一次自动切换状态 ──
+    Q_PROPERTY(ZAutoProfileRuleModel* autoProfileRuleModel READ AutoProfileRuleModel CONSTANT)
+    Q_PROPERTY(QString foregroundProcessName READ ForegroundProcessName NOTIFY foregroundProcessChanged)
+    Q_PROPERTY(QString automaticProfileMessage READ AutomaticProfileMessage NOTIFY automaticProfileStatusChanged)
 
 public:
     // 生产构造：使用编译期开关的默认后端工厂
@@ -117,6 +130,20 @@ public:
     // 当前配置是否可删除（配置数量大于 1）。
     NODISCARD bool CanDeleteProfile() const;
 
+    // 当前配置是否可重命名（当前项不是 Default）。
+    NODISCARD bool CanRenameProfile() const;
+
+    // ── 自动切换属性读取 ──
+
+    // 自动切换规则列表模型，供 Settings 页面绑定。
+    NODISCARD ZAutoProfileRuleModel* AutoProfileRuleModel();
+
+    // 最近一次观察到的前台进程规范化 basename；未知时为空。
+    NODISCARD QString ForegroundProcessName() const;
+
+    // 最近一次自动切换求值的状态消息，供 Settings 页面展示。
+    NODISCARD QString AutomaticProfileMessage() const;
+
     // ── QML invokable ──
 
     Q_INVOKABLE bool initializeRuntime();
@@ -150,9 +177,29 @@ public:
     // 删除当前配置并切换到回退项；当前配置为最后一个时拒绝。
     Q_INVOKABLE bool deleteActiveProfile();
 
+    // ── 自动切换规则命令 ──
+
+    // 新增一条规则：进程名规范化后与 profileId 组合，重名进程拒绝。
+    Q_INVOKABLE bool addAutomaticProfileRule(QString processName, QString profileId);
+
+    // 按 ruleId 删除一条规则。
+    Q_INVOKABLE bool removeAutomaticProfileRule(QString ruleId);
+
+    // 启用/禁用一条规则；禁用的规则不参与匹配。
+    Q_INVOKABLE bool setAutomaticProfileRuleEnabled(QString ruleId, bool enabled);
+
+    // 前台监听无法启动时由 Main 调用一次：写入 Error 日志并设置自动切换状态消息，
+    // 让用户看到自动切换不可用；手动配置功能不受影响。
+    Q_INVOKABLE void reportForegroundListenerUnavailable();
+
     // 测试辅助：替换 RuntimeHost 的 active profile 并刷新 UI model。
     // 不暴露给 QML，仅供 C++ 测试代码使用。
     void ReplaceActiveProfileForTest(SMappingProfile Profile);
+
+public slots:
+    // 前台应用变化的唯一入口：规范化进程名，重新求值应激活的配置并按需切换。
+    // 平台前台服务通过 queued connection 调用；也供测试直接驱动。
+    void handleForegroundApplicationChanged(QString processName);
 
 signals:
     void runtimeStatusChanged();
@@ -164,6 +211,12 @@ signals:
     void profileLoaded(QString profilePath);
     void profileListChanged();
     void activeProfileChanged();
+
+    // 前台进程名变化（用于 QML 显示当前检测到的应用）。
+    void foregroundProcessChanged();
+
+    // 最近一次自动切换求值状态变化。
+    void automaticProfileStatusChanged();
 
 private:
     // 将 EApplicationBootstrapState 转为 QML 稳定字符串
@@ -190,6 +243,41 @@ private:
 
     // 解析配置目录：优先使用注入的覆盖目录，否则用 AppDataLocation/profiles。
     NODISCARD StdPath ResolveProfilesDirectory() const;
+
+    // 解析自动切换规则文件路径：测试覆盖目录优先，否则 AppConfigLocation。
+    NODISCARD StdPath ResolveRuleFilePath() const;
+
+    // 从磁盘加载自动切换规则到内存快照；损坏时置错误消息并保持空集，
+    // 加载修复时立即写回一次。仅在 initializeProfiles 中调用。
+    void LoadAutomaticProfileRules();
+
+    // 把候选规则列表原子写盘，成功后提交到内存快照并刷新模型 + 重新求值。
+    // 失败置错误消息且不改变内存状态，返回是否提交成功。
+    bool CommitAutomaticProfileRules(
+        TVector<SAutoProfileRule> NextRules, const QString& SuccessLog);
+
+    // 把内存规则快照整份推给模型（ReplaceRules），并刷新 profile 查找表。
+    void PushRulesToModel();
+
+    // 仅刷新模型的 profile ID -> 显示名 查找表（profile 列表变化但规则不变时用）。
+    void RefreshRuleLookup();
+
+    // 按当前前台进程、规则快照与存在的 profile 集合求值应激活配置并按需切换。
+    // profile 未就绪时空操作；目标等于当前项时不切换。
+    void EvaluateAndApplyAutomaticProfile();
+
+    // switchProfile 的公共实现，供手动切换与自动切换复用。
+    // bAutomatic 控制日志措辞与是否更新自动切换状态消息。
+    bool SwitchProfileInternal(const StdString& ProfileId, bool bAutomatic);
+
+    // 构造 profile ID -> 显示名 查找表。
+    NODISCARD QHash<QString, QString> BuildProfileLookup() const;
+
+    // 收集当前存在的 profile ID 集合，供匹配求值判定 ProfileId 是否有效。
+    NODISCARD TVector<StdString> CollectProfileIds() const;
+
+    // 设置自动切换状态消息并发信号。
+    void SetAutomaticProfileMessage(const QString& Message);
 
     // 把一次成功的加载结果应用到 Runtime、UI model 和状态字段：
     // 替换 snapshot、刷新 model、清除 dirty，并按需发出列表/当前项信号。
@@ -238,6 +326,26 @@ private:
 
     // 映射规则列表模型，供 QML 绑定
     ZMappingRuleModel MappingRuleModelInstance;
+
+    // 自动切换规则列表模型，供 Settings 页面绑定
+    ZAutoProfileRuleModel AutoProfileRuleModelInstance;
+
+    // 自动切换规则的内存权威快照；模型展示其只读投影，mutation 经原子写盘后提交
+    TVector<SAutoProfileRule> AutomaticRules;
+
+    // 最近一次观察到的前台进程规范化 basename；空表示未知
+    StdString ForegroundProcessNameCache;
+
+    // 是否已至少观察到一次前台（含“未知前台”空串）。用于区分“尚未观察到任何前台”
+    // （初始化 / 新建配置 / 增删规则等管理操作发生在首次观察前，应保留当前选择）与
+    // “已观察到但前台不可解析”（如安全桌面，应按需求回退 Default）。
+    bool bForegroundObserved = false;
+
+    // 最近一次自动切换求值的状态消息
+    QString CachedAutomaticProfileMessage;
+
+    // 上一次自动切换失败的目标，用于抑制相同前台/规则/profile 下的高频重试
+    StdString LastFailedAutomaticTargetId;
 
     // 输出动作目录模型，供 QML BindingEditor action 选择绑定
     ZActionCatalogModel ActionCatalogModelInstance;

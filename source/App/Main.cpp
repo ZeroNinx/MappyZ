@@ -12,6 +12,7 @@
 #include <Qt>
 #include <QtQml/qqmlextensionplugin.h>
 
+#include "App/ForegroundApplicationService.h"
 #include "App/SettingsManager.h"
 #include "App/StartupPolicy.h"
 #include "App/SystemTrayController.h"
@@ -57,9 +58,24 @@ int main(int ArgCount, char* Arguments[])
     MappyZ::ZWindowLifecycleController WindowLifecycle;
     WindowLifecycle.SetTrayAvailable(bTrayAvailable);
 
+    // 前台应用监听服务：事件驱动观察系统前台窗口变化，驱动自动配置切换。
+    // 平台细节封装在注入的来源里（Windows 挂 SetWinEventHook，其它平台不可用）。
+    // 构造早于 Engine，确保生命周期长于 QML 根窗口。
+    MappyZ::ZForegroundApplicationService ForegroundService(
+        MappyZ::MakeDefaultForegroundApplicationSource());
+
     QQmlApplicationEngine Engine;
     Engine.rootContext()->setContextProperty("appController", &AppController);
     Engine.rootContext()->setContextProperty("settingsManager", &Settings);
+    Engine.rootContext()->setContextProperty("foregroundApplicationService", &ForegroundService);
+
+    // 前台切换 -> controller 求值自动配置。用 QueuedConnection 把决策推迟到事件循环，
+    // 避免在来源回调（可能位于 WinEvent 派发路径）内同步触发配置激活的重逻辑。
+    QObject::connect(&ForegroundService,
+        &MappyZ::ZForegroundApplicationService::foregroundApplicationChanged,
+        &AppController,
+        &MappyZ::ZAppController::handleForegroundApplicationChanged,
+        Qt::QueuedConnection);
 
     QObject::connect(
         &Engine,
@@ -152,11 +168,22 @@ int main(int ArgCount, char* Arguments[])
         MainWindow->show();
     }
 
-    // 退出清理路径：隐藏托盘图标 -> 停 pump -> 停 runtime。
+    // 启动前台监听：注册来源钩子，并以 QueuedConnection 在事件循环里用当前前台
+    // 求值一次（此时 Component.onCompleted 已完成 initializeProfiles）。
+    // 启动失败（平台不支持/钩子安装失败）时提示一次并记录警告，手动功能不受影响。
+    if (!ForegroundService.start())
+    {
+        qWarning("Foreground application listener unavailable; "
+            "automatic profile switching is disabled.");
+        AppController.reportForegroundListenerUnavailable();
+    }
+
+    // 退出清理路径：停前台监听 -> 隐藏托盘图标 -> 停 pump -> 停 runtime。
     QObject::connect(&App, &QCoreApplication::aboutToQuit,
         &App,
-        [&Tray, &AppController]()
+        [&Tray, &AppController, &ForegroundService]()
         {
+            ForegroundService.stop();
             Tray.Hide();
             AppController.stopPumpTimer();
             AppController.stopRuntime();

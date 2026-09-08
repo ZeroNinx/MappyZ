@@ -748,9 +748,23 @@ TOptional<SProfileInfo> ZProfileManager::GetActiveProfileInfo() const
     return Profiles[*Index];
 }
 
+bool ZProfileManager::IsDefaultProfile(StdStringView ProfileId) noexcept
+{
+    return ProfileId == DefaultProfileId;
+}
+
 bool ZProfileManager::CanDeleteActiveProfile() const noexcept
 {
-    return bInitialized && Profiles.size() > 1;
+    // Default 永不可删除；其余在多配置时可删。
+    return bInitialized
+        && Profiles.size() > 1
+        && !IsDefaultProfile(ActiveProfileId);
+}
+
+bool ZProfileManager::CanRenameActiveProfile() const noexcept
+{
+    // Default 是系统回退配置，显示名固定，不可重命名；其余已初始化即可重命名。
+    return bInitialized && !IsDefaultProfile(ActiveProfileId);
 }
 
 // ── 集合 API：私有辅助 ──
@@ -1017,17 +1031,18 @@ TResult<SLoadedProfile> ZProfileManager::Initialize(const StdPath& InProfilesDir
         return TResult<SLoadedProfile>::Err(std::move(DiscoverResult).TakeFailure());
     }
 
-    // 5. 若列表为空，创建 Default 并加入列表。
-    //    优先 default.json/default；路径被损坏文件占用时使用 default_N，不覆盖原文件。
-    if (Profiles.empty())
+    // 5. 保证系统回退配置（稳定 ID `default`）存在。
+    //    不再只在列表为空时补建：即使发现了其他配置，只要缺少 ID `default` 也必须补建，
+    //    不覆盖任何现有配置。优先 default.json；该路径被其他文件占用时使用 default_N，
+    //    但 profile 内部 ID 仍固定为 `default`。
+    if (!FindProfileIndex(DefaultProfileId).has_value())
     {
-        StdString Id = "default";
+        const StdString Id(DefaultProfileId);
         StdPath Path = ProfilesDirectory / "default.json";
         uint32 Suffix = 1;
         while (std::filesystem::exists(Path))
         {
-            Id = "default_" + std::to_string(Suffix);
-            Path = ProfilesDirectory / (Id + ".json");
+            Path = ProfilesDirectory / ("default_" + std::to_string(Suffix) + ".json");
             ++Suffix;
         }
 
@@ -1053,7 +1068,7 @@ TResult<SLoadedProfile> ZProfileManager::Initialize(const StdPath& InProfilesDir
     // 6. 排序列表。
     SortProfiles();
 
-    // 7. 读取 active_profile.txt，选出记录项、default 或首项。
+    // 7. 读取 active_profile.txt，选出记录项；缺失/失效时固定回退 Default。
     StdString RecordedId;
     auto ReadResult = ReadActiveProfileId();
     if (ReadResult.IsOk())
@@ -1062,7 +1077,7 @@ TResult<SLoadedProfile> ZProfileManager::Initialize(const StdPath& InProfilesDir
     }
     else
     {
-        // 读取失败不阻断初始化，退化为按 default/首项恢复。
+        // 读取失败不阻断初始化，退化为按 Default 恢复。
         std::fprintf(stderr, "[ProfileManager] 警告: 读取当前配置状态失败，退化为默认选择: %s\n",
             ReadResult.Failure().Message.c_str());
     }
@@ -1072,12 +1087,14 @@ TResult<SLoadedProfile> ZProfileManager::Initialize(const StdPath& InProfilesDir
     {
         SelectedId = RecordedId;
     }
-    else if (FindProfileIndex("default").has_value())
+    else if (auto DefaultIndex = FindProfileIndex(DefaultProfileId); DefaultIndex.has_value())
     {
-        SelectedId = "default";
+        // 记录项缺失或失效时始终回退稳定 ID `default`（第 5 步已保证其存在）。
+        SelectedId = StdString(DefaultProfileId);
     }
     else
     {
+        // 理论不可达的防御兜底：Default 补建成功后此分支不会命中。
         SelectedId = Profiles.front().Id;
     }
 
@@ -1232,6 +1249,13 @@ TResult<SLoadedProfile> ZProfileManager::RenameActiveProfile(
             MakeError(EErrorCode::InvalidArgument, "profile manager not initialized"));
     }
 
+    // Default 是系统回退配置，显示名固定不可重命名；即使调用方绕过 UI 也在此拒绝。
+    if (IsDefaultProfile(ActiveProfileId))
+    {
+        return TResult<SLoadedProfile>::Err(
+            MakeError(EErrorCode::InvalidArgument, "cannot rename the default profile"));
+    }
+
     // 规范化新名称，排除当前 ID 后检查重名。
     auto NameResult = NormalizeAndValidateName(NewName, ActiveProfileId);
     if (NameResult.IsErr())
@@ -1294,6 +1318,13 @@ TResult<SLoadedProfile> ZProfileManager::DeleteActiveProfile()
             MakeError(EErrorCode::InvalidArgument, "cannot delete the only remaining profile"));
     }
 
+    // 底层再次拒绝删除 Default：即使调用方绕过 UI 也不能删除系统回退配置文件。
+    if (IsDefaultProfile(ActiveProfileId))
+    {
+        return TResult<SLoadedProfile>::Err(
+            MakeError(EErrorCode::InvalidArgument, "cannot delete the default profile"));
+    }
+
     auto CurrentIndex = FindProfileIndex(ActiveProfileId);
     if (!CurrentIndex.has_value())
     {
@@ -1301,15 +1332,13 @@ TResult<SLoadedProfile> ZProfileManager::DeleteActiveProfile()
             MakeError(EErrorCode::InvalidArgument, "no active profile to delete"));
     }
 
-    // 从排序列表中选择第一个非当前项作为回退项。
-    TOptional<uint32> FallbackIndex;
-    for (uint32 Index = 0; Index < Profiles.size(); ++Index)
+    // 删除非 Default 配置后固定回退到 Default，不再依赖名称排序取第一个非当前项。
+    // 当前项不是 Default（上面已拒绝），且 Default 恒存在，故必能找到。
+    auto FallbackIndex = FindProfileIndex(DefaultProfileId);
+    if (!FallbackIndex.has_value())
     {
-        if (Index != *CurrentIndex)
-        {
-            FallbackIndex = Index;
-            break;
-        }
+        return TResult<SLoadedProfile>::Err(
+            MakeError(EErrorCode::InvalidArgument, "default fallback profile is missing"));
     }
 
     // 完整加载回退项（独立于列表，后续删除元素安全）。

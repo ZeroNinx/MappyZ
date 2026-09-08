@@ -5,6 +5,7 @@
 
 #include "Runtime/ProfileManager.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -552,11 +553,14 @@ TEST_CASE("ProfileManager sorts profiles by name then id",
     ZProfileManager Manager;
     REQUIRE(Manager.Initialize(Temp.Path).IsOk());
 
+    // Initialize 恒补建稳定 ID `default`（显示名 "Default"），故列表含四项。
+    // 按名称忽略大小写排序：alpha < Beta < Default < Zeta。
     const auto& List = Manager.GetProfiles();
-    REQUIRE(List.size() == 3);
+    REQUIRE(List.size() == 4);
     REQUIRE(List[0].Name == "alpha");
     REQUIRE(List[1].Name == "Beta");
-    REQUIRE(List[2].Name == "Zeta");
+    REQUIRE(List[2].Name == "Default");
+    REQUIRE(List[3].Name == "Zeta");
 }
 
 // ── 损坏 JSON、重复 ID、重复名称不进入列表且原文件仍存在 ──
@@ -577,9 +581,12 @@ TEST_CASE("ProfileManager skips corrupt duplicate-id and duplicate-name files",
     ZProfileManager Manager;
     REQUIRE(Manager.Initialize(Temp.Path).IsOk());
 
+    // 损坏 / 重复项被跳过，仅保留 good；Initialize 另补建的 Default 也在列表中。
+    // 按名称忽略大小写排序：Default < Good。
     const auto& List = Manager.GetProfiles();
-    REQUIRE(List.size() == 1);
-    REQUIRE(List[0].Id == "good");
+    REQUIRE(List.size() == 2);
+    REQUIRE(List[0].Id == "default");
+    REQUIRE(List[1].Id == "good");
 
     REQUIRE(std::filesystem::exists(Temp.Path / "02_corrupt.json"));
     REQUIRE(std::filesystem::exists(Temp.Path / "03_dupid.json"));
@@ -708,6 +715,8 @@ TEST_CASE("ProfileManager RenameActiveProfile keeps id path and rules",
     STempProfileDir Temp("rename");
     ZProfileManager Manager;
     REQUIRE(Manager.Initialize(Temp.Path).IsOk());
+    // Default 不可重命名，先新建一个普通配置作为当前项。
+    REQUIRE(Manager.CreateProfile().IsOk());  // untitled_1 成为当前项
 
     SMappingProfile Snapshot;
     Snapshot.SchemaVersion = 1;
@@ -724,19 +733,46 @@ TEST_CASE("ProfileManager RenameActiveProfile keeps id path and rules",
     auto Renamed = Manager.RenameActiveProfile(Snapshot, "  My Profile  ");
     REQUIRE(Renamed.IsOk());
     auto Loaded = std::move(Renamed).TakeValue();
-    REQUIRE(Loaded.Info.Id == "default");
+    REQUIRE(Loaded.Info.Id == "untitled_1");
     REQUIRE(Loaded.Info.Name == "My Profile");
-    REQUIRE(Loaded.Info.FilePath == Temp.Path / "default.json");
+    REQUIRE(Loaded.Info.FilePath == Temp.Path / "untitled_1.json");
     REQUIRE(Loaded.Profile.Rules.size() == 1);
 
     // 落盘确认：新名称写入，ID 与规则保持。
     ZProfileManager Verify;
-    auto Reload = Verify.LoadProfile(Temp.Path / "default.json");
+    auto Reload = Verify.LoadProfile(Temp.Path / "untitled_1.json");
     REQUIRE(Reload.IsOk());
     auto Persisted = std::move(Reload).TakeValue();
-    REQUIRE(Persisted.Id == "default");
+    REQUIRE(Persisted.Id == "untitled_1");
     REQUIRE(Persisted.Name == "My Profile");
     REQUIRE(Persisted.Rules.size() == 1);
+}
+
+// ── Default 不可重命名：底层拒绝且 CanRenameActiveProfile 语义正确 ──
+
+TEST_CASE("ProfileManager RenameActiveProfile refuses to rename the default profile",
+    "[Runtime][ProfileManager]")
+{
+    STempProfileDir Temp("rename_default");
+    ZProfileManager Manager;
+    REQUIRE(Manager.Initialize(Temp.Path).IsOk());  // 当前项为 Default
+
+    // Default 是当前项：不可重命名。
+    REQUIRE_FALSE(Manager.CanRenameActiveProfile());
+
+    SMappingProfile Snapshot;
+    Snapshot.SchemaVersion = 1;
+    REQUIRE(Manager.RenameActiveProfile(Snapshot, "Renamed Default").IsErr());
+    // 显示名保持不变，文件未被改名。
+    REQUIRE(Manager.GetActiveProfileInfo()->Name == "Default");
+
+    // 新建普通配置后当前项可重命名。
+    REQUIRE(Manager.CreateProfile().IsOk());
+    REQUIRE(Manager.CanRenameActiveProfile());
+
+    // 切回 Default：再次不可重命名。
+    REQUIRE(Manager.ActivateProfile("default").IsOk());
+    REQUIRE_FALSE(Manager.CanRenameActiveProfile());
 }
 
 // ── 空白名与忽略大小写重名返回错误，不改变文件 ──
@@ -792,6 +828,55 @@ TEST_CASE("ProfileManager DeleteActiveProfile refuses last remaining profile",
     REQUIRE_FALSE(Manager.CanDeleteActiveProfile());
     REQUIRE(Manager.DeleteActiveProfile().IsErr());
     REQUIRE(std::filesystem::exists(Temp.Path / "default.json"));
+}
+
+// ── 已有其他配置但缺少 default 时补建 Default，且不覆盖现有配置 ──
+
+TEST_CASE("ProfileManager Initialize rebuilds default when missing without overwriting",
+    "[Runtime][ProfileManager]")
+{
+    STempProfileDir Temp("rebuild_default");
+    // 只有非 default 配置：初始化必须补建 ID default，且不改动现有文件。
+    WriteTextFile(Temp.Path / "custom.json",
+        R"({"schema_version":1,"profile_id":"custom","profile_name":"Custom"})");
+    const StdString CustomBefore = ReadTextFile(Temp.Path / "custom.json");
+
+    ZProfileManager Manager;
+    auto Result = Manager.Initialize(Temp.Path);
+    REQUIRE(Result.IsOk());
+
+    // 现有配置仍在，字节未变。
+    REQUIRE(std::filesystem::exists(Temp.Path / "custom.json"));
+    REQUIRE(ReadTextFile(Temp.Path / "custom.json") == CustomBefore);
+
+    // 补建了 ID default。
+    REQUIRE(std::filesystem::exists(Temp.Path / "default.json"));
+    auto DefaultIndex = std::find_if(Manager.GetProfiles().begin(), Manager.GetProfiles().end(),
+        [](const SProfileInfo& Info) { return Info.Id == "default"; });
+    REQUIRE(DefaultIndex != Manager.GetProfiles().end());
+    REQUIRE(Manager.GetProfiles().size() == 2);
+}
+
+// ── 多配置下 Default 为当前项时底层拒绝删除且文件仍存在 ──
+
+TEST_CASE("ProfileManager DeleteActiveProfile refuses default even with multiple profiles",
+    "[Runtime][ProfileManager]")
+{
+    STempProfileDir Temp("delete_default");
+    ZProfileManager Manager;
+    REQUIRE(Manager.Initialize(Temp.Path).IsOk());  // default 为当前项
+    REQUIRE(Manager.CreateProfile().IsOk());          // untitled_1 成为当前项
+
+    // 切回 default：即使存在多个配置，Default 也不可删除。
+    REQUIRE(Manager.ActivateProfile("default").IsOk());
+    REQUIRE(Manager.GetProfiles().size() == 2);
+    REQUIRE_FALSE(Manager.CanDeleteActiveProfile());
+
+    // 即便调用方绕过 UI 直接调用，底层仍拒绝并保留文件。
+    REQUIRE(Manager.DeleteActiveProfile().IsErr());
+    REQUIRE(std::filesystem::exists(Temp.Path / "default.json"));
+    REQUIRE(Manager.GetActiveProfileInfo()->Id == "default");
+    REQUIRE(Manager.GetProfiles().size() == 2);
 }
 
 // ── 删除文件失败时列表和当前 ID 不变，状态文件恢复 ──

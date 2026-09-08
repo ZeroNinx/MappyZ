@@ -35,6 +35,13 @@ struct SLoadedProfile
 class ZProfileManager final
 {
 public:
+    // 系统回退配置的稳定 ID。该 ID 的配置永不可删除，并且是 active 状态所有回退路径
+    // 的最终目标。身份只由此 ID 决定，与显示名或文件名无关（显示名可被用户重命名）。
+    static constexpr StdStringView DefaultProfileId = "default";
+
+    // 判断给定 ID 是否为系统回退配置。各层统一复用此语义，禁止散落字符串字面量比较。
+    NODISCARD static bool IsDefaultProfile(StdStringView ProfileId) noexcept;
+
     // ── 单文件 JSON 编解码 API（保持不变，供显式路径读写与测试直接使用）──
 
     // 从磁盘路径加载 profile
@@ -61,8 +68,13 @@ public:
     // 按当前 ID 查找并返回描述副本；未初始化或未找到时返回空。
     NODISCARD TOptional<SProfileInfo> GetActiveProfileInfo() const;
 
-    // 当且仅当已初始化且配置数量大于 1 时可删除当前项。
+    // 当且仅当已初始化、配置数量大于 1、且当前项不是 Default 时可删除当前项。
+    // Default 是系统回退配置，永不可删除（即使存在多个配置）。
     NODISCARD bool CanDeleteActiveProfile() const noexcept;
+
+    // 当且仅当已初始化、且当前项不是 Default 时可重命名当前项。
+    // Default 是系统回退配置，显示名固定不可重命名。
+    NODISCARD bool CanRenameActiveProfile() const noexcept;
 
     // 切换到指定 ID 的配置，成功后持久化 active_profile.txt。
     NODISCARD TResult<SLoadedProfile> ActivateProfile(StdStringView ProfileId);
@@ -75,7 +87,8 @@ public:
         const SMappingProfile& CurrentSnapshot,
         StdStringView NewName);
 
-    // 删除当前配置及其 JSON 文件，然后切换到排序后的第一个回退项。
+    // 删除当前配置及其 JSON 文件，然后固定切换到 Default 回退项。
+    // 底层再次拒绝删除 Default，即使调用方绕过 UI 也不能删除该文件。
     NODISCARD TResult<SLoadedProfile> DeleteActiveProfile();
 
     // 把当前 Runtime snapshot 写回当前配置文件，强制保留 manager 的 ID/名称。

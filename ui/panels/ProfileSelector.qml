@@ -301,7 +301,10 @@ Item {
             theme: selector.theme
             label: "Rename"
             width: 70
-            enabled: !selector.renaming
+            // Default 显示名固定，不可重命名；其余配置可重命名。
+            enabled: selector.appController
+                && selector.appController.canRenameProfile
+                && !selector.renaming
             onClicked: selector.beginRename()
         }
 

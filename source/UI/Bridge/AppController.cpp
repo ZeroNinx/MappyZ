@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <utility>
 
+#include <QHash>
 #include <QStandardPaths>
 #include <QVariantMap>
 
@@ -137,6 +138,21 @@ ZInputCaptureModel* ZAppController::InputCapture()
 ZMappingRuleModel* ZAppController::MappingRuleModel()
 {
     return &MappingRuleModelInstance;
+}
+
+ZAutoProfileRuleModel* ZAppController::AutoProfileRuleModel()
+{
+    return &AutoProfileRuleModelInstance;
+}
+
+QString ZAppController::ForegroundProcessName() const
+{
+    return QString::fromStdString(ForegroundProcessNameCache);
+}
+
+QString ZAppController::AutomaticProfileMessage() const
+{
+    return CachedAutomaticProfileMessage;
 }
 
 ZLogModel* ZAppController::LogModel()
@@ -289,6 +305,11 @@ bool ZAppController::CanDeleteProfile() const
     return ProfileManager.CanDeleteActiveProfile();
 }
 
+bool ZAppController::CanRenameProfile() const
+{
+    return ProfileManager.CanRenameActiveProfile();
+}
+
 // ── invokable ──
 
 bool ZAppController::initializeRuntime()
@@ -420,6 +441,11 @@ bool ZAppController::initializeProfiles()
     emit profileLoaded(ProfilePath());
     AppendLog(QStringLiteral("Info"),
         QStringLiteral("Profiles initialized, active: %1").arg(ActiveProfileName()));
+
+    // profile 就绪后加载自动切换规则并推给模型，再对当前前台求值一次。
+    LoadAutomaticProfileRules();
+    PushRulesToModel();
+    EvaluateAndApplyAutomaticProfile();
     return true;
 }
 
@@ -442,26 +468,62 @@ bool ZAppController::switchProfile(QString profileId)
         return true;
     }
 
+    return SwitchProfileInternal(profileId.toStdString(), /*bAutomatic=*/false);
+}
+
+bool ZAppController::SwitchProfileInternal(const StdString& ProfileId, bool bAutomatic)
+{
+    // 目标等于当前项时视为成功空操作（自动路径可能在求值后到达此处）
+    if (QString::fromStdString(ProfileId) == ActiveProfileId())
+    {
+        return true;
+    }
+
     // 切换前先保存当前脏配置，只写切换前活动项的文件
     if (!SaveDirtyProfileBeforeSelectionChange())
     {
         return false;
     }
 
-    StdString ProfileIdStd = profileId.toStdString();
-    auto Result = ProfileManager.ActivateProfile(ProfileIdStd);
+    auto Result = ProfileManager.ActivateProfile(ProfileId);
     if (!Result)
     {
         auto ErrorMessage = QString::fromStdString(Result.Failure().Message);
-        SetProfileOperationError(QStringLiteral("Switch failed: %1").arg(ErrorMessage));
+        if (bAutomatic)
+        {
+            // 自动切换失败不污染 profile 保存状态，只更新自动切换状态消息，
+            // 并按计划以 Error 级别写入日志（失败是用户应看到的错误）。
+            SetAutomaticProfileMessage(
+                QStringLiteral("Auto-switch failed: %1").arg(ErrorMessage));
+            AppendLog(QStringLiteral("Error"),
+                QStringLiteral("Auto-switch failed: %1").arg(ErrorMessage));
+        }
+        else
+        {
+            SetProfileOperationError(
+                QStringLiteral("Switch failed: %1").arg(ErrorMessage));
+        }
         return false;
     }
 
     ApplyLoadedProfile(std::move(Result).TakeValue(),
         QStringLiteral("Profile loaded"), false);
     emit profileLoaded(ProfilePath());
-    AppendLog(QStringLiteral("Success"),
-        QStringLiteral("Switched profile: %1").arg(ActiveProfileName()));
+
+    if (bAutomatic)
+    {
+        SetAutomaticProfileMessage(
+            QStringLiteral("Auto-switched to %1").arg(ActiveProfileName()));
+        // 自动切换成功属于后台信息，按计划以 Info 级别记录（区别于用户手动
+        // 切换的 Success 确认）。只记录 profile 显示名，不含进程路径。
+        AppendLog(QStringLiteral("Info"),
+            QStringLiteral("Auto-switched profile: %1").arg(ActiveProfileName()));
+    }
+    else
+    {
+        AppendLog(QStringLiteral("Success"),
+            QStringLiteral("Switched profile: %1").arg(ActiveProfileName()));
+    }
     return true;
 }
 
@@ -490,6 +552,9 @@ bool ZAppController::createProfile()
     emit profileLoaded(NewPath);
     AppendLog(QStringLiteral("Success"),
         QStringLiteral("Created profile: %1").arg(ActiveProfileName()));
+
+    // profile 集合变化：刷新规则查找表让 invalid 状态与新 profile 同步。
+    RefreshRuleLookup();
     return true;
 }
 
@@ -511,6 +576,14 @@ bool ZAppController::renameActiveProfile(QString newName)
         return false;
     }
 
+    // Default 显示名固定不可重命名；UI 已禁用按钮，此处再拦一层以防绕过。
+    if (!ProfileManager.CanRenameActiveProfile())
+    {
+        SetProfileOperationError(
+            QStringLiteral("Rename failed: cannot rename the default profile"));
+        return false;
+    }
+
     // 使用当前 Runtime snapshot，manager 会强制保留 ID 并写入新名称
     auto Profile = Bootstrap.GetRuntimeHost().GetProfileSnapshot();
     StdString NewNameStd = Trimmed.toStdString();
@@ -528,6 +601,9 @@ bool ZAppController::renameActiveProfile(QString newName)
     emit profileSaved(ProfilePath());
     AppendLog(QStringLiteral("Success"),
         QStringLiteral("Renamed profile: %1").arg(ActiveProfileName()));
+
+    // 显示名变化：刷新规则查找表以更新引用该 profile 的行显示名。
+    RefreshRuleLookup();
     return true;
 }
 
@@ -546,8 +622,9 @@ bool ZAppController::deleteActiveProfile()
         return false;
     }
 
-    // 记录被删除项名称，用于日志
+    // 记录被删除项名称与 ID，用于日志和规则清理
     QString DeletedName = ActiveProfileName();
+    QString DeletedProfileId = ActiveProfileId();
 
     auto Result = ProfileManager.DeleteActiveProfile();
     if (!Result)
@@ -563,7 +640,188 @@ bool ZAppController::deleteActiveProfile()
     AppendLog(QStringLiteral("Success"),
         QStringLiteral("Deleted profile: %1, active: %2")
             .arg(DeletedName, ActiveProfileName()));
+
+    // 删除的 profile 若被规则引用，清理这些规则（回退语义已由匹配策略提供）。
+    // Default 永不可删，因此这里删除的必是非 Default profile。
+    const StdString DeletedId = DeletedProfileId.toStdString();
+    if (!DeletedId.empty())
+    {
+        TVector<SAutoProfileRule> Kept;
+        Kept.reserve(AutomaticRules.size());
+        bool bRemovedAny = false;
+        for (const auto& Rule : AutomaticRules)
+        {
+            if (Rule.ProfileId == DeletedId)
+            {
+                bRemovedAny = true;
+                continue;
+            }
+            Kept.push_back(Rule);
+        }
+        if (bRemovedAny)
+        {
+            CommitAutomaticProfileRules(std::move(Kept),
+                QStringLiteral("Removed rules referencing deleted profile"));
+        }
+        else
+        {
+            // 规则未变，但 profile 列表变了，刷新查找表让残留 invalid 状态更新。
+            RefreshRuleLookup();
+        }
+    }
+    else
+    {
+        RefreshRuleLookup();
+    }
+
+    // profile 集合变化后重新求值当前前台，可能需要回退/命中新的目标。
+    EvaluateAndApplyAutomaticProfile();
     return true;
+}
+
+bool ZAppController::addAutomaticProfileRule(QString processName, QString profileId)
+{
+    auto Normalized = NormalizeProcessName(processName.toStdString());
+    if (!Normalized.has_value())
+    {
+        SetAutomaticProfileMessage(
+            QStringLiteral("Add rule failed: invalid process name"));
+        return false;
+    }
+
+    if (profileId.isEmpty())
+    {
+        SetAutomaticProfileMessage(
+            QStringLiteral("Add rule failed: profileId is empty"));
+        return false;
+    }
+
+    // 进程名唯一：已存在同一规范化进程名的规则时拒绝。
+    for (const auto& Rule : AutomaticRules)
+    {
+        if (Rule.ProcessName == *Normalized)
+        {
+            SetAutomaticProfileMessage(
+                QStringLiteral("Add rule failed: a rule for \"%1\" already exists")
+                    .arg(QString::fromStdString(*Normalized)));
+            return false;
+        }
+    }
+
+    SAutoProfileRule NewRule;
+    NewRule.Id = GenerateRuleId();
+    NewRule.bEnabled = true;
+    NewRule.ProcessName = *Normalized;
+    NewRule.ProfileId = profileId.toStdString();
+
+    TVector<SAutoProfileRule> Next = AutomaticRules;
+    Next.push_back(std::move(NewRule));
+    return CommitAutomaticProfileRules(std::move(Next),
+        QStringLiteral("Rule added: %1").arg(QString::fromStdString(*Normalized)));
+}
+
+bool ZAppController::removeAutomaticProfileRule(QString ruleId)
+{
+    if (ruleId.isEmpty())
+    {
+        SetAutomaticProfileMessage(
+            QStringLiteral("Remove rule failed: ruleId is empty"));
+        return false;
+    }
+
+    const StdString Target = ruleId.toStdString();
+    TVector<SAutoProfileRule> Next;
+    Next.reserve(AutomaticRules.size());
+    bool bFound = false;
+    for (const auto& Rule : AutomaticRules)
+    {
+        if (Rule.Id == Target)
+        {
+            bFound = true;
+            continue;
+        }
+        Next.push_back(Rule);
+    }
+
+    if (!bFound)
+    {
+        SetAutomaticProfileMessage(
+            QStringLiteral("Remove rule failed: rule not found"));
+        return false;
+    }
+
+    return CommitAutomaticProfileRules(std::move(Next),
+        QStringLiteral("Rule removed"));
+}
+
+bool ZAppController::setAutomaticProfileRuleEnabled(QString ruleId, bool enabled)
+{
+    if (ruleId.isEmpty())
+    {
+        SetAutomaticProfileMessage(
+            QStringLiteral("Set rule enabled failed: ruleId is empty"));
+        return false;
+    }
+
+    const StdString Target = ruleId.toStdString();
+    TVector<SAutoProfileRule> Next = AutomaticRules;
+    bool bFound = false;
+    for (auto& Rule : Next)
+    {
+        if (Rule.Id == Target)
+        {
+            bFound = true;
+            if (Rule.bEnabled == enabled)
+            {
+                // 状态未变，无需写盘。
+                return true;
+            }
+            Rule.bEnabled = enabled;
+            break;
+        }
+    }
+
+    if (!bFound)
+    {
+        SetAutomaticProfileMessage(
+            QStringLiteral("Set rule enabled failed: rule not found"));
+        return false;
+    }
+
+    return CommitAutomaticProfileRules(std::move(Next),
+        enabled ? QStringLiteral("Rule enabled") : QStringLiteral("Rule disabled"));
+}
+
+void ZAppController::reportForegroundListenerUnavailable()
+{
+    // 只提示一次：自动切换不可用，但手动切换与其余功能照常。
+    const QString Message = QStringLiteral(
+        "Automatic switching is unavailable: could not start the foreground "
+        "listener. Manual profile switching still works.");
+    SetAutomaticProfileMessage(Message);
+    AppendLog(QStringLiteral("Error"), Message);
+}
+
+void ZAppController::handleForegroundApplicationChanged(QString processName)
+{
+    auto Normalized = NormalizeProcessName(processName.toStdString());
+    // 非法/空前台进程名视为“未知前台”，缓存为空并回退求值。
+    const StdString NewName = Normalized.value_or(StdString());
+
+    // 已观察过且前台名未变化：不重复求值，避免高频事件抖动。
+    // 首次观察即使为空（未知前台）也要求值一次，以便按需求回退 Default。
+    if (bForegroundObserved && NewName == ForegroundProcessNameCache)
+    {
+        return;
+    }
+
+    bForegroundObserved = true;
+    ForegroundProcessNameCache = NewName;
+    // 前台变化时清除上一次失败抑制，允许对新前台重新尝试。
+    LastFailedAutomaticTargetId.clear();
+    emit foregroundProcessChanged();
+
+    EvaluateAndApplyAutomaticProfile();
 }
 
 bool ZAppController::removeBinding(QString ruleId)
@@ -765,6 +1023,174 @@ StdPath ZAppController::ResolveProfilesDirectory() const
         return StdPath();
     }
     return StdPath((DataPath + QStringLiteral("/profiles")).toStdString());
+}
+
+StdPath ZAppController::ResolveRuleFilePath() const
+{
+    // 测试注入的隔离目录优先。规则文件放进 override 下的 config 子目录，与 profiles
+    // 目录分离：ProfileManager 只非递归扫描 profiles 目录本身，故规则 JSON 不会被
+    // 误当作 profile 扫描（生产环境下二者本就分属 AppConfig 与 AppData/profiles）。
+    // 仍在同一 temp 根下，便于测试统一清理。
+    if (!ProfileDirectoryOverride.empty())
+    {
+        return ProfileDirectoryOverride / "config" / "automatic_profile_rules.json";
+    }
+
+    QString DataPath = QStandardPaths::writableLocation(
+        QStandardPaths::AppConfigLocation);
+    if (DataPath.isEmpty())
+    {
+        return StdPath();
+    }
+    return StdPath(
+        (DataPath + QStringLiteral("/automatic_profile_rules.json")).toStdString());
+}
+
+QHash<QString, QString> ZAppController::BuildProfileLookup() const
+{
+    QHash<QString, QString> Lookup;
+    for (const SProfileInfo& Info : ProfileManager.GetProfiles())
+    {
+        Lookup.insert(QString::fromStdString(Info.Id),
+            QString::fromStdString(Info.Name));
+    }
+    return Lookup;
+}
+
+TVector<StdString> ZAppController::CollectProfileIds() const
+{
+    TVector<StdString> Ids;
+    const auto& Profiles = ProfileManager.GetProfiles();
+    Ids.reserve(Profiles.size());
+    for (const SProfileInfo& Info : Profiles)
+    {
+        Ids.push_back(Info.Id);
+    }
+    return Ids;
+}
+
+void ZAppController::SetAutomaticProfileMessage(const QString& Message)
+{
+    CachedAutomaticProfileMessage = Message;
+    emit automaticProfileStatusChanged();
+}
+
+void ZAppController::LoadAutomaticProfileRules()
+{
+    ZAutoProfileRuleStore Store(ResolveRuleFilePath());
+    auto Result = Store.Load();
+    if (!Result)
+    {
+        // 规则文件损坏：按空集处理并报错，不覆盖原文件（待用户首次成功 mutation 时替换）。
+        AutomaticRules.clear();
+        SetAutomaticProfileMessage(
+            QStringLiteral("Automatic profile rules file is corrupt; starting empty"));
+        AppendLog(QStringLiteral("Warning"),
+            QStringLiteral("Automatic profile rules file is corrupt; starting empty"));
+        return;
+    }
+
+    auto Loaded = std::move(Result).TakeValue();
+    AutomaticRules = std::move(Loaded.Rules);
+
+    // 加载时发生了规范化/去重/ID 修复：立即写回一次持久化规范形式。
+    if (Loaded.bRepaired)
+    {
+        auto SaveResult = Store.Save(AutomaticRules);
+        if (!SaveResult)
+        {
+            AppendLog(QStringLiteral("Warning"),
+                QStringLiteral("Failed to persist repaired automatic profile rules"));
+        }
+    }
+}
+
+void ZAppController::PushRulesToModel()
+{
+    AutoProfileRuleModelInstance.SetProfileLookup(BuildProfileLookup());
+    AutoProfileRuleModelInstance.ReplaceRules(AutomaticRules);
+}
+
+void ZAppController::RefreshRuleLookup()
+{
+    AutoProfileRuleModelInstance.SetProfileLookup(BuildProfileLookup());
+}
+
+bool ZAppController::CommitAutomaticProfileRules(
+    TVector<SAutoProfileRule> NextRules, const QString& SuccessLog)
+{
+    ZAutoProfileRuleStore Store(ResolveRuleFilePath());
+    auto Result = Store.Save(NextRules);
+    if (!Result)
+    {
+        auto ErrorMessage = QString::fromStdString(Result.Failure().Message);
+        SetAutomaticProfileMessage(
+            QStringLiteral("Save rules failed: %1").arg(ErrorMessage));
+        AppendLog(QStringLiteral("Error"),
+            QStringLiteral("Save automatic profile rules failed: %1").arg(ErrorMessage));
+        return false;
+    }
+
+    // 写盘成功后才提交内存状态与模型，保证磁盘/内存一致。
+    AutomaticRules = std::move(NextRules);
+    PushRulesToModel();
+    SetAutomaticProfileMessage(SuccessLog);
+    AppendLog(QStringLiteral("Success"), SuccessLog);
+
+    // 规则变化可能改变当前前台的匹配结果，重新求值。
+    LastFailedAutomaticTargetId.clear();
+    EvaluateAndApplyAutomaticProfile();
+    return true;
+}
+
+void ZAppController::EvaluateAndApplyAutomaticProfile()
+{
+    // profile 未就绪时不求值（initializeProfiles 之前不应触发自动切换）。
+    auto Status = Bootstrap.GetStatus();
+    if (Status.State != EApplicationBootstrapState::Ready
+        && Status.State != EApplicationBootstrapState::Running)
+    {
+        return;
+    }
+    if (!ProfileManager.GetActiveProfileInfo())
+    {
+        return;
+    }
+
+    // 尚未观察到任何前台（初始化、新建配置、增删规则等管理操作发生在首次前台观察前）：
+    // 不做自动决策，保留用户当前选择，避免把管理操作误当作“前台未知”而强制切到 Default。
+    // 一旦观察到前台（哪怕是不可解析的空前台），才按需求回退 Default。
+    if (!bForegroundObserved)
+    {
+        return;
+    }
+
+    // 前台已观察但不可解析（空进程名，如安全桌面/无标题窗口）时，按需求视为“无规则命中”
+    // 回退 Default：ResolveAutomaticProfileId 对空进程名归一化失败即返回 Default。
+    const StdString TargetId = ResolveAutomaticProfileId(
+        ForegroundProcessNameCache, AutomaticRules, CollectProfileIds());
+
+    // 已是目标配置：无需切换。清除失败抑制（当前状态已一致）。
+    if (QString::fromStdString(TargetId) == ActiveProfileId())
+    {
+        LastFailedAutomaticTargetId.clear();
+        return;
+    }
+
+    // 上一次对相同目标已失败：抑制高频重试，直到前台/规则/profile 集合变化。
+    if (TargetId == LastFailedAutomaticTargetId)
+    {
+        return;
+    }
+
+    if (!SwitchProfileInternal(TargetId, /*bAutomatic=*/true))
+    {
+        LastFailedAutomaticTargetId = TargetId;
+    }
+    else
+    {
+        LastFailedAutomaticTargetId.clear();
+    }
 }
 
 void ZAppController::ApplyLoadedProfile(

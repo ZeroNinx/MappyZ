@@ -190,6 +190,8 @@ endif()
 
 add_library(MappyZApp STATIC
     source/App/ApplicationBootstrap.cpp
+    source/App/AutoProfileRule.cpp
+    source/App/AutoProfileRuleStore.cpp
 )
 
 target_link_libraries(MappyZApp
@@ -197,6 +199,8 @@ target_link_libraries(MappyZApp
         MappyZRuntime
         MappyZInputBackends
         MappyZOutputBackends
+    PRIVATE
+        nlohmann_json::nlohmann_json
 )
 
 if(MSVC)
@@ -210,6 +214,7 @@ endif()
 add_library(MappyZUIBridge STATIC
     source/UI/Bridge/ActionCatalogModel.cpp
     source/UI/Bridge/AppController.cpp
+    source/UI/Bridge/AutoProfileRuleModel.cpp
     source/UI/Bridge/DeviceModel.cpp
     source/UI/Bridge/InputCaptureModel.cpp
     source/UI/Bridge/InputStateModel.cpp
@@ -262,6 +267,9 @@ set_source_files_properties(ui/picker/MappingPickerDialog.qml PROPERTIES QT_RESO
 set_source_files_properties(ui/common/InlineMessage.qml PROPERTIES QT_RESOURCE_ALIAS InlineMessage.qml)
 set_source_files_properties(ui/settings/SettingsDialog.qml PROPERTIES QT_RESOURCE_ALIAS SettingsDialog.qml)
 set_source_files_properties(ui/settings/GeneralSettingsPage.qml PROPERTIES QT_RESOURCE_ALIAS GeneralSettingsPage.qml)
+set_source_files_properties(ui/settings/AutomaticProfileSettingsPage.qml PROPERTIES QT_RESOURCE_ALIAS AutomaticProfileSettingsPage.qml)
+set_source_files_properties(ui/settings/AddAutomaticProfileRuleDialog.qml PROPERTIES QT_RESOURCE_ALIAS AddAutomaticProfileRuleDialog.qml)
+set_source_files_properties(ui/settings/ProcessPickerDialog.qml PROPERTIES QT_RESOURCE_ALIAS ProcessPickerDialog.qml)
 
 qt_add_qml_module(MappyZQml
     URI MappyZUI
@@ -295,6 +303,9 @@ qt_add_qml_module(MappyZQml
         ui/picker/MappingPickerDialog.qml
         ui/settings/SettingsDialog.qml
         ui/settings/GeneralSettingsPage.qml
+        ui/settings/AutomaticProfileSettingsPage.qml
+        ui/settings/AddAutomaticProfileRuleDialog.qml
+        ui/settings/ProcessPickerDialog.qml
 )
 
 # ProfileSelector.qml 使用 QtQuick.Controls（Popup），链接 QuickControls2
@@ -312,6 +323,7 @@ target_link_libraries(MappyZQml
 add_library(MappyZDesktopCore STATIC
     source/App/SettingsManager.cpp
     source/App/WindowLifecycleController.cpp
+    source/App/ForegroundApplicationService.cpp
 )
 
 target_include_directories(MappyZDesktopCore
@@ -323,7 +335,18 @@ target_link_libraries(MappyZDesktopCore
     PUBLIC
         Qt6::Core
         Qt6::Gui
+        Zero::ZeroStyle
 )
+
+# Windows 前台应用来源：事件驱动 SetWinEventHook 实现，链接 user32。
+if(WIN32)
+    target_sources(MappyZDesktopCore
+        PRIVATE
+            source/App/WindowsForegroundApplicationSource.cpp
+    )
+    target_compile_definitions(MappyZDesktopCore PRIVATE MAPPYZ_HAS_WINDOWS_FOREGROUND)
+    target_link_libraries(MappyZDesktopCore PRIVATE user32)
+endif()
 
 if(MSVC)
     target_compile_options(MappyZDesktopCore PRIVATE /W4)
@@ -556,6 +579,8 @@ if(BUILD_TESTING)
 
     add_executable(MappyZAppTests
         tests/App/ApplicationBootstrapTests.cpp
+        tests/App/AutoProfileRuleTests.cpp
+        tests/App/AutoProfileRuleStoreTests.cpp
     )
 
     target_link_libraries(MappyZAppTests
@@ -644,6 +669,7 @@ if(BUILD_TESTING)
         tests/App/SystemTrayControllerTests.cpp
         tests/App/SettingsManagerTests.cpp
         tests/App/StartupPolicyTests.cpp
+        tests/App/ForegroundApplicationServiceTests.cpp
     )
 
     target_link_libraries(MappyZDesktopTests

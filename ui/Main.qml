@@ -19,6 +19,12 @@ Window {
     readonly property var _appController: appController
     readonly property var _settingsManager: settingsManager
 
+    // 前台服务为可选注入：主程序装配时存在，离屏冒烟测试未提供时为 null。
+    // typeof 守卫避免上下文属性缺失时抛 ReferenceError；下游对 null 做降级处理。
+    readonly property var _foregroundService:
+        (typeof foregroundApplicationService !== "undefined" && foregroundApplicationService)
+            ? foregroundApplicationService : null
+
     // ── 应用级状态 ──
 
     property string selectedDevice: ""
@@ -294,5 +300,7 @@ Window {
         objectName: "settingsDialog"
         theme: theme
         settingsManager: root._settingsManager
+        appController: root._appController
+        foregroundService: root._foregroundService
     }
 }

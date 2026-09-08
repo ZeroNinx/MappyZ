@@ -22,8 +22,10 @@
 
 #include "Backends/Input/FakeInputBackend.h"
 #include "Backends/Output/NullOutputBackend.h"
+#include "App/ForegroundApplicationService.h"
 #include "App/SettingsManager.h"
 #include "UI/Bridge/AppController.h"
+#include "UI/Bridge/AutoProfileRuleModel.h"
 
 // 静态链接 QML 模块时必须显式导入插件
 Q_IMPORT_QML_PLUGIN(MappyZUIPlugin)
@@ -329,7 +331,8 @@ TEST_CASE("Settings button drives the full open chain and checkbox reflects mana
     REQUIRE(QMetaObject::invokeMethod(SettingsButton, "clicked"));
     QCoreApplication::processEvents();
     REQUIRE(Dialog->property("visible").toBool());
-    REQUIRE(Dialog->property("currentCategory").toInt() == 0);
+    REQUIRE(Dialog->property("currentCategory").toString()
+        == QStringLiteral("general"));
 
     // Start minimized 复选框初始反映管理器默认值 true（Qt.Checked）。
     QObject* CheckBox =
@@ -466,6 +469,315 @@ TEST_CASE("Escape closes the settings dialog without modifying settings",
 
     REQUIRE_FALSE(Dialog->property("visible").toBool());
     REQUIRE(SettingsSpy.SetterCallCount == 0);
+
+    qInstallMessageHandler(PreviousHandler);
+    RequireNoWarnings();
+}
+
+TEST_CASE("Automatic profile switching page drives rule add through the real UI chain",
+    "[UI][QmlSmoke]")
+{
+    GCollectedWarnings.clear();
+    QtMessageHandler PreviousHandler = qInstallMessageHandler(QmlWarningHandler);
+
+    QTemporaryDir TempDir;
+    REQUIRE(TempDir.isValid());
+
+    ZAppController Controller(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory(),
+        StdPath(TempDir.path().toStdString()));
+
+    ZSettingsManager SettingsManager(
+        TempDir.path() + QStringLiteral("/settings.ini"));
+
+    // 注入带预置运行应用列表的 fake 前台服务，驱动进程选择器。
+    auto FakeSource = std::make_unique<ZFakeForegroundApplicationSource>();
+    SForegroundWindowInfo GameApp;
+    GameApp.ProcessName = QStringLiteral("game.exe");
+    GameApp.DisplayName = QStringLiteral("Game Window");
+    SForegroundWindowInfo EditorApp;
+    EditorApp.ProcessName = QStringLiteral("editor.exe");
+    EditorApp.DisplayName = QStringLiteral("Editor");
+    FakeSource->SetApplications({GameApp, EditorApp});
+    ZForegroundApplicationService ForegroundService(std::move(FakeSource));
+
+    QQmlApplicationEngine Engine;
+    Engine.rootContext()->setContextProperty("appController", &Controller);
+    Engine.rootContext()->setContextProperty("settingsManager", &SettingsManager);
+    Engine.rootContext()->setContextProperty(
+        "foregroundApplicationService", &ForegroundService);
+    Engine.loadFromModule("MappyZUI", "Main");
+    QCoreApplication::processEvents();
+
+    REQUIRE_FALSE(Engine.rootObjects().isEmpty());
+    QObject* RootObject = Engine.rootObjects().constFirst();
+
+    // 打开设置对话框并切到 Automatic Switching 分类。
+    QObject* Dialog =
+        RootObject->findChild<QObject*>(QStringLiteral("settingsDialog"));
+    REQUIRE(Dialog != nullptr);
+    QMetaObject::invokeMethod(Dialog, "open");
+    Dialog->setProperty("currentCategory", QStringLiteral("automatic"));
+    QCoreApplication::processEvents();
+
+    QObject* AutomaticPage =
+        RootObject->findChild<QObject*>(QStringLiteral("settingsAutomaticPage"));
+    REQUIRE(AutomaticPage != nullptr);
+    REQUIRE(AutomaticPage->property("visible").toBool());
+
+    // 初始无规则。
+    REQUIRE(Controller.AutoProfileRuleModel()->rowCount() == 0);
+
+    // 打开添加对话框，再打开进程选择器：列表应含两条运行应用。
+    QObject* AddDialog =
+        RootObject->findChild<QObject*>(QStringLiteral("automaticAddRuleDialog"));
+    REQUIRE(AddDialog != nullptr);
+    QMetaObject::invokeMethod(AddDialog, "open");
+    QCoreApplication::processEvents();
+    REQUIRE(AddDialog->property("visible").toBool());
+
+    QObject* Picker =
+        RootObject->findChild<QObject*>(QStringLiteral("processPickerDialog"));
+    REQUIRE(Picker != nullptr);
+    QMetaObject::invokeMethod(Picker, "open");
+    QCoreApplication::processEvents();
+
+    QObject* PickerList =
+        RootObject->findChild<QObject*>(QStringLiteral("processPickerList"));
+    REQUIRE(PickerList != nullptr);
+    REQUIRE(PickerList->property("count").toInt() == 2);
+    QMetaObject::invokeMethod(Picker, "close");
+    QCoreApplication::processEvents();
+
+    // 通过真实提交链新增一条规则：填入进程名后调用 submit()（默认选中 Default）。
+    QObject* ProcessField =
+        RootObject->findChild<QObject*>(QStringLiteral("addRuleProcessField"));
+    REQUIRE(ProcessField != nullptr);
+    ProcessField->setProperty("text", QStringLiteral("game.exe"));
+    QMetaObject::invokeMethod(AddDialog, "submit");
+    QCoreApplication::processEvents();
+
+    // 提交成功：对话框关闭，规则模型多出一行。
+    REQUIRE_FALSE(AddDialog->property("visible").toBool());
+    REQUIRE(Controller.AutoProfileRuleModel()->rowCount() == 1);
+
+    qInstallMessageHandler(PreviousHandler);
+    RequireNoWarnings();
+}
+
+TEST_CASE("Escape closes the three automatic-switching overlays one layer at a time",
+    "[UI][QmlSmoke]")
+{
+    GCollectedWarnings.clear();
+    QtMessageHandler PreviousHandler = qInstallMessageHandler(QmlWarningHandler);
+
+    QTemporaryDir TempDir;
+    REQUIRE(TempDir.isValid());
+
+    ZAppController Controller(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory(),
+        StdPath(TempDir.path().toStdString()));
+
+    ZSettingsManager SettingsManager(
+        TempDir.path() + QStringLiteral("/settings.ini"));
+
+    // 注入带一条运行应用的 fake 前台服务，使进程选择器列表非空。
+    auto FakeSource = std::make_unique<ZFakeForegroundApplicationSource>();
+    SForegroundWindowInfo GameApp;
+    GameApp.ProcessName = QStringLiteral("game.exe");
+    GameApp.DisplayName = QStringLiteral("Game Window");
+    FakeSource->SetApplications({GameApp});
+    ZForegroundApplicationService ForegroundService(std::move(FakeSource));
+
+    QQmlApplicationEngine Engine;
+    Engine.rootContext()->setContextProperty("appController", &Controller);
+    Engine.rootContext()->setContextProperty("settingsManager", &SettingsManager);
+    Engine.rootContext()->setContextProperty(
+        "foregroundApplicationService", &ForegroundService);
+    Engine.loadFromModule("MappyZUI", "Main");
+    QCoreApplication::processEvents();
+
+    REQUIRE_FALSE(Engine.rootObjects().isEmpty());
+    QObject* RootObject = Engine.rootObjects().constFirst();
+    QQuickWindow* Window = qobject_cast<QQuickWindow*>(RootObject);
+    REQUIRE(Window != nullptr);
+
+    // 打开三层 overlay：Settings → Add rule → Process picker。
+    QObject* Dialog =
+        RootObject->findChild<QObject*>(QStringLiteral("settingsDialog"));
+    REQUIRE(Dialog != nullptr);
+    QMetaObject::invokeMethod(Dialog, "open");
+    Dialog->setProperty("currentCategory", QStringLiteral("automatic"));
+    QCoreApplication::processEvents();
+
+    QObject* AddDialog =
+        RootObject->findChild<QObject*>(QStringLiteral("automaticAddRuleDialog"));
+    REQUIRE(AddDialog != nullptr);
+    QMetaObject::invokeMethod(AddDialog, "open");
+    QCoreApplication::processEvents();
+
+    QObject* Picker =
+        RootObject->findChild<QObject*>(QStringLiteral("processPickerDialog"));
+    REQUIRE(Picker != nullptr);
+    QMetaObject::invokeMethod(Picker, "open");
+    QCoreApplication::processEvents();
+
+    REQUIRE(Dialog->property("visible").toBool());
+    REQUIRE(AddDialog->property("visible").toBool());
+    REQUIRE(Picker->property("visible").toBool());
+
+    auto SendEscape = [Window]() {
+        QKeyEvent Press(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+        QCoreApplication::sendEvent(Window, &Press);
+        QCoreApplication::processEvents();
+    };
+
+    // 第一次 Escape：只关闭最上层的进程选择器。
+    SendEscape();
+    REQUIRE_FALSE(Picker->property("visible").toBool());
+    REQUIRE(AddDialog->property("visible").toBool());
+    REQUIRE(Dialog->property("visible").toBool());
+
+    // 第二次 Escape：焦点已交还，关闭 Add 对话框。
+    SendEscape();
+    REQUIRE_FALSE(AddDialog->property("visible").toBool());
+    REQUIRE(Dialog->property("visible").toBool());
+
+    // 第三次 Escape：关闭 Settings 对话框。
+    SendEscape();
+    REQUIRE_FALSE(Dialog->property("visible").toBool());
+
+    qInstallMessageHandler(PreviousHandler);
+    RequireNoWarnings();
+}
+
+TEST_CASE("Adding a duplicate process keeps the add dialog open and adds no row",
+    "[UI][QmlSmoke]")
+{
+    GCollectedWarnings.clear();
+    QtMessageHandler PreviousHandler = qInstallMessageHandler(QmlWarningHandler);
+
+    QTemporaryDir TempDir;
+    REQUIRE(TempDir.isValid());
+
+    ZAppController Controller(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory(),
+        StdPath(TempDir.path().toStdString()));
+
+    ZSettingsManager SettingsManager(
+        TempDir.path() + QStringLiteral("/settings.ini"));
+
+    QQmlApplicationEngine Engine;
+    Engine.rootContext()->setContextProperty("appController", &Controller);
+    Engine.rootContext()->setContextProperty("settingsManager", &SettingsManager);
+    Engine.loadFromModule("MappyZUI", "Main");
+    QCoreApplication::processEvents();
+
+    REQUIRE_FALSE(Engine.rootObjects().isEmpty());
+    QObject* RootObject = Engine.rootObjects().constFirst();
+
+    // 预置一条 game.exe 规则（切到 Default）。
+    REQUIRE(Controller.addAutomaticProfileRule(
+        QStringLiteral("game.exe"), QStringLiteral("default")));
+    REQUIRE(Controller.AutoProfileRuleModel()->rowCount() == 1);
+
+    QObject* Dialog =
+        RootObject->findChild<QObject*>(QStringLiteral("settingsDialog"));
+    REQUIRE(Dialog != nullptr);
+    QMetaObject::invokeMethod(Dialog, "open");
+    Dialog->setProperty("currentCategory", QStringLiteral("automatic"));
+    QCoreApplication::processEvents();
+
+    QObject* AddDialog =
+        RootObject->findChild<QObject*>(QStringLiteral("automaticAddRuleDialog"));
+    REQUIRE(AddDialog != nullptr);
+    QMetaObject::invokeMethod(AddDialog, "open");
+    QCoreApplication::processEvents();
+
+    // 再次提交相同进程名：C++ 拒绝重复，dialog 保持打开、规则不增加。
+    QObject* ProcessField =
+        RootObject->findChild<QObject*>(QStringLiteral("addRuleProcessField"));
+    REQUIRE(ProcessField != nullptr);
+    ProcessField->setProperty("text", QStringLiteral("game.exe"));
+    QMetaObject::invokeMethod(AddDialog, "submit");
+    QCoreApplication::processEvents();
+
+    REQUIRE(AddDialog->property("visible").toBool());
+    REQUIRE(Controller.AutoProfileRuleModel()->rowCount() == 1);
+
+    qInstallMessageHandler(PreviousHandler);
+    RequireNoWarnings();
+}
+
+TEST_CASE("Delete removes the rule matching the selected ruleId regardless of row",
+    "[UI][QmlSmoke]")
+{
+    GCollectedWarnings.clear();
+    QtMessageHandler PreviousHandler = qInstallMessageHandler(QmlWarningHandler);
+
+    QTemporaryDir TempDir;
+    REQUIRE(TempDir.isValid());
+
+    ZAppController Controller(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory(),
+        StdPath(TempDir.path().toStdString()));
+
+    ZSettingsManager SettingsManager(
+        TempDir.path() + QStringLiteral("/settings.ini"));
+
+    QQmlApplicationEngine Engine;
+    Engine.rootContext()->setContextProperty("appController", &Controller);
+    Engine.rootContext()->setContextProperty("settingsManager", &SettingsManager);
+    Engine.loadFromModule("MappyZUI", "Main");
+    QCoreApplication::processEvents();
+
+    REQUIRE_FALSE(Engine.rootObjects().isEmpty());
+    QObject* RootObject = Engine.rootObjects().constFirst();
+
+    // 预置两条规则。
+    REQUIRE(Controller.addAutomaticProfileRule(
+        QStringLiteral("first.exe"), QStringLiteral("default")));
+    REQUIRE(Controller.addAutomaticProfileRule(
+        QStringLiteral("second.exe"), QStringLiteral("default")));
+    ZAutoProfileRuleModel* Model = Controller.AutoProfileRuleModel();
+    REQUIRE(Model->rowCount() == 2);
+
+    // 取第二行的权威 ruleId。
+    QString SecondRuleId;
+    REQUIRE(QMetaObject::invokeMethod(
+        Model, "ruleIdAt", Q_RETURN_ARG(QString, SecondRuleId), Q_ARG(int, 1)));
+    REQUIRE_FALSE(SecondRuleId.isEmpty());
+
+    QObject* Dialog =
+        RootObject->findChild<QObject*>(QStringLiteral("settingsDialog"));
+    REQUIRE(Dialog != nullptr);
+    QMetaObject::invokeMethod(Dialog, "open");
+    Dialog->setProperty("currentCategory", QStringLiteral("automatic"));
+    QCoreApplication::processEvents();
+
+    // 选中第二行并点击 Delete：应删除 second.exe，保留 first.exe。
+    QObject* AutomaticPage =
+        RootObject->findChild<QObject*>(QStringLiteral("settingsAutomaticPage"));
+    REQUIRE(AutomaticPage != nullptr);
+    AutomaticPage->setProperty("selectedRuleId", SecondRuleId);
+    QCoreApplication::processEvents();
+
+    QObject* DeleteButton =
+        RootObject->findChild<QObject*>(QStringLiteral("automaticDeleteRuleButton"));
+    REQUIRE(DeleteButton != nullptr);
+    REQUIRE(DeleteButton->property("enabled").toBool());
+    REQUIRE(QMetaObject::invokeMethod(DeleteButton, "clicked"));
+    QCoreApplication::processEvents();
+
+    REQUIRE(Model->rowCount() == 1);
+    QString RemainingProcess =
+        Model->data(Model->index(0, 0),
+            ZAutoProfileRuleModel::ProcessNameRole).toString();
+    REQUIRE(RemainingProcess == QStringLiteral("first.exe"));
 
     qInstallMessageHandler(PreviousHandler);
     RequireNoWarnings();
