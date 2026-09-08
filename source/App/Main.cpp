@@ -61,6 +61,38 @@ int main(int ArgCount, char* Arguments[])
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
 
+    // 托盘配置同步：把 controller 的配置列表和当前项渲染到托盘菜单。
+    // controller 是配置状态的唯一来源，托盘只渲染，不复制业务规则。
+    auto SyncTrayProfiles = [&Tray, &AppController]()
+    {
+        Tray.SetProfiles(
+            AppController.ProfileEntries(),
+            AppController.ActiveProfileId());
+    };
+
+    // 列表或当前项变化都重新同步托盘菜单。
+    QObject::connect(&AppController, &MappyZ::ZAppController::profileListChanged,
+        &Tray, SyncTrayProfiles);
+    QObject::connect(&AppController, &MappyZ::ZAppController::activeProfileChanged,
+        &Tray, SyncTrayProfiles);
+
+    // 托盘点击某项：请求 controller 切换。用 QueuedConnection 把切换推迟到当前
+    // QAction::triggered 派发完全解栈之后再执行——否则切换会同步发出
+    // activeProfileChanged 触发菜单重建，进而删除正在发信号的 QAction，
+    // 造成原生菜单事件处理期间的悬空对象/崩溃。延迟后成功切换依赖
+    // activeProfileChanged 自动同步，失败时显式重建以恢复点击产生的临时勾选，
+    // 二者此时都不再位于 triggered 调用栈内，删除 action 是安全的。
+    QObject::connect(&Tray, &MappyZ::ZSystemTrayController::ProfileSwitchRequested,
+        &AppController,
+        [&AppController, &SyncTrayProfiles](const QString& ProfileId)
+        {
+            if (!AppController.switchProfile(ProfileId))
+            {
+                SyncTrayProfiles();
+            }
+        },
+        Qt::QueuedConnection);
+
     Engine.loadFromModule("MappyZUI", "Main");
 
     if (Engine.rootObjects().isEmpty())
@@ -91,6 +123,9 @@ int main(int ArgCount, char* Arguments[])
             WindowLifecycle.BeginExit();
             QCoreApplication::quit();
         });
+
+    // 根对象创建成功后显式同步一次，覆盖启动信号时序差异（此时配置已初始化）。
+    SyncTrayProfiles();
 
     if (bTrayAvailable)
     {

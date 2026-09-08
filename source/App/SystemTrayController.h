@@ -5,12 +5,16 @@
 
 #pragma once
 
+#include <QList>
 #include <QObject>
+#include <QString>
+#include <QVariantList>
 
 class QIcon;
 class QSystemTrayIcon;
 class QMenu;
 class QAction;
+class QActionGroup;
 
 namespace MappyZ
 {
@@ -31,6 +35,13 @@ public:
     void Show();
     void Hide();
 
+    // 用传入的配置列表重建菜单：删除上一批 profile action 与 separator，
+    // 在 Exit 之前按传入顺序插入新 action，当前项打勾。空列表只保留 Exit。
+    // 只渲染数据、只发出 ProfileSwitchRequested，不读取文件或访问 Runtime。
+    void SetProfiles(
+        const QVariantList& ProfileEntries,
+        const QString& ActiveProfileId);
+
 signals:
     // 用户单击 / 双击托盘图标，请求恢复主窗口
     void RestoreRequested();
@@ -38,10 +49,21 @@ signals:
     // 用户选择 Exit 菜单项，请求退出应用
     void ExitRequested();
 
+    // 用户点击某个 profile 菜单项，携带该项的稳定 ID
+    void ProfileSwitchRequested(QString ProfileId);
+
 private:
+    // 创建末尾唯一的 Exit action 并接好“首次触发即禁用并发信号”逻辑。
+    void BuildExitAction();
+
     QSystemTrayIcon* TrayIcon = nullptr;
     QMenu* Menu = nullptr;
     QAction* ExitAction = nullptr;
+
+    // profile 菜单项与其互斥分组；重建时整体销毁再重建。
+    QActionGroup* ProfileActionGroup = nullptr;
+    QList<QAction*> ProfileActions;
+    QAction* SeparatorAction = nullptr;
 };
 
 }  // namespace MappyZ

@@ -126,7 +126,7 @@ Window {
     Component.onCompleted: {
         var ok = appController.initializeRuntime()
         if (ok) {
-            ok = appController.loadProfile()
+            ok = appController.initializeProfiles()
         }
         if (ok) {
             ok = appController.startRuntime()

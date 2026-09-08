@@ -27,7 +27,7 @@ add_subdirectory(third_party/ZeroStyle)
 # 启用 ZeroStyle 短宏（NODISCARD 等），项目代码统一使用短名。
 add_compile_definitions(ZERO_ENABLE_SHORT_MACROS)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Quick Widgets QuickControls2)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -247,6 +247,7 @@ set_source_files_properties(ui/gamepad/MappingGroupCard.qml PROPERTIES QT_RESOUR
 set_source_files_properties(ui/gamepad/EditableGamepadMappingView.qml PROPERTIES QT_RESOURCE_ALIAS EditableGamepadMappingView.qml)
 set_source_files_properties(ui/gamepad/GamepadGlyph.qml PROPERTIES QT_RESOURCE_ALIAS GamepadGlyph.qml)
 set_source_files_properties(ui/panels/TopBar.qml PROPERTIES QT_RESOURCE_ALIAS TopBar.qml)
+set_source_files_properties(ui/panels/ProfileSelector.qml PROPERTIES QT_RESOURCE_ALIAS ProfileSelector.qml)
 set_source_files_properties(ui/panels/DevicesPanel.qml PROPERTIES QT_RESOURCE_ALIAS DevicesPanel.qml)
 set_source_files_properties(ui/gamepad/GamepadView.qml PROPERTIES QT_RESOURCE_ALIAS GamepadView.qml)
 set_source_files_properties(ui/panels/BindingEditor.qml PROPERTIES QT_RESOURCE_ALIAS BindingEditor.qml)
@@ -278,6 +279,7 @@ qt_add_qml_module(MappyZQml
         ui/gamepad/EditableGamepadMappingView.qml
         ui/gamepad/GamepadGlyph.qml
         ui/panels/TopBar.qml
+        ui/panels/ProfileSelector.qml
         ui/panels/DevicesPanel.qml
         ui/gamepad/GamepadView.qml
         ui/panels/BindingEditor.qml
@@ -289,6 +291,13 @@ qt_add_qml_module(MappyZQml
         ui/picker/MousePicker.qml
         ui/picker/DInputPicker.qml
         ui/picker/MappingPickerDialog.qml
+)
+
+# ProfileSelector.qml 使用 QtQuick.Controls（Popup），链接 QuickControls2
+# 确保开发和部署环境都包含 QtQuick.Controls 模块。
+target_link_libraries(MappyZQml
+    PRIVATE
+        Qt6::QuickControls2
 )
 
 # ── 主应用 ──
@@ -559,6 +568,7 @@ if(BUILD_TESTING)
             MappyZInputBackends
             MappyZOutputBackends
             Qt6::Quick
+            Qt6::QuickControls2
             Catch2::Catch2
     )
 
@@ -570,14 +580,16 @@ if(BUILD_TESTING)
 
     catch_discover_tests(MappyZQmlSmokeTests)
 
-    # ── Desktop 生命周期测试 ──
-    # 使用 QGuiApplication + offscreen 和真实 QWindow 验证窗口事件策略，
-    # 不构造 Widgets 托盘对象；显式共享 WindowLifecycleController 源文件。
+    # ── Desktop 生命周期 / 托盘测试 ──
+    # 使用 QApplication + offscreen 验证窗口事件策略与托盘菜单对象树，
+    # 显式共享 WindowLifecycleController 与 SystemTrayController 源文件。
 
     add_executable(MappyZDesktopTests
         tests/App/DesktopTestsMain.cpp
         tests/App/WindowLifecycleControllerTests.cpp
+        tests/App/SystemTrayControllerTests.cpp
         source/App/WindowLifecycleController.cpp
+        source/App/SystemTrayController.cpp
     )
 
     target_include_directories(MappyZDesktopTests
@@ -588,6 +600,7 @@ if(BUILD_TESTING)
     target_link_libraries(MappyZDesktopTests
         PRIVATE
             Qt6::Gui
+            Qt6::Widgets
             Catch2::Catch2
     )
 

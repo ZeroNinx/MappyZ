@@ -2,15 +2,23 @@
 // 使用 fake/null 工厂验证 UI Bridge 控制器的完整生命周期：
 // initializeRuntime/startRuntime/stopRuntime/pumpOnce、
 // QTimer pump 控制、QSignalSpy 信号验证、factory 失败、析构安全。
+//
+// 多配置相关测试统一通过构造函数注入隔离的临时目录（不再依赖
+// QStandardPaths test mode），使 initializeProfiles 后的 autosave/切换/
+// 新建/重命名/删除都落在独立目录，测试之间互不污染。
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 
 #include <QCoreApplication>
 #include <QSignalSpy>
-#include <QStandardPaths>
+#include <QVariantList>
+#include <QVariantMap>
 
 #include "Backends/Input/FakeInputBackend.h"
 #include "Backends/Output/NullOutputBackend.h"
@@ -25,13 +33,36 @@
 
 using namespace MappyZ;
 
-// QStandardPaths test mode RAII guard，确保断言失败时仍恢复全局状态
-struct STestModeGuard
+// ── 隔离配置目录 RAII 辅助 ──
+
+// 每个实例生成一个唯一的临时目录路径，用于注入 ZAppController。
+// 构造时仅清理残留（不主动创建目录），析构时递归删除，确保测试隔离。
+struct STempProfileDir
 {
-    STestModeGuard() { QStandardPaths::setTestModeEnabled(true); }
-    ~STestModeGuard() { QStandardPaths::setTestModeEnabled(false); }
-    STestModeGuard(const STestModeGuard&) = delete;
-    STestModeGuard& operator=(const STestModeGuard&) = delete;
+    StdPath Path;
+
+    explicit STempProfileDir(const StdString& Label)
+    {
+        // steady_clock 计数 + 原子自增计数器，保证跨用例的路径唯一性
+        static std::atomic<uint32> Counter{0};
+        const auto Unique =
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())
+            + "_" + std::to_string(Counter.fetch_add(1));
+        Path = std::filesystem::temp_directory_path()
+            / ("mappyz_ac_" + Label + "_" + Unique);
+
+        std::error_code Ec;
+        std::filesystem::remove_all(Path, Ec);
+    }
+
+    ~STempProfileDir()
+    {
+        std::error_code Ec;
+        std::filesystem::remove_all(Path, Ec);
+    }
+
+    STempProfileDir(const STempProfileDir&) = delete;
+    STempProfileDir& operator=(const STempProfileDir&) = delete;
 };
 
 // ── 测试用 factory 辅助 ──
@@ -82,6 +113,17 @@ static SInputEvent MakeButtonEvent(
     Event.EventType = EventType;
     Event.Value = (EventType == EInputEventType::Pressed) ? 1.0f : 0.0f;
     return Event;
+}
+
+// 构造一个已完成 initializeRuntime + initializeProfiles 的控制器，
+// 配置绑定到给定的隔离目录，供多配置/自动保存类用例复用。
+static std::unique_ptr<ZAppController> MakeInitializedController(const StdPath& Directory)
+{
+    auto Controller = std::make_unique<ZAppController>(
+        MakeFakeInputFactory(), MakeNullOutputFactory(), Directory);
+    REQUIRE(Controller->initializeRuntime());
+    REQUIRE(Controller->initializeProfiles());
+    return Controller;
 }
 
 // ── 默认状态 ──
@@ -335,6 +377,9 @@ TEST_CASE("AppController signals use lowerCamelCase for QML Connections compatib
     REQUIRE(Meta->indexOfSignal("profileStatusChanged()") >= 0);
     REQUIRE(Meta->indexOfSignal("profileSaved(QString)") >= 0);
     REQUIRE(Meta->indexOfSignal("profileLoaded(QString)") >= 0);
+    // 多配置列表 / 当前项变化信号，供 QML Connections 绑定
+    REQUIRE(Meta->indexOfSignal("profileListChanged()") >= 0);
+    REQUIRE(Meta->indexOfSignal("activeProfileChanged()") >= 0);
 }
 
 // ── inputStateModel 属性 ──
@@ -1268,23 +1313,23 @@ TEST_CASE("AppController activeProfileName is Default before initialize",
     REQUIRE(Controller.ActiveProfileName() == "Default");
 }
 
-TEST_CASE("AppController activeProfileName is Default after initialize with default profile",
+TEST_CASE("AppController activeProfileName is Default without initializing profiles",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
     (void)Controller.initializeRuntime();
 
-    // Bootstrap 默认 profile Name 为 "Default"
+    // 未调用 initializeProfiles，manager 无当前项，回退到 Default
     REQUIRE(Controller.ActiveProfileName() == "Default");
 }
 
-TEST_CASE("AppController activeProfileName falls back to Default when profile name is empty",
+TEST_CASE("AppController activeProfileName is Default when profile manager is uninitialized",
     "[UI][AppController]")
 {
     ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
     REQUIRE(Controller.initializeRuntime());
 
-    // 替换为空 Name 的 profile
+    // 名称现在由 ProfileManager 提供；未初始化时始终回退 Default
     SMappingProfile Profile;
     Profile.Name = "";
     Controller.ReplaceActiveProfileForTest(std::move(Profile));
@@ -1338,450 +1383,6 @@ TEST_CASE("AppController outputState strings are stable",
     (void)Controller.initializeRuntime();
     // Ready 状态下 NullOutputBackend state 为 ready
     REQUIRE(Controller.OutputState() == "ready");
-}
-
-// ══════════════════════════════════════════════════════════════
-// P3: saveActiveProfile
-// ══════════════════════════════════════════════════════════════
-
-TEST_CASE("AppController saveActiveProfile before initialize returns false and emits runtimeError",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
-    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
-
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_save_test_noinit" / "profile.json";
-    bool bResult = Controller.saveActiveProfile(
-        QString::fromStdString(TempPath.string()));
-
-    REQUIRE_FALSE(bResult);
-    REQUIRE(ErrorSpy.count() == 1);
-    REQUIRE(StatusSpy.count() == 1);
-}
-
-TEST_CASE("AppController saveActiveProfile with explicit path creates JSON file",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_save_test" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    bool bResult = Controller.saveActiveProfile(PathStr);
-
-    REQUIRE(bResult);
-    REQUIRE(std::filesystem::exists(TempPath));
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController saved empty profile can be parsed by ZProfileManager",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_save_test_empty" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    Controller.saveActiveProfile(PathStr);
-
-    ZProfileManager Manager;
-    auto LoadResult = Manager.LoadProfile(TempPath);
-    REQUIRE(LoadResult.IsOk());
-    REQUIRE(LoadResult.Value().Rules.empty());
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController apply binding then save writes mapping rule with expected control and action",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    Controller.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
-
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_save_test_binding" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    Controller.saveActiveProfile(PathStr);
-
-    ZProfileManager Manager;
-    auto LoadResult = Manager.LoadProfile(TempPath);
-    REQUIRE(LoadResult.IsOk());
-
-    auto& Rules = LoadResult.Value().Rules;
-    REQUIRE(Rules.size() == 1);
-    REQUIRE(Rules[0].Input.ControlId == "button_south");
-    REQUIRE(Rules[0].Output.Action.Type == EActionType::KeyboardKey);
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController saveActiveProfile creates missing parent directories",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_save_test_mkdir" / "nested" / "dir" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    bool bResult = Controller.saveActiveProfile(PathStr);
-
-    REQUIRE(bResult);
-    REQUIRE(std::filesystem::exists(TempPath));
-
-    std::filesystem::remove_all(
-        std::filesystem::temp_directory_path() / "mappyz_save_test_mkdir");
-}
-
-TEST_CASE("AppController saveActiveProfile while Running succeeds",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-    (void)Controller.startRuntime();
-
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_save_test_running" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    bool bResult = Controller.saveActiveProfile(PathStr);
-
-    REQUIRE(bResult);
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController successful save emits profileStatusChanged and profileSaved",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
-    QSignalSpy SavedSpy(&Controller, &ZAppController::profileSaved);
-
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_save_test_signals" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    Controller.saveActiveProfile(PathStr);
-
-    REQUIRE(StatusSpy.count() == 1);
-    REQUIRE(SavedSpy.count() == 1);
-    REQUIRE(SavedSpy.at(0).at(0).toString() == PathStr);
-
-    // 验证 profilePath 属性已更新
-    REQUIRE(Controller.ProfilePath() == PathStr);
-    REQUIRE(Controller.ProfileMessage() == "Profile saved");
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController failed save emits profileStatusChanged and runtimeError",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    // 创建一个普通文件作为阻塞点，使 create_directories 失败
-    auto BlockerPath = std::filesystem::temp_directory_path()
-        / "mappyz_save_fail_blocker";
-    { std::ofstream(BlockerPath).close(); }
-
-    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
-    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
-
-    auto BadPath = QString::fromStdString(
-        (BlockerPath / "sub" / "profile.json").string());
-
-    bool bResult = Controller.saveActiveProfile(BadPath);
-
-    REQUIRE_FALSE(bResult);
-    REQUIRE(StatusSpy.count() == 1);
-    REQUIRE(ErrorSpy.count() == 1);
-
-    std::filesystem::remove(BlockerPath);
-}
-
-TEST_CASE("AppController saveActiveProfile default path creates file under AppDataLocation",
-    "[UI][AppController]")
-{
-    STestModeGuard Guard;
-
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    bool bResult = Controller.saveActiveProfile();
-
-    REQUIRE(bResult);
-    REQUIRE_FALSE(Controller.ProfilePath().isEmpty());
-
-    // 验证文件存在且可被 ProfileManager round-trip
-    StdPath SavedPath(Controller.ProfilePath().toStdString());
-    REQUIRE(std::filesystem::exists(SavedPath));
-
-    ZProfileManager Manager;
-    auto LoadResult = Manager.LoadProfile(SavedPath);
-    REQUIRE(LoadResult.IsOk());
-
-    // 清理测试目录
-    std::filesystem::remove_all(SavedPath.parent_path());
-}
-
-// ══════════════════════════════════════════════════════════════
-// P4: loadProfile
-// ══════════════════════════════════════════════════════════════
-
-TEST_CASE("AppController loadProfile before initialize returns false and emits runtimeError",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
-    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
-
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_load_test_noinit" / "profile.json";
-    bool bResult = Controller.loadProfile(
-        QString::fromStdString(TempPath.string()));
-
-    REQUIRE_FALSE(bResult);
-    REQUIRE(ErrorSpy.count() == 1);
-    REQUIRE(StatusSpy.count() == 1);
-}
-
-TEST_CASE("AppController loadProfile with missing default path returns true and keeps empty Default profile",
-    "[UI][AppController]")
-{
-    STestModeGuard Guard;
-
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    // 无参调用，test mode 下默认路径不存在
-    bool bResult = Controller.loadProfile();
-
-    REQUIRE(bResult);
-    REQUIRE(Controller.ActiveProfileName() == "Default");
-    REQUIRE(Controller.MappingRuleModel()->rowCount() == 0);
-}
-
-TEST_CASE("AppController loadProfile with explicit missing path returns false and emits runtimeError",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
-
-    bool bResult = Controller.loadProfile(
-        QStringLiteral("nonexistent_mappyz_test_xyz.json"));
-
-    REQUIRE_FALSE(bResult);
-    REQUIRE(ErrorSpy.count() == 1);
-}
-
-TEST_CASE("AppController loadProfile with explicit path loads saved profile and refreshes MappingRuleModel",
-    "[UI][AppController]")
-{
-    // 先用一个 controller 保存带规则的 profile
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_load_test_explicit" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    {
-        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime();
-        Saver.applySelectedBinding(
-            QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
-        Saver.saveActiveProfile(PathStr);
-    }
-
-    // 用新 controller 加载
-    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime();
-    REQUIRE(Loader.MappingRuleModel()->rowCount() == 0);
-
-    bool bResult = Loader.loadProfile(PathStr);
-
-    REQUIRE(bResult);
-    REQUIRE(Loader.MappingRuleModel()->rowCount() == 1);
-
-    auto Index = Loader.MappingRuleModel()->index(0);
-    REQUIRE(Loader.MappingRuleModel()->data(
-        Index, ZMappingRuleModel::InputRole).toString() == "button_south");
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController loadProfile updates activeProfileName from profile Name",
-    "[UI][AppController]")
-{
-    // 保存带自定义 Name 的 profile
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_load_test_name" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    {
-        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime();
-
-        SMappingProfile Profile;
-        Profile.Name = "My Custom Profile";
-        Saver.ReplaceActiveProfileForTest(std::move(Profile));
-        Saver.saveActiveProfile(PathStr);
-    }
-
-    // 加载并验证 activeProfileName
-    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime();
-    REQUIRE(Loader.ActiveProfileName() == "Default");
-
-    Loader.loadProfile(PathStr);
-
-    REQUIRE(Loader.ActiveProfileName() == "My Custom Profile");
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController loadProfile while Running succeeds and does not stop runtime",
-    "[UI][AppController]")
-{
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_load_test_running" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    {
-        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime();
-        Saver.saveActiveProfile(PathStr);
-    }
-
-    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime();
-    (void)Loader.startRuntime();
-    REQUIRE(Loader.RuntimeState() == "running");
-
-    bool bResult = Loader.loadProfile(PathStr);
-
-    REQUIRE(bResult);
-    REQUIRE(Loader.RuntimeState() == "running");
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController loadProfile failure does not clear existing MappingRuleModel",
-    "[UI][AppController]")
-{
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    // 先 apply 一条规则
-    Controller.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
-    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
-
-    // 加载不存在的显式路径
-    Controller.loadProfile(QStringLiteral("nonexistent_mappyz_load_fail.json"));
-
-    // 现有规则不被清空
-    REQUIRE(Controller.MappingRuleModel()->rowCount() == 1);
-}
-
-TEST_CASE("AppController loadProfile failure does not change profilePath",
-    "[UI][AppController]")
-{
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_load_test_keeppath" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    // 先保存以设置 profilePath
-    Controller.saveActiveProfile(PathStr);
-    REQUIRE(Controller.ProfilePath() == PathStr);
-
-    // 加载失败不应修改 profilePath
-    Controller.loadProfile(QStringLiteral("nonexistent_mappyz_load_fail.json"));
-
-    REQUIRE(Controller.ProfilePath() == PathStr);
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController successful load emits profileStatusChanged and profileLoaded",
-    "[UI][AppController]")
-{
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_load_test_signals" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    {
-        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime();
-        Saver.saveActiveProfile(PathStr);
-    }
-
-    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime();
-
-    QSignalSpy StatusSpy(&Loader, &ZAppController::profileStatusChanged);
-    QSignalSpy LoadedSpy(&Loader, &ZAppController::profileLoaded);
-    QSignalSpy RuntimeSpy(&Loader, &ZAppController::runtimeStatusChanged);
-
-    Loader.loadProfile(PathStr);
-
-    REQUIRE(StatusSpy.count() == 1);
-    REQUIRE(LoadedSpy.count() == 1);
-    REQUIRE(LoadedSpy.at(0).at(0).toString() == PathStr);
-    // runtimeStatusChanged 也需发出，驱动 activeProfileName 刷新
-    REQUIRE(RuntimeSpy.count() >= 1);
-
-    REQUIRE(Loader.ProfilePath() == PathStr);
-    REQUIRE(Loader.ProfileMessage() == "Profile loaded");
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController default path save then no-arg load round-trips",
-    "[UI][AppController]")
-{
-    STestModeGuard Guard;
-
-    // 保存带规则的 profile 到默认路径
-    ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Saver.initializeRuntime();
-    Saver.applySelectedBinding(
-        QStringLiteral("button_south"), QStringLiteral("Keyboard"), QStringLiteral("Space"));
-    Saver.saveActiveProfile();
-    auto SavedPath = Saver.ProfilePath();
-
-    // 新 controller 无参 loadProfile 读回
-    ZAppController Loader(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Loader.initializeRuntime();
-    REQUIRE(Loader.MappingRuleModel()->rowCount() == 0);
-
-    bool bResult = Loader.loadProfile();
-
-    REQUIRE(bResult);
-    REQUIRE(Loader.MappingRuleModel()->rowCount() == 1);
-    REQUIRE(Loader.ProfilePath() == SavedPath);
-
-    // 清理
-    std::filesystem::remove_all(
-        StdPath(SavedPath.toStdString()).parent_path());
 }
 
 // ── removeBinding ──
@@ -1888,7 +1489,9 @@ TEST_CASE("AppController removeBinding with multiple rules removes only target",
     REQUIRE(Controller.MappingRuleModel()->ruleIdAt(0) != FirstRuleId);
 }
 
-// ── Profile Dirty State 测试 ──
+// ══════════════════════════════════════════════════════════════
+// Profile Dirty State 测试（temp-dir 注入）
+// ══════════════════════════════════════════════════════════════
 
 TEST_CASE("AppController default profileDirty is false and profileSaveState is clean",
     "[UI][AppController]")
@@ -1901,214 +1504,188 @@ TEST_CASE("AppController default profileDirty is false and profileSaveState is c
 TEST_CASE("AppController apply success sets dirty then autosaves to clean",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
+    STempProfileDir Temp("apply_autosave");
+    auto Controller = MakeInitializedController(Temp.Path);
 
-    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
-    QSignalSpy SavedSpy(&Controller, &ZAppController::profileSaved);
+    QSignalSpy StatusSpy(Controller.get(), &ZAppController::profileStatusChanged);
+    QSignalSpy SavedSpy(Controller.get(), &ZAppController::profileSaved);
 
-    bool bResult = Controller.applySelectedBinding(
+    bool bResult = Controller->applySelectedBinding(
         QStringLiteral("button_south"),
         QStringLiteral("Keyboard"),
         QStringLiteral("Space"));
 
     REQUIRE(bResult);
-    REQUIRE_FALSE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "clean");
+    // MarkProfileDirty 后 autosave 成功回到 clean
+    REQUIRE_FALSE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "clean");
+    // 一次 MarkProfileDirty + 一次保存成功，至少两次状态变化和一次保存
     REQUIRE(SavedSpy.count() >= 1);
     REQUIRE(StatusSpy.count() >= 1);
-
-    // 验证 autosave 写了默认路径
-    REQUIRE_FALSE(Controller.ProfilePath().isEmpty());
 }
 
-TEST_CASE("AppController apply success writes default profile file when no path exists",
+TEST_CASE("AppController apply success writes profile file to injected directory",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
+    STempProfileDir Temp("apply_writes_file");
+    auto Controller = MakeInitializedController(Temp.Path);
 
-    REQUIRE(Controller.ProfilePath().isEmpty());
+    // 初始化后当前配置即 default.json，路径非空
+    REQUIRE_FALSE(Controller->ProfilePath().isEmpty());
 
-    bool bResult = Controller.applySelectedBinding(
+    bool bResult = Controller->applySelectedBinding(
+        QStringLiteral("button_south"),
+        QStringLiteral("Keyboard"),
+        QStringLiteral("Space"));
+    REQUIRE(bResult);
+
+    // autosave 把规则写入当前配置文件
+    StdPath ActiveFile(Controller->ProfilePath().toStdString());
+    REQUIRE(std::filesystem::exists(ActiveFile));
+
+    ZProfileManager Manager;
+    auto LoadResult = Manager.LoadProfile(ActiveFile);
+    REQUIRE(LoadResult.IsOk());
+    REQUIRE(LoadResult.Value().Rules.size() == 1);
+}
+
+TEST_CASE("AppController removeBinding success autosaves to clean",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("remove_autosave");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    Controller->applySelectedBinding(
         QStringLiteral("button_south"),
         QStringLiteral("Keyboard"),
         QStringLiteral("Space"));
 
-    REQUIRE(bResult);
-    REQUIRE_FALSE(Controller.ProfilePath().isEmpty());
+    QString RuleId = Controller->MappingRuleModel()->ruleIdAt(0);
 
-    // 验证文件确实存在
-    auto FilePath = Controller.ProfilePath().toStdString();
-    REQUIRE(std::filesystem::exists(FilePath));
-
-    std::filesystem::remove_all(
-        std::filesystem::path(FilePath).parent_path());
-}
-
-TEST_CASE("AppController removeBinding success autosaves",
-    "[UI][AppController]")
-{
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    Controller.applySelectedBinding(
-        QStringLiteral("button_south"),
-        QStringLiteral("Keyboard"),
-        QStringLiteral("Space"));
-
-    QString RuleId = Controller.MappingRuleModel()->ruleIdAt(0);
-
-    QSignalSpy SavedSpy(&Controller, &ZAppController::profileSaved);
-    bool bResult = Controller.removeBinding(RuleId);
+    QSignalSpy SavedSpy(Controller.get(), &ZAppController::profileSaved);
+    bool bResult = Controller->removeBinding(RuleId);
 
     REQUIRE(bResult);
-    REQUIRE_FALSE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "clean");
+    REQUIRE_FALSE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "clean");
     REQUIRE(SavedSpy.count() >= 1);
 }
 
 TEST_CASE("AppController manual saveActiveProfile success clears dirty",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
+    STempProfileDir Temp("manual_save");
+    auto Controller = MakeInitializedController(Temp.Path);
 
-    Controller.applySelectedBinding(
+    Controller->applySelectedBinding(
         QStringLiteral("button_south"),
         QStringLiteral("Keyboard"),
         QStringLiteral("Space"));
 
-    // autosave 已经清除了 dirty；这里验证手动保存仍可写入指定路径
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_manual_save_test" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-
-    bool bResult = Controller.saveActiveProfile(PathStr);
+    // autosave 已清 dirty；无参手动保存仍写当前配置文件
+    bool bResult = Controller->saveActiveProfile();
     REQUIRE(bResult);
-    REQUIRE_FALSE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "clean");
-    REQUIRE(Controller.ProfileMessage() == "Profile saved");
-
-    std::filesystem::remove_all(TempPath.parent_path());
+    REQUIRE_FALSE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "clean");
+    REQUIRE(Controller->ProfileMessage() == "Profile saved");
 }
 
-TEST_CASE("AppController manual saveActiveProfile failure preserves dirty from prior mutation",
+TEST_CASE("AppController manual saveActiveProfile failure preserves dirty",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
+    STempProfileDir Temp("manual_save_fail");
+    auto Controller = MakeInitializedController(Temp.Path);
 
-    // 先成功保存一次，使 CachedProfilePath 有值
-    auto GoodPath = std::filesystem::temp_directory_path()
-        / "mappyz_manual_save_fail_setup" / "profile.json";
-    Controller.applySelectedBinding(
+    // 把当前配置文件替换为同名目录，使后续写入失败
+    StdPath ActiveFile(Controller->ProfilePath().toStdString());
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
+
+    // 修改 profile 触发 autosave 失败，形成真实 dirty/error 状态
+    Controller->applySelectedBinding(
         QStringLiteral("button_south"),
         QStringLiteral("Keyboard"),
         QStringLiteral("Space"));
-    REQUIRE(Controller.saveActiveProfile(
-        QString::fromStdString(GoodPath.string())));
+    REQUIRE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "error");
 
-    // 删除目录并用文件占位，使后续写入失败
-    std::filesystem::remove_all(GoodPath.parent_path());
-    { std::ofstream(GoodPath.parent_path()).close(); }
+    // 手动保存到同样不可写路径，应保持 dirty/error
+    bool bResult = Controller->saveActiveProfile();
+    REQUIRE_FALSE(bResult);
+    REQUIRE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "error");
+}
 
-    // 再修改 profile 制造真实 dirty 状态（autosave 会失败）
-    Controller.applySelectedBinding(
-        QStringLiteral("button_north"),
+TEST_CASE("AppController save failure on clean profile keeps clean",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("clean_save_fail");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 初始化后为 clean 状态：未做任何映射变更
+    REQUIRE_FALSE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "clean");
+
+    // 把当前配置文件替换为同名目录，使写入失败
+    StdPath ActiveFile(Controller->ProfilePath().toStdString());
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
+
+    // clean 配置保存失败：置 error 状态，但绝不把 dirty 从 false 翻成 true，
+    // 否则临时写入失败会误阻塞后续切换/新建/删除。
+    bool bResult = Controller->saveActiveProfile();
+    REQUIRE_FALSE(bResult);
+    REQUIRE_FALSE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "error");
+}
+
+TEST_CASE("AppController switch success clears dirty",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("switch_clears_dirty");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 新建第二个配置，当前项变为 Untitled_1
+    REQUIRE(Controller->createProfile());
+
+    // 切回 default，ApplyLoadedProfile 统一清 dirty
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+    REQUIRE_FALSE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "clean");
+}
+
+TEST_CASE("AppController switch to unknown id does not clear existing dirty state",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("switch_fail_keeps_dirty");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 通过阻塞当前配置文件制造 dirty/error 状态
+    StdPath ActiveFile(Controller->ProfilePath().toStdString());
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
+    Controller->applySelectedBinding(
+        QStringLiteral("button_south"),
         QStringLiteral("Keyboard"),
-        QStringLiteral("Escape"));
-    REQUIRE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "error");
+        QStringLiteral("Space"));
+    REQUIRE(Controller->IsProfileDirty());
 
-    // 手动保存到同样不可写的路径，应保持 dirty
-    bool bResult = Controller.saveActiveProfile(
-        QString::fromStdString(GoodPath.string()));
+    // 切换到未知 ID 失败：dirty 状态不被清除（切换前保存也会失败）
+    bool bResult = Controller->switchProfile(QStringLiteral("does_not_exist"));
     REQUIRE_FALSE(bResult);
-    REQUIRE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "error");
-
-    std::filesystem::remove(GoodPath.parent_path());
-}
-
-TEST_CASE("AppController loadProfile success clears dirty",
-    "[UI][AppController]")
-{
-    STestModeGuard TestMode;
-
-    // 先创建一个可以加载的 profile 文件
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_load_dirty_test" / "profile.json";
-    auto PathStr = QString::fromStdString(TempPath.string());
-    {
-        ZAppController Saver(MakeFakeInputFactory(), MakeNullOutputFactory());
-        (void)Saver.initializeRuntime();
-        Saver.applySelectedBinding(
-            QStringLiteral("button_south"),
-            QStringLiteral("Keyboard"),
-            QStringLiteral("Space"));
-        Saver.saveActiveProfile(PathStr);
-    }
-
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    bool bResult = Controller.loadProfile(PathStr);
-    REQUIRE(bResult);
-    REQUIRE_FALSE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "clean");
-
-    std::filesystem::remove_all(TempPath.parent_path());
-}
-
-TEST_CASE("AppController loadProfile failure does not clear existing dirty state",
-    "[UI][AppController]")
-{
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
-
-    // 制造一个 dirty 状态后手动保存失败
-    auto BlockerPath = std::filesystem::temp_directory_path()
-        / "mappyz_load_fail_dirty_blocker";
-    { std::ofstream(BlockerPath).close(); }
-    auto BadSavePath = QString::fromStdString(
-        (BlockerPath / "sub" / "profile.json").string());
-    Controller.saveActiveProfile(BadSavePath);
-
-    REQUIRE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "error");
-
-    // 加载一个不存在的 profile
-    auto BadLoadPath = std::filesystem::temp_directory_path()
-        / "mappyz_nonexistent" / "profile.json";
-    bool bResult = Controller.loadProfile(
-        QString::fromStdString(BadLoadPath.string()));
-    REQUIRE_FALSE(bResult);
-
-    // dirty 状态不应被失败的 load 清除
-    REQUIRE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "error");
-
-    std::filesystem::remove(BlockerPath);
+    REQUIRE(Controller->IsProfileDirty());
 }
 
 TEST_CASE("AppController autosave success does not add duplicate Success log",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
+    STempProfileDir Temp("autosave_no_dup_log");
+    auto Controller = MakeInitializedController(Temp.Path);
 
-    auto* Log = Controller.LogModel();
+    auto* Log = Controller->LogModel();
     int LogCountBefore = Log->rowCount();
 
-    Controller.applySelectedBinding(
+    Controller->applySelectedBinding(
         QStringLiteral("button_south"),
         QStringLiteral("Keyboard"),
         QStringLiteral("Space"));
@@ -2125,36 +1702,21 @@ TEST_CASE("AppController autosave success does not add duplicate Success log",
 TEST_CASE("AppController autosave failure writes Error log",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    (void)Controller.initializeRuntime();
+    STempProfileDir Temp("autosave_error_log");
+    auto Controller = MakeInitializedController(Temp.Path);
 
-    // 先成功保存到一个临时路径，使 CachedProfilePath 被设置
-    auto TempDir = std::filesystem::temp_directory_path()
-        / "mappyz_autosave_error_test";
-    auto ProfilePath = TempDir / "profile.json";
-    auto PathStr = QString::fromStdString(ProfilePath.string());
+    // 阻塞当前配置文件，使 autosave 写入失败
+    StdPath ActiveFile(Controller->ProfilePath().toStdString());
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
 
-    Controller.applySelectedBinding(
+    auto* Log = Controller->LogModel();
+    int LogCountBefore = Log->rowCount();
+
+    Controller->applySelectedBinding(
         QStringLiteral("button_south"),
         QStringLiteral("Keyboard"),
         QStringLiteral("Space"));
-
-    REQUIRE(Controller.saveActiveProfile(PathStr));
-    REQUIRE(Controller.ProfilePath() == PathStr);
-
-    // 删除目录，在同位置创建文件阻塞后续写入
-    std::filesystem::remove_all(TempDir);
-    { std::ofstream(TempDir).close(); }
-
-    auto* Log = Controller.LogModel();
-    int LogCountBefore = Log->rowCount();
-
-    // 再次 apply 触发 autosave（写入被阻塞的路径）
-    Controller.applySelectedBinding(
-        QStringLiteral("button_north"),
-        QStringLiteral("Keyboard"),
-        QStringLiteral("Escape"));
 
     bool bFoundError = false;
     for (int Index = LogCountBefore; Index < Log->rowCount(); ++Index)
@@ -2168,10 +1730,8 @@ TEST_CASE("AppController autosave failure writes Error log",
         }
     }
     REQUIRE(bFoundError);
-    REQUIRE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "error");
-
-    std::filesystem::remove(TempDir);
+    REQUIRE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "error");
 }
 
 TEST_CASE("AppController profileSaveState uses only clean dirty error",
@@ -2191,131 +1751,96 @@ TEST_CASE("AppController profileDisplayText shows Default when clean",
     REQUIRE(Controller.ProfileDisplayText() == "Default");
 }
 
-TEST_CASE("AppController profileDisplayText shows unsaved after mutation",
+TEST_CASE("AppController profileDisplayText shows unsaved or save error after failed autosave",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
+    STempProfileDir Temp("display_dirty");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
 
-    // 用不可写路径制造 autosave 失败使 dirty 状态保留
-    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_display_dirty";
-    std::filesystem::remove_all(BadDir);
-    std::filesystem::create_directories(BadDir);
+    // 阻塞当前配置文件使 autosave 失败，dirty 状态保留
+    StdPath ActiveFile(Controller->ProfilePath().toStdString());
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
 
-    // 先成功保存一次设置 CachedProfilePath
-    auto GoodPath = BadDir / "good.json";
-    REQUIRE(Controller.saveActiveProfile(QString::fromStdString(GoodPath.string())));
+    Controller->applySelectedBinding("button_south", "Keyboard", "Space");
 
-    // 删除目录并放置同名文件阻止 autosave 写入
-    std::filesystem::remove_all(BadDir);
-    {
-        std::ofstream Blocker(BadDir);
-        Blocker << "block";
-    }
-
-    Controller.applySelectedBinding("button_south", "Keyboard", "Space");
-
-    // autosave 失败 → dirty → profileDisplayText 包含 unsaved 或 save error
-    auto DisplayText = Controller.ProfileDisplayText();
+    auto DisplayText = Controller->ProfileDisplayText();
     bool bHasSuffix = DisplayText.contains("unsaved") || DisplayText.contains("save error");
     REQUIRE(bHasSuffix);
-
-    std::filesystem::remove(BadDir);
 }
 
 TEST_CASE("AppController profileDisplayText shows save error on failed save",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
+    STempProfileDir Temp("display_error");
+    auto Controller = MakeInitializedController(Temp.Path);
 
-    // 保存到不可写路径
-    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_display_error";
-    std::filesystem::remove_all(BadDir);
-    {
-        std::ofstream Blocker(BadDir);
-        Blocker << "block";
-    }
+    // 阻塞当前配置文件，手动保存失败
+    StdPath ActiveFile(Controller->ProfilePath().toStdString());
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
 
-    Controller.saveActiveProfile(
-        QString::fromStdString((BadDir / "sub" / "profile.json").string()));
+    Controller->saveActiveProfile();
 
-    REQUIRE(Controller.ProfileDisplayText().contains("save error"));
-
-    std::filesystem::remove(BadDir);
+    REQUIRE(Controller->ProfileDisplayText().contains("save error"));
 }
 
 TEST_CASE("AppController profileSaveDisplayText three states",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    STempProfileDir Temp("save_display");
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory(), Temp.Path);
 
     // clean → Saved
     REQUIRE(Controller.ProfileSaveDisplayText() == "Saved");
 
     REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.initializeProfiles());
 
-    // 制造 save error 状态
-    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_save_display";
-    std::filesystem::remove_all(BadDir);
-    {
-        std::ofstream Blocker(BadDir);
-        Blocker << "block";
-    }
-    Controller.saveActiveProfile(
-        QString::fromStdString((BadDir / "sub" / "profile.json").string()));
+    // 阻塞当前配置文件制造 save error 状态
+    StdPath ActiveFile(Controller.ProfilePath().toStdString());
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
+    Controller.saveActiveProfile();
 
     REQUIRE(Controller.ProfileSaveDisplayText() == "Save Error");
-
-    std::filesystem::remove(BadDir);
 }
 
 TEST_CASE("AppController profileSaveSeverity maps clean dirty error to visual keys",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    STempProfileDir Temp("severity");
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory(), Temp.Path);
 
     // clean → normal
     REQUIRE(Controller.ProfileSaveSeverity() == "normal");
 
     REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
+    REQUIRE(Controller.initializeProfiles());
 
-    // 制造 save error → danger
-    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_severity";
-    std::filesystem::remove_all(BadDir);
-    {
-        std::ofstream Blocker(BadDir);
-        Blocker << "block";
-    }
-    Controller.saveActiveProfile(
-        QString::fromStdString((BadDir / "sub" / "profile.json").string()));
+    // 阻塞当前配置文件制造 save error → danger
+    StdPath ActiveFile(Controller.ProfilePath().toStdString());
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
+    Controller.saveActiveProfile();
 
     REQUIRE(Controller.ProfileSaveSeverity() == "danger");
-
-    std::filesystem::remove(BadDir);
 }
 
 TEST_CASE("AppController profileSaveSeverity emits caution during transient dirty",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
+    STempProfileDir Temp("severity_caution");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
 
     // 通过 signal 观察捕获 MarkProfileDirty 瞬态
     QStringList ObservedSeverities;
-    QObject::connect(&Controller, &ZAppController::profileStatusChanged,
-        [&]() { ObservedSeverities.append(Controller.ProfileSaveSeverity()); });
+    QObject::connect(Controller.get(), &ZAppController::profileStatusChanged,
+        [&]() { ObservedSeverities.append(Controller->ProfileSaveSeverity()); });
 
-    Controller.applySelectedBinding("button_south", "Keyboard", "Space");
+    Controller->applySelectedBinding("button_south", "Keyboard", "Space");
 
     // MarkProfileDirty 同步触发第一次 profileStatusChanged，此时 severity 为 caution
     REQUIRE(ObservedSeverities.contains("caution"));
@@ -2382,13 +1907,12 @@ TEST_CASE("AppController setBindingEnabled returns false for unknown ruleId",
 TEST_CASE("AppController setBindingEnabled disables existing rule",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
-    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+    STempProfileDir Temp("toggle_disable");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
 
-    auto* Model = Controller.MappingRuleModel();
+    auto* Model = Controller->MappingRuleModel();
     REQUIRE(Model->rowCount() == 1);
 
     // 默认 enabled
@@ -2397,7 +1921,7 @@ TEST_CASE("AppController setBindingEnabled disables existing rule",
     REQUIRE(EnabledBefore);
 
     auto RuleId = Model->ruleIdAt(0);
-    REQUIRE(Controller.setBindingEnabled(RuleId, false));
+    REQUIRE(Controller->setBindingEnabled(RuleId, false));
 
     auto EnabledAfter = Model->data(
         Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
@@ -2407,16 +1931,15 @@ TEST_CASE("AppController setBindingEnabled disables existing rule",
 TEST_CASE("AppController setBindingEnabled re-enables disabled rule",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
-    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+    STempProfileDir Temp("toggle_reenable");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
 
-    auto* Model = Controller.MappingRuleModel();
+    auto* Model = Controller->MappingRuleModel();
     auto RuleId = Model->ruleIdAt(0);
-    REQUIRE(Controller.setBindingEnabled(RuleId, false));
-    REQUIRE(Controller.setBindingEnabled(RuleId, true));
+    REQUIRE(Controller->setBindingEnabled(RuleId, false));
+    REQUIRE(Controller->setBindingEnabled(RuleId, true));
 
     auto EnabledAfter = Model->data(
         Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
@@ -2426,94 +1949,70 @@ TEST_CASE("AppController setBindingEnabled re-enables disabled rule",
 TEST_CASE("AppController setBindingEnabled same state is no-op",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
-    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+    STempProfileDir Temp("toggle_noop");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
 
     // 等 autosave 完成，profile 回到 clean
-    REQUIRE(Controller.ProfileSaveState() == "clean");
+    REQUIRE(Controller->ProfileSaveState() == "clean");
 
-    auto* Model = Controller.MappingRuleModel();
+    auto* Model = Controller->MappingRuleModel();
     auto RuleId = Model->ruleIdAt(0);
 
     // 设为 true（已经是 true），不应触发 profileStatusChanged
-    QSignalSpy ProfileSpy(&Controller, &ZAppController::profileStatusChanged);
-    REQUIRE(Controller.setBindingEnabled(RuleId, true));
+    QSignalSpy ProfileSpy(Controller.get(), &ZAppController::profileStatusChanged);
+    REQUIRE(Controller->setBindingEnabled(RuleId, true));
     REQUIRE(ProfileSpy.count() == 0);
-    REQUIRE(Controller.ProfileSaveState() == "clean");
+    REQUIRE(Controller->ProfileSaveState() == "clean");
 }
 
 TEST_CASE("AppController setBindingEnabled persists through save load round trip",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    auto TempDir = std::filesystem::temp_directory_path() / "mappyz_test_toggle_persist";
-    std::filesystem::remove_all(TempDir);
+    STempProfileDir Temp("toggle_persist");
 
+    StdPath ActiveFile;
     {
-        ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-        REQUIRE(Controller.initializeRuntime());
-        REQUIRE(Controller.startRuntime());
-        REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+        auto Controller = MakeInitializedController(Temp.Path);
+        REQUIRE(Controller->startRuntime());
+        REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
 
-        auto* Model = Controller.MappingRuleModel();
+        auto* Model = Controller->MappingRuleModel();
         auto RuleId = Model->ruleIdAt(0);
-        REQUIRE(Controller.setBindingEnabled(RuleId, false));
+        // 禁用规则触发 autosave 写入当前配置文件
+        REQUIRE(Controller->setBindingEnabled(RuleId, false));
+        REQUIRE(Controller->ProfileSaveState() == "clean");
 
-        auto SavePath = TempDir / "profile.json";
-        REQUIRE(Controller.saveActiveProfile(
-            QString::fromStdString(SavePath.string())));
+        ActiveFile = StdPath(Controller->ProfilePath().toStdString());
     }
 
-    {
-        ZAppController Controller2(MakeFakeInputFactory(), MakeNullOutputFactory());
-        REQUIRE(Controller2.initializeRuntime());
-        REQUIRE(Controller2.startRuntime());
-
-        auto LoadPath = TempDir / "profile.json";
-        REQUIRE(Controller2.loadProfile(
-            QString::fromStdString(LoadPath.string())));
-
-        auto* Model = Controller2.MappingRuleModel();
-        REQUIRE(Model->rowCount() == 1);
-        auto EnabledAfterLoad = Model->data(
-            Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
-        REQUIRE_FALSE(EnabledAfterLoad);
-    }
-
-    std::filesystem::remove_all(TempDir);
+    // 用独立的 ZProfileManager 读回文件，验证禁用状态已落盘
+    ZProfileManager Manager;
+    auto LoadResult = Manager.LoadProfile(ActiveFile);
+    REQUIRE(LoadResult.IsOk());
+    auto& Rules = LoadResult.Value().Rules;
+    REQUIRE(Rules.size() == 1);
+    REQUIRE_FALSE(Rules[0].bEnabled);
 }
 
 TEST_CASE("AppController setBindingEnabled autosave failure keeps dirty",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
-    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+    STempProfileDir Temp("toggle_fail");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
 
-    auto* Model = Controller.MappingRuleModel();
+    auto* Model = Controller->MappingRuleModel();
     auto RuleId = Model->ruleIdAt(0);
 
-    // 设置 CachedProfilePath 为成功路径
-    auto BadDir = std::filesystem::temp_directory_path() / "mappyz_test_toggle_fail";
-    std::filesystem::remove_all(BadDir);
-    std::filesystem::create_directories(BadDir);
-    auto GoodPath = BadDir / "profile.json";
-    REQUIRE(Controller.saveActiveProfile(
-        QString::fromStdString(GoodPath.string())));
+    // 阻塞当前配置文件使后续 autosave 失败
+    StdPath ActiveFile(Controller->ProfilePath().toStdString());
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
 
-    // 用文件阻塞目录使 autosave 失败
-    std::filesystem::remove_all(BadDir);
-    {
-        std::ofstream Blocker(BadDir);
-        Blocker << "block";
-    }
-
-    REQUIRE(Controller.setBindingEnabled(RuleId, false));
+    REQUIRE(Controller->setBindingEnabled(RuleId, false));
 
     // runtime 中规则已禁用
     auto EnabledAfter = Model->data(
@@ -2521,26 +2020,23 @@ TEST_CASE("AppController setBindingEnabled autosave failure keeps dirty",
     REQUIRE_FALSE(EnabledAfter);
 
     // 但 profile 状态是 error
-    REQUIRE(Controller.IsProfileDirty());
-    REQUIRE(Controller.ProfileSaveState() == "error");
-
-    std::filesystem::remove(BadDir);
+    REQUIRE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "error");
 }
 
 TEST_CASE("AppController setBindingEnabled works while runtime is running",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
-    REQUIRE(Controller.RuntimeState() == "running");
+    STempProfileDir Temp("toggle_running");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
+    REQUIRE(Controller->RuntimeState() == "running");
 
-    REQUIRE(Controller.applySelectedBinding("button_south", "Keyboard", "Space"));
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
 
-    auto* Model = Controller.MappingRuleModel();
+    auto* Model = Controller->MappingRuleModel();
     auto RuleId = Model->ruleIdAt(0);
-    REQUIRE(Controller.setBindingEnabled(RuleId, false));
+    REQUIRE(Controller->setBindingEnabled(RuleId, false));
 
     auto EnabledAfter = Model->data(
         Model->index(0), ZMappingRuleModel::EnabledRole).toBool();
@@ -2554,15 +2050,14 @@ TEST_CASE("AppController setBindingEnabled works while runtime is running",
 TEST_CASE("AppController applySelectedBinding left_stick MouseMove succeeds",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
+    STempProfileDir Temp("mousemove_left");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
 
-    bool bResult = Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor");
+    bool bResult = Controller->applySelectedBinding("left_stick", "MouseMove", "Cursor");
 
     REQUIRE(bResult);
-    auto* Model = Controller.MappingRuleModel();
+    auto* Model = Controller->MappingRuleModel();
     REQUIRE(Model->rowCount() == 1);
     REQUIRE(Model->data(Model->index(0), ZMappingRuleModel::ActionKindRole).toString()
         == "MouseMove");
@@ -2575,15 +2070,14 @@ TEST_CASE("AppController applySelectedBinding left_stick MouseMove succeeds",
 TEST_CASE("AppController applySelectedBinding right_stick MouseMove succeeds",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
+    STempProfileDir Temp("mousemove_right");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
 
-    bool bResult = Controller.applySelectedBinding("right_stick", "MouseMove", "Cursor");
+    bool bResult = Controller->applySelectedBinding("right_stick", "MouseMove", "Cursor");
 
     REQUIRE(bResult);
-    auto* Model = Controller.MappingRuleModel();
+    auto* Model = Controller->MappingRuleModel();
     REQUIRE(Model->rowCount() == 1);
     REQUIRE(Model->data(Model->index(0), ZMappingRuleModel::InputRole).toString()
         == "right_stick");
@@ -2592,14 +2086,13 @@ TEST_CASE("AppController applySelectedBinding right_stick MouseMove succeeds",
 TEST_CASE("AppController applySelectedBinding MouseMove uses Axis2D input type",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
+    STempProfileDir Temp("mousemove_axis2d");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
 
-    Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor");
+    Controller->applySelectedBinding("left_stick", "MouseMove", "Cursor");
 
-    auto Snapshot = Controller.MappingRuleModel()->ListRulesSnapshot();
+    auto Snapshot = Controller->MappingRuleModel()->ListRulesSnapshot();
     REQUIRE(Snapshot.size() == 1);
     REQUIRE(Snapshot[0].Input.ControlType == EInputControlType::Axis2D);
     REQUIRE(Snapshot[0].Input.EventType == EInputEventType::Changed);
@@ -2610,14 +2103,13 @@ TEST_CASE("AppController applySelectedBinding MouseMove uses Axis2D input type",
 TEST_CASE("AppController applySelectedBinding MouseMove uses Analog mode and sensitivity",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-    REQUIRE(Controller.initializeRuntime());
-    REQUIRE(Controller.startRuntime());
+    STempProfileDir Temp("mousemove_analog");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
 
-    Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor");
+    Controller->applySelectedBinding("left_stick", "MouseMove", "Cursor");
 
-    auto Snapshot = Controller.MappingRuleModel()->ListRulesSnapshot();
+    auto Snapshot = Controller->MappingRuleModel()->ListRulesSnapshot();
     REQUIRE(Snapshot.size() == 1);
     REQUIRE(Snapshot[0].Output.Mode == EMappingActionMode::Analog);
     REQUIRE(Snapshot[0].Output.Sensitivity == 12.0f);
@@ -2643,39 +2135,27 @@ TEST_CASE("AppController applySelectedBinding button to MouseMove rejected",
 TEST_CASE("AppController applySelectedBinding MouseMove save load round trip",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
-    auto TempDir = std::filesystem::temp_directory_path() / "mappyz_test_mousemove_persist";
-    std::filesystem::remove_all(TempDir);
+    STempProfileDir Temp("mousemove_persist");
 
+    StdPath ActiveFile;
     {
-        ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
-        REQUIRE(Controller.initializeRuntime());
-        REQUIRE(Controller.startRuntime());
-        REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
-
-        auto SavePath = TempDir / "profile.json";
-        REQUIRE(Controller.saveActiveProfile(
-            QString::fromStdString(SavePath.string())));
+        auto Controller = MakeInitializedController(Temp.Path);
+        REQUIRE(Controller->startRuntime());
+        REQUIRE(Controller->applySelectedBinding("left_stick", "MouseMove", "Cursor"));
+        REQUIRE(Controller->ProfileSaveState() == "clean");
+        ActiveFile = StdPath(Controller->ProfilePath().toStdString());
     }
 
-    {
-        ZAppController Controller2(MakeFakeInputFactory(), MakeNullOutputFactory());
-        REQUIRE(Controller2.initializeRuntime());
-        REQUIRE(Controller2.startRuntime());
-
-        auto LoadPath = TempDir / "profile.json";
-        REQUIRE(Controller2.loadProfile(
-            QString::fromStdString(LoadPath.string())));
-
-        auto Snapshot = Controller2.MappingRuleModel()->ListRulesSnapshot();
-        REQUIRE(Snapshot.size() == 1);
-        REQUIRE(Snapshot[0].Output.Mode == EMappingActionMode::Analog);
-        REQUIRE(Snapshot[0].Output.Sensitivity == 12.0f);
-        REQUIRE(Snapshot[0].Input.ControlType == EInputControlType::Axis2D);
-        REQUIRE(Snapshot[0].Input.Deadzone == 0.20f);
-    }
-
-    std::filesystem::remove_all(TempDir);
+    // 用独立的 ZProfileManager 读回文件，验证 MouseMove 语义已落盘
+    ZProfileManager Manager;
+    auto LoadResult = Manager.LoadProfile(ActiveFile);
+    REQUIRE(LoadResult.IsOk());
+    auto& Rules = LoadResult.Value().Rules;
+    REQUIRE(Rules.size() == 1);
+    REQUIRE(Rules[0].Output.Mode == EMappingActionMode::Analog);
+    REQUIRE(Rules[0].Output.Sensitivity == 12.0f);
+    REQUIRE(Rules[0].Input.ControlType == EInputControlType::Axis2D);
+    REQUIRE(Rules[0].Input.Deadzone == 0.20f);
 }
 
 // ── Runtime 集成：MouseMove Axis2D 事件 dispatch ──
@@ -2697,7 +2177,7 @@ static SInputEvent MakeAxis2DEvent(
 TEST_CASE("AppController MouseMove Axis2D inside deadzone does not dispatch",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
+    STempProfileDir Temp("mousemove_deadzone_in");
     ZFakeInputBackend* RawInputBackend = nullptr;
     auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
         auto Backend = std::make_unique<ZFakeInputBackend>();
@@ -2705,8 +2185,9 @@ TEST_CASE("AppController MouseMove Axis2D inside deadzone does not dispatch",
         return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
     };
 
-    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    ZAppController Controller(InputFactory, MakeNullOutputFactory(), Temp.Path);
     REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.initializeProfiles());
     REQUIRE(Controller.startRuntime());
     REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
 
@@ -2721,7 +2202,7 @@ TEST_CASE("AppController MouseMove Axis2D inside deadzone does not dispatch",
 TEST_CASE("AppController MouseMove Axis2D outside deadzone dispatches",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
+    STempProfileDir Temp("mousemove_deadzone_out");
     ZFakeInputBackend* RawInputBackend = nullptr;
     auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
         auto Backend = std::make_unique<ZFakeInputBackend>();
@@ -2729,8 +2210,9 @@ TEST_CASE("AppController MouseMove Axis2D outside deadzone dispatches",
         return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
     };
 
-    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    ZAppController Controller(InputFactory, MakeNullOutputFactory(), Temp.Path);
     REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.initializeProfiles());
     REQUIRE(Controller.startRuntime());
     REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
 
@@ -2745,7 +2227,7 @@ TEST_CASE("AppController MouseMove Axis2D outside deadzone dispatches",
 TEST_CASE("AppController MouseMove disabled rule does not dispatch",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
+    STempProfileDir Temp("mousemove_disabled");
     ZFakeInputBackend* RawInputBackend = nullptr;
     auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
         auto Backend = std::make_unique<ZFakeInputBackend>();
@@ -2753,8 +2235,9 @@ TEST_CASE("AppController MouseMove disabled rule does not dispatch",
         return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
     };
 
-    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    ZAppController Controller(InputFactory, MakeNullOutputFactory(), Temp.Path);
     REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.initializeProfiles());
     REQUIRE(Controller.startRuntime());
     REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
 
@@ -2774,7 +2257,7 @@ TEST_CASE("AppController MouseMove disabled rule does not dispatch",
 TEST_CASE("AppController MouseMove mapping dispatches while runtime is running",
     "[UI][AppController]")
 {
-    STestModeGuard TestMode;
+    STempProfileDir Temp("mousemove_dispatch");
     ZFakeInputBackend* RawInputBackend = nullptr;
     auto InputFactory = [&RawInputBackend]() -> TResult<TUniquePtr<IInputBackend>> {
         auto Backend = std::make_unique<ZFakeInputBackend>();
@@ -2782,8 +2265,9 @@ TEST_CASE("AppController MouseMove mapping dispatches while runtime is running",
         return TResult<TUniquePtr<IInputBackend>>::Ok(std::move(Backend));
     };
 
-    ZAppController Controller(InputFactory, MakeNullOutputFactory());
+    ZAppController Controller(InputFactory, MakeNullOutputFactory(), Temp.Path);
     REQUIRE(Controller.initializeRuntime());
+    REQUIRE(Controller.initializeProfiles());
     REQUIRE(Controller.startRuntime());
     REQUIRE(Controller.applySelectedBinding("left_stick", "MouseMove", "Cursor"));
 
@@ -2793,4 +2277,423 @@ TEST_CASE("AppController MouseMove mapping dispatches while runtime is running",
     Controller.pumpOnce();
 
     REQUIRE(Controller.LastDispatchedInputCount() == 1);
+}
+
+// ══════════════════════════════════════════════════════════════
+// 多配置命令测试（8.2）：initializeProfiles / switch / create /
+// rename / delete，全部通过隔离临时目录验证信号矩阵与磁盘副作用。
+// ══════════════════════════════════════════════════════════════
+
+TEST_CASE("AppController initializeProfiles before initializeRuntime returns false and creates no directory",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("init_noruntime");
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory(), Temp.Path);
+
+    QSignalSpy ErrorSpy(&Controller, &ZAppController::runtimeError);
+    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
+
+    REQUIRE_FALSE(Controller.initializeProfiles());
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(StatusSpy.count() == 1);
+
+    // 运行时未就绪时不触碰磁盘，配置目录不应被创建
+    REQUIRE_FALSE(std::filesystem::exists(Temp.Path));
+}
+
+TEST_CASE("AppController initializeProfiles success yields single Default and cannot delete",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("init_ok");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE(Controller->ActiveProfileName() == "Default");
+    REQUIRE(Controller->ActiveProfileId() == "default");
+    REQUIRE(Controller->ProfileEntries().size() == 1);
+    REQUIRE_FALSE(Controller->CanDeleteProfile());
+    REQUIRE(std::filesystem::exists(Temp.Path / "default.json"));
+}
+
+TEST_CASE("AppController ProfileEntries contain only id and name in manager order",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("entries");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    auto Entries = Controller->ProfileEntries();
+    REQUIRE(Entries.size() == 1);
+
+    auto Entry = Entries.at(0).toMap();
+    REQUIRE(Entry.size() == 2);
+    REQUIRE(Entry.contains("id"));
+    REQUIRE(Entry.contains("name"));
+    REQUIRE(Entry.value("id").toString() == "default");
+    REQUIRE(Entry.value("name").toString() == "Default");
+}
+
+TEST_CASE("AppController initializeProfiles emits list active status and loaded once each",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("init_matrix");
+    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory(), Temp.Path);
+    REQUIRE(Controller.initializeRuntime());
+
+    QSignalSpy ListSpy(&Controller, &ZAppController::profileListChanged);
+    QSignalSpy ActiveSpy(&Controller, &ZAppController::activeProfileChanged);
+    QSignalSpy StatusSpy(&Controller, &ZAppController::profileStatusChanged);
+    QSignalSpy SavedSpy(&Controller, &ZAppController::profileSaved);
+    QSignalSpy LoadedSpy(&Controller, &ZAppController::profileLoaded);
+
+    REQUIRE(Controller.initializeProfiles());
+
+    REQUIRE(ListSpy.count() == 1);
+    REQUIRE(ActiveSpy.count() == 1);
+    REQUIRE(StatusSpy.count() == 1);
+    REQUIRE(SavedSpy.count() == 0);
+    REQUIRE(LoadedSpy.count() == 1);
+}
+
+TEST_CASE("AppController createProfile makes an empty profile and enables delete",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("create_empty");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 在 default 上加一条规则并 autosave
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
+    REQUIRE(Controller->MappingRuleModel()->rowCount() == 1);
+
+    // 新建配置：不复制映射，模型清空，当前项变为 Untitled_1
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->MappingRuleModel()->rowCount() == 0);
+    REQUIRE(Controller->ActiveProfileName() == "Untitled_1");
+    REQUIRE(Controller->CanDeleteProfile());
+}
+
+TEST_CASE("AppController createProfile numbers Untitled sequentially",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("create_numbering");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->ActiveProfileName() == "Untitled_1");
+
+    // Untitled_1 为空且 clean，第二次新建得到 Untitled_2
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->ActiveProfileName() == "Untitled_2");
+}
+
+TEST_CASE("AppController createProfile from clean state emits full matrix",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("create_matrix");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    QSignalSpy ListSpy(Controller.get(), &ZAppController::profileListChanged);
+    QSignalSpy ActiveSpy(Controller.get(), &ZAppController::activeProfileChanged);
+    QSignalSpy StatusSpy(Controller.get(), &ZAppController::profileStatusChanged);
+    QSignalSpy SavedSpy(Controller.get(), &ZAppController::profileSaved);
+    QSignalSpy LoadedSpy(Controller.get(), &ZAppController::profileLoaded);
+
+    REQUIRE(Controller->createProfile());
+
+    REQUIRE(ListSpy.count() == 1);
+    REQUIRE(ActiveSpy.count() == 1);
+    REQUIRE(StatusSpy.count() == 1);
+    REQUIRE(SavedSpy.count() == 1);
+    REQUIRE(LoadedSpy.count() == 1);
+}
+
+TEST_CASE("AppController switchProfile from clean state emits active status and loaded only",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("switch_matrix");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 新建并切到 Untitled_1（此时为 clean）
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->ProfileSaveState() == "clean");
+
+    QSignalSpy ListSpy(Controller.get(), &ZAppController::profileListChanged);
+    QSignalSpy ActiveSpy(Controller.get(), &ZAppController::activeProfileChanged);
+    QSignalSpy StatusSpy(Controller.get(), &ZAppController::profileStatusChanged);
+    QSignalSpy SavedSpy(Controller.get(), &ZAppController::profileSaved);
+    QSignalSpy LoadedSpy(Controller.get(), &ZAppController::profileLoaded);
+
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+
+    REQUIRE(ListSpy.count() == 0);
+    REQUIRE(ActiveSpy.count() == 1);
+    REQUIRE(StatusSpy.count() == 1);
+    REQUIRE(SavedSpy.count() == 0);
+    REQUIRE(LoadedSpy.count() == 1);
+}
+
+TEST_CASE("AppController switchProfile replaces model and preserves running state",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("switch_replace");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
+
+    // default 上加规则并 autosave
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
+
+    // 新建空白配置，模型清空
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->MappingRuleModel()->rowCount() == 0);
+
+    // 切回 default，模型恢复该配置的规则
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+    REQUIRE(Controller->MappingRuleModel()->rowCount() == 1);
+
+    // 切换不改变运行状态
+    REQUIRE(Controller->RuntimeState() == "running");
+}
+
+TEST_CASE("AppController switchProfile preserves pump timer",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("switch_pump");
+    auto Controller = MakeInitializedController(Temp.Path);
+    REQUIRE(Controller->startRuntime());
+    REQUIRE(Controller->createProfile());
+
+    Controller->startPumpTimer(16);
+    REQUIRE(Controller->IsPumpTimerRunning());
+
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+
+    // 切换不应停止 pump 定时器
+    REQUIRE(Controller->IsPumpTimerRunning());
+    Controller->stopPumpTimer();
+}
+
+TEST_CASE("AppController switchProfile to current id is a no-op without signals",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("switch_noop");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    QSignalSpy ListSpy(Controller.get(), &ZAppController::profileListChanged);
+    QSignalSpy ActiveSpy(Controller.get(), &ZAppController::activeProfileChanged);
+    QSignalSpy StatusSpy(Controller.get(), &ZAppController::profileStatusChanged);
+    QSignalSpy LoadedSpy(Controller.get(), &ZAppController::profileLoaded);
+
+    // 已是当前项，直接返回 true 且不发任何信号
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+    REQUIRE(ListSpy.count() == 0);
+    REQUIRE(ActiveSpy.count() == 0);
+    REQUIRE(StatusSpy.count() == 0);
+    REQUIRE(LoadedSpy.count() == 0);
+}
+
+TEST_CASE("AppController switchProfile to unknown id fails and keeps active unchanged",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("switch_unknown");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    QSignalSpy ErrorSpy(Controller.get(), &ZAppController::runtimeError);
+
+    REQUIRE_FALSE(Controller->switchProfile(QStringLiteral("nonexistent")));
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller->ActiveProfileId() == "default");
+}
+
+TEST_CASE("AppController dirty switch saves old profile only and leaves new profile untouched",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("dirty_switch");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 新建 Untitled_1（空），再切回 default
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->switchProfile(QStringLiteral("default")));
+
+    // 阻塞 default.json 使 apply 的 autosave 失败，产生真实 dirty
+    StdPath DefaultFile = Temp.Path / "default.json";
+    std::filesystem::remove(DefaultFile);
+    std::filesystem::create_directory(DefaultFile);
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
+    REQUIRE(Controller->IsProfileDirty());
+
+    // 解除阻塞，使切换前的保存能成功写入 default.json
+    std::filesystem::remove(DefaultFile);
+
+    // 切换到 Untitled_1：切换前保存把 default 的规则写入 default.json
+    REQUIRE(Controller->switchProfile(QStringLiteral("untitled_1")));
+
+    // default.json 应包含刚保存的规则
+    ZProfileManager DefaultManager;
+    auto DefaultLoad = DefaultManager.LoadProfile(DefaultFile);
+    REQUIRE(DefaultLoad.IsOk());
+    REQUIRE(DefaultLoad.Value().Rules.size() == 1);
+
+    // untitled_1.json 未被污染，仍为空规则
+    ZProfileManager NewManager;
+    auto NewLoad = NewManager.LoadProfile(Temp.Path / "untitled_1.json");
+    REQUIRE(NewLoad.IsOk());
+    REQUIRE(NewLoad.Value().Rules.empty());
+}
+
+TEST_CASE("AppController dirty save failure blocks switch create and delete",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("dirty_blocks");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 新建 Untitled_1，使列表有两项且成为当前项
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->ActiveProfileId() == "untitled_1");
+
+    // 阻塞当前配置文件，apply 触发 autosave 失败 → dirty/error
+    StdPath ActiveFile = Temp.Path / "untitled_1.json";
+    std::filesystem::remove(ActiveFile);
+    std::filesystem::create_directory(ActiveFile);
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
+    REQUIRE(Controller->IsProfileDirty());
+    REQUIRE(Controller->ProfileSaveState() == "error");
+
+    // 切换前保存脏配置失败，三种选择变更命令都应被阻断
+    REQUIRE_FALSE(Controller->switchProfile(QStringLiteral("default")));
+    REQUIRE(Controller->ActiveProfileId() == "untitled_1");
+
+    REQUIRE_FALSE(Controller->createProfile());
+    REQUIRE_FALSE(Controller->deleteActiveProfile());
+
+    // 列表未变，仍为两项
+    REQUIRE(Controller->ProfileEntries().size() == 2);
+}
+
+TEST_CASE("AppController renameActiveProfile updates name keeps id and rewrites file",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("rename_ok");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 先加规则，确认重命名保留映射
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
+
+    QSignalSpy ListSpy(Controller.get(), &ZAppController::profileListChanged);
+    QSignalSpy ActiveSpy(Controller.get(), &ZAppController::activeProfileChanged);
+    QSignalSpy StatusSpy(Controller.get(), &ZAppController::profileStatusChanged);
+    QSignalSpy SavedSpy(Controller.get(), &ZAppController::profileSaved);
+    QSignalSpy LoadedSpy(Controller.get(), &ZAppController::profileLoaded);
+
+    REQUIRE(Controller->renameActiveProfile(QStringLiteral("My Profile")));
+
+    // rename 矩阵：list=1, active=1, status=1, saved=1, loaded=0
+    REQUIRE(ListSpy.count() == 1);
+    REQUIRE(ActiveSpy.count() == 1);
+    REQUIRE(StatusSpy.count() == 1);
+    REQUIRE(SavedSpy.count() == 1);
+    REQUIRE(LoadedSpy.count() == 0);
+
+    REQUIRE(Controller->ActiveProfileName() == "My Profile");
+    REQUIRE(Controller->ActiveProfileId() == "default");
+
+    // 文件仍是 default.json，新名称和规则均已落盘
+    ZProfileManager Manager;
+    auto LoadResult = Manager.LoadProfile(Temp.Path / "default.json");
+    REQUIRE(LoadResult.IsOk());
+    REQUIRE(LoadResult.Value().Name == "My Profile");
+    REQUIRE(LoadResult.Value().Rules.size() == 1);
+}
+
+TEST_CASE("AppController renameActiveProfile with blank name fails and keeps name",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("rename_blank");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    QSignalSpy ErrorSpy(Controller.get(), &ZAppController::runtimeError);
+
+    REQUIRE_FALSE(Controller->renameActiveProfile(QStringLiteral("   ")));
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller->ActiveProfileName() == "Default");
+}
+
+TEST_CASE("AppController renameActiveProfile to duplicate name ignoring case fails",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("rename_dup");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 新建 Untitled_1 后尝试改名为 "DEFAULT"（与 Default 忽略大小写重名）
+    REQUIRE(Controller->createProfile());
+
+    QSignalSpy ErrorSpy(Controller.get(), &ZAppController::runtimeError);
+
+    REQUIRE_FALSE(Controller->renameActiveProfile(QStringLiteral("DEFAULT")));
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller->ActiveProfileName() == "Untitled_1");
+}
+
+TEST_CASE("AppController deleteActiveProfile from clean state emits matrix and switches to fallback",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("delete_ok");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 新建 Untitled_1（当前项，clean），此时可删除
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->CanDeleteProfile());
+
+    QSignalSpy ListSpy(Controller.get(), &ZAppController::profileListChanged);
+    QSignalSpy ActiveSpy(Controller.get(), &ZAppController::activeProfileChanged);
+    QSignalSpy StatusSpy(Controller.get(), &ZAppController::profileStatusChanged);
+    QSignalSpy SavedSpy(Controller.get(), &ZAppController::profileSaved);
+    QSignalSpy LoadedSpy(Controller.get(), &ZAppController::profileLoaded);
+
+    REQUIRE(Controller->deleteActiveProfile());
+
+    // delete 矩阵：list=1, active=1, status=1, saved=0, loaded=1
+    REQUIRE(ListSpy.count() == 1);
+    REQUIRE(ActiveSpy.count() == 1);
+    REQUIRE(StatusSpy.count() == 1);
+    REQUIRE(SavedSpy.count() == 0);
+    REQUIRE(LoadedSpy.count() == 1);
+
+    // 回退到 default，列表只剩一项，被删文件已消失
+    REQUIRE(Controller->ActiveProfileId() == "default");
+    REQUIRE(Controller->ProfileEntries().size() == 1);
+    REQUIRE_FALSE(std::filesystem::exists(Temp.Path / "untitled_1.json"));
+}
+
+TEST_CASE("AppController deleteActiveProfile refuses to delete the last profile",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("delete_last");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    QSignalSpy ErrorSpy(Controller.get(), &ZAppController::runtimeError);
+
+    REQUIRE_FALSE(Controller->deleteActiveProfile());
+    REQUIRE(ErrorSpy.count() == 1);
+    REQUIRE(Controller->ProfileEntries().size() == 1);
+}
+
+TEST_CASE("AppController autosave targets only the new active profile file after switch",
+    "[UI][AppController]")
+{
+    STempProfileDir Temp("autosave_target");
+    auto Controller = MakeInitializedController(Temp.Path);
+
+    // 新建并切到 Untitled_1，在其上加规则触发 autosave
+    REQUIRE(Controller->createProfile());
+    REQUIRE(Controller->ActiveProfileId() == "untitled_1");
+    REQUIRE(Controller->applySelectedBinding("button_south", "Keyboard", "Space"));
+
+    // 规则只落在 untitled_1.json，default.json 保持空
+    ZProfileManager Manager;
+
+    auto NewLoad = Manager.LoadProfile(Temp.Path / "untitled_1.json");
+    REQUIRE(NewLoad.IsOk());
+    REQUIRE(NewLoad.Value().Rules.size() == 1);
+
+    auto DefaultLoad = Manager.LoadProfile(Temp.Path / "default.json");
+    REQUIRE(DefaultLoad.IsOk());
+    REQUIRE(DefaultLoad.Value().Rules.empty());
 }

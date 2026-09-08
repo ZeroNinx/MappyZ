@@ -1,12 +1,16 @@
 // QML 离屏冒烟测试。
 // 使用 offscreen 平台加载 MappyZUI 模块，验证组件树创建成功且无警告。
 // QGuiApplication + offscreen 提供最小 GUI 环境，不需要真实显示器。
+// 使用 QTemporaryDir 注入隔离配置目录，避免污染真实 AppData 配置。
 
 #include <QGuiApplication>
+#include <QObject>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
+#include <QVariant>
 #include <QtQml/qqmlextensionplugin.h>
 
 #include <catch2/catch_session.hpp>
@@ -76,13 +80,35 @@ static TOutputBackendFactory MakeNullOutputFactory()
     };
 }
 
+// 断言当前未收集到任何 QML 警告，并把每条警告输出到测试报告。
+static void RequireNoWarnings()
+{
+    if (!GCollectedWarnings.isEmpty())
+    {
+        for (const auto& Warning : GCollectedWarnings)
+        {
+            WARN(Warning.toStdString());
+        }
+
+        FAIL("QML module produced "
+            + std::to_string(GCollectedWarnings.size()) + " warning(s)");
+    }
+}
+
 TEST_CASE("QML module loads without warnings", "[UI][QmlSmoke]")
 {
     GCollectedWarnings.clear();
     QtMessageHandler PreviousHandler = qInstallMessageHandler(QmlWarningHandler);
 
-    // 注入 fake/null 后端，确保 initializeRuntime 可成功
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    // 隔离临时配置目录，避免污染真实 AppData
+    QTemporaryDir TempDir;
+    REQUIRE(TempDir.isValid());
+
+    // 注入 fake/null 后端与隔离目录，确保 initializeRuntime/initializeProfiles 可成功
+    ZAppController Controller(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory(),
+        StdPath(TempDir.path().toStdString()));
 
     QQmlApplicationEngine Engine;
     Engine.rootContext()->setContextProperty("appController", &Controller);
@@ -102,17 +128,103 @@ TEST_CASE("QML module loads without warnings", "[UI][QmlSmoke]")
     qInstallMessageHandler(PreviousHandler);
 
     REQUIRE_FALSE(bCreationFailed);
+    RequireNoWarnings();
+}
 
-    if (!GCollectedWarnings.isEmpty())
-    {
-        for (const auto& Warning : GCollectedWarnings)
-        {
-            WARN(Warning.toStdString());
-        }
+TEST_CASE("ProfileSelector renders and toggles rename state", "[UI][QmlSmoke]")
+{
+    GCollectedWarnings.clear();
+    QtMessageHandler PreviousHandler = qInstallMessageHandler(QmlWarningHandler);
 
-        FAIL("QML module produced "
-            + std::to_string(GCollectedWarnings.size()) + " warning(s)");
-    }
+    QTemporaryDir TempDir;
+    REQUIRE(TempDir.isValid());
+
+    ZAppController Controller(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory(),
+        StdPath(TempDir.path().toStdString()));
+
+    QQmlApplicationEngine Engine;
+    Engine.rootContext()->setContextProperty("appController", &Controller);
+    Engine.loadFromModule("MappyZUI", "Main");
+    QCoreApplication::processEvents();
+
+    REQUIRE_FALSE(Engine.rootObjects().isEmpty());
+    QObject* RootObject = Engine.rootObjects().constFirst();
+
+    // 通过根对象查找 ProfileSelector
+    QObject* Selector = RootObject->findChild<QObject*>(QStringLiteral("profileSelector"));
+    REQUIRE(Selector != nullptr);
+
+    // 初始化成功后默认配置名为 Default
+    REQUIRE(Controller.ActiveProfileName() == QStringLiteral("Default"));
+
+    // 三个操作按钮均可创建
+    REQUIRE(Selector->findChild<QObject*>(QStringLiteral("profileCreateButton")) != nullptr);
+    REQUIRE(Selector->findChild<QObject*>(QStringLiteral("profileRenameButton")) != nullptr);
+    REQUIRE(Selector->findChild<QObject*>(QStringLiteral("profileDeleteButton")) != nullptr);
+
+    // 下拉列表 delegate 绑定到 controller 的 profileEntries，count 与列表一致
+    QObject* ListViewObject =
+        Selector->findChild<QObject*>(QStringLiteral("profileListView"));
+    REQUIRE(ListViewObject != nullptr);
+    REQUIRE(ListViewObject->property("count").toInt()
+        == Controller.ProfileEntries().size());
+
+    // 进入 rename 编辑态：renaming 变 true，输入框可见
+    QMetaObject::invokeMethod(Selector, "beginRename");
+    QCoreApplication::processEvents();
+    REQUIRE(Selector->property("renaming").toBool());
+
+    // 取消 rename：renaming 变 false，恢复权威名称，不调用 C++
+    QMetaObject::invokeMethod(Selector, "cancelRename");
+    QCoreApplication::processEvents();
+    REQUIRE_FALSE(Selector->property("renaming").toBool());
+
+    qInstallMessageHandler(PreviousHandler);
+
+    // 进入 / 取消 rename 全程无 binding loop 或重复提交 warning
+    RequireNoWarnings();
+}
+
+TEST_CASE("ProfileSelector cancels rename when active profile switches externally",
+    "[UI][QmlSmoke]")
+{
+    GCollectedWarnings.clear();
+    QtMessageHandler PreviousHandler = qInstallMessageHandler(QmlWarningHandler);
+
+    QTemporaryDir TempDir;
+    REQUIRE(TempDir.isValid());
+
+    ZAppController Controller(
+        MakeFakeInputFactory(),
+        MakeNullOutputFactory(),
+        StdPath(TempDir.path().toStdString()));
+
+    QQmlApplicationEngine Engine;
+    Engine.rootContext()->setContextProperty("appController", &Controller);
+    Engine.loadFromModule("MappyZUI", "Main");
+    QCoreApplication::processEvents();
+
+    REQUIRE_FALSE(Engine.rootObjects().isEmpty());
+    QObject* RootObject = Engine.rootObjects().constFirst();
+    QObject* Selector =
+        RootObject->findChild<QObject*>(QStringLiteral("profileSelector"));
+    REQUIRE(Selector != nullptr);
+
+    // 进入编辑态，记录开始编辑时的配置 ID
+    QMetaObject::invokeMethod(Selector, "beginRename");
+    QCoreApplication::processEvents();
+    REQUIRE(Selector->property("renaming").toBool());
+
+    // 编辑期间外部切换当前配置（新建配置会把当前项切到新建的配置）：
+    // activeProfileChanged 触发后应自动结束编辑，避免旧草稿改到新配置。
+    REQUIRE(Controller.createProfile());
+    QCoreApplication::processEvents();
+    REQUIRE_FALSE(Selector->property("renaming").toBool());
+
+    qInstallMessageHandler(PreviousHandler);
+    RequireNoWarnings();
 }
 
 int main(int ArgCount, char* Arguments[])

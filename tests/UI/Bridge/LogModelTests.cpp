@@ -260,14 +260,19 @@ TEST_CASE("AppController apply failure writes Error log entry",
 TEST_CASE("AppController saveActiveProfile success writes Success log",
     "[UI][LogModel]")
 {
-    ZAppController Controller(MakeFakeInputFactory(), MakeNullOutputFactory());
+    // 注入隔离配置目录，先初始化配置再保存，避免污染真实 AppData。
+    auto ProfilesDir = std::filesystem::temp_directory_path()
+        / "mappyz_log_save_test";
+    std::filesystem::remove_all(ProfilesDir);
+
+    ZAppController Controller(
+        MakeFakeInputFactory(), MakeNullOutputFactory(), ProfilesDir);
     (void)Controller.initializeRuntime();
+    REQUIRE(Controller.initializeProfiles());
 
     auto* Log = Controller.LogModel();
 
-    auto TempPath = std::filesystem::temp_directory_path()
-        / "mappyz_log_save_test" / "profile.json";
-    Controller.saveActiveProfile(QString::fromStdString(TempPath.string()));
+    REQUIRE(Controller.saveActiveProfile());
 
     auto LastLevel = Log->data(
         Log->index(Log->rowCount() - 1), ZLogModel::LevelRole).toString();
@@ -277,5 +282,5 @@ TEST_CASE("AppController saveActiveProfile success writes Success log",
         Log->index(Log->rowCount() - 1), ZLogModel::MessageRole).toString();
     REQUIRE(LastMessage.contains("Profile saved"));
 
-    std::filesystem::remove_all(TempPath.parent_path());
+    std::filesystem::remove_all(ProfilesDir);
 }

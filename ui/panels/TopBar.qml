@@ -1,6 +1,6 @@
 import QtQuick
 
-// 顶部工具栏：产品名、运行时副标题、Profile 标签
+// 顶部工具栏：产品名、运行时副标题、Profile 选择器
 Rectangle {
     id: topBar
 
@@ -39,25 +39,14 @@ Rectangle {
         font.pixelSize: 12
     }
 
-    Row {
-        id: topBarActions
+    ProfileSelector {
+        id: profileSelector
 
+        objectName: "profileSelector"
+        theme: topBar.theme
+        appController: topBar.appController
         anchors.right: parent.right
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 10
-
-        Tag {
-            theme: topBar.theme
-            label: "Profile: " + (topBar.appController
-                ? topBar.appController.profileDisplayText : "Default")
-            tone: {
-                if (!topBar.appController) return "#3c3c3c"
-                var severity = topBar.appController.profileSaveSeverity
-                if (severity === "danger") return topBar.theme.warning
-                if (severity === "caution") return topBar.theme.accentSoft
-                return "#3c3c3c"
-            }
-        }
     }
 }
